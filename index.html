@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StoneFish Chess Arena</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+    <div class="page">
+        <header class="page__header">
+            <h1 class="page__title">StoneFish Chess Arena</h1>
+            <p class="page__subtitle">Challenge the experimental StoneFish engine and follow its evolution.</p>
+            <div class="model-selector" role="radiogroup" aria-label="StoneFish model selector">
+                <label class="model-option model-option--active">
+                    <input type="radio" name="model" value="v1" checked />
+                    <div class="model-option__body">
+                        <div class="model-option__title">StoneFish V1</div>
+                        <div class="model-option__tag model-option__tag--active">Selected</div>
+                        <p class="model-option__description">Early proof of concept for intelligent play.</p>
+                    </div>
+                </label>
+                <label class="model-option model-option--disabled" aria-disabled="true">
+                    <input type="radio" name="model" value="v2" disabled />
+                    <div class="model-option__body">
+                        <div class="model-option__title">StoneFish V2</div>
+                        <div class="model-option__tag">Coming soon</div>
+                        <p class="model-option__description">Enhanced decision making and logic.</p>
+                    </div>
+                </label>
+            </div>
+        </header>
+        <main class="board-layout">
+            <section class="board-panel" aria-label="Interactive chess board">
+                <div class="board" id="board" aria-live="polite"></div>
+                <div class="board__coords board__coords--files" aria-hidden="true"></div>
+                <div class="board__coords board__coords--ranks" aria-hidden="true"></div>
+            </section>
+            <aside class="info-panel">
+                <div class="status-card">
+                    <h2 class="status-card__title">Game Status</h2>
+                    <p id="status" class="status-card__message">White to move.</p>
+                    <div id="turn-indicator" class="turn-indicator" role="status" aria-live="assertive">
+                        <span class="turn-indicator__dot turn-indicator__dot--white"></span>
+                        <span class="turn-indicator__label">White to move</span>
+                    </div>
+                </div>
+                <div class="captured-card">
+                    <h2 class="captured-card__title">Captured Pieces</h2>
+                    <div class="captured-card__body">
+                        <div>
+                            <h3>White</h3>
+                            <div id="captured-white" class="captured-row"></div>
+                        </div>
+                        <div>
+                            <h3>Black</h3>
+                            <div id="captured-black" class="captured-row"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="moves-card">
+                    <h2 class="moves-card__title">Move Log</h2>
+                    <ol id="move-log" class="move-log" aria-live="polite"></ol>
+                </div>
+                <div class="controls">
+                    <button id="new-game" class="btn btn--primary">Start New Game</button>
+                    <button id="flip-board" class="btn">Flip Board</button>
+                </div>
+            </aside>
+        </main>
+        <footer class="page__footer">
+            <p>StoneFish is an evolving experimental chess engine. Join us as we train the next generation.</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="stonefish/stonefishv1.js"></script>
+</body>
+</html>
