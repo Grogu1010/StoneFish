@@ -1,291 +1,239 @@
 (function (global) {
     const PIECE_VALUES = {
-        p: 1,
-        n: 3,
-        b: 3,
-        r: 5,
-        q: 9,
-        k: 100,
+        p: 1, n: 3, b: 3, r: 5, q: 9, k: 100,
     };
-
-    function cloneGameWithTurn(game, turn) {
-        const fenParts = game.fen().split(' ');
-        fenParts[1] = turn;
-        return new Chess(fenParts.join(' '));
-    }
-
-    function simulateMove(game, move) {
-        const simulation = new Chess(game.fen());
-        const result = simulation.move({
-            from: move.from,
-            to: move.to,
-            promotion: move.promotion || 'q',
-        });
-        return result ? simulation : null;
-    }
 
     function getPieceValue(type) {
         return PIECE_VALUES[type] || 0;
     }
 
-    function getThreatsAgainstColor(game, color) {
-        const opponentTurn = color === 'w' ? 'b' : 'w';
-        const opponentView = cloneGameWithTurn(game, opponentTurn);
-        return opponentView
-            .moves({ verbose: true })
-            .filter((move) => Boolean(move.captured));
+    // Clone game but set whose turn it is (used to ask "what can the opponent take now?")
+    function cloneGameWithTurn(game, turn) {
+        const parts = game.fen().split(' ');
+        parts[1] = turn;
+        return new Chess(parts.join(' '));
     }
 
+    // Simulate a move and return the resulting Chess instance (or null if illegal)
+    function simulateMove(game, move) {
+        const sim = new Chess(game.fen());
+        const ok = sim.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+        return ok ? sim : null;
+    }
+
+    // All *captures* available to side `color` in current position
     function getCaptureOptionsForColor(game, color) {
-        const perspective = cloneGameWithTurn(game, color);
-        return perspective
-            .moves({ verbose: true })
-            .filter((move) => Boolean(move.captured));
+        const view = cloneGameWithTurn(game, color);
+        return view.moves({ verbose: true }).filter(m => Boolean(m.captured));
     }
 
-    function getMaxThreatValue(game, color) {
-        const threats = getCaptureOptionsForColor(game, color);
-        let maxValue = 0;
-        for (const threat of threats) {
-            maxValue = Math.max(maxValue, getPieceValue(threat.captured));
+    // After a simulation, measure “how bad can it be next turn?”
+    // i.e., the *highest value* of any piece the opponent could capture immediately.
+    function opponentMaxCaptureValueAfter(simulation, ourColor) {
+        const opp = ourColor === 'w' ? 'b' : 'w';
+        const oppCaps = getCaptureOptionsForColor(simulation, opp);
+        let maxVal = 0;
+        for (const m of oppCaps) {
+            maxVal = Math.max(maxVal, getPieceValue(m.captured));
         }
-        return maxValue;
+        return maxVal; // 0 means the opponent cannot immediately capture anything
+    }
+
+    // Which of our pieces are currently threatened (opponent has a capture to that square)?
+    function getThreatsAgainstColor(game, color) {
+        const opp = color === 'w' ? 'b' : 'w';
+        const oppView = cloneGameWithTurn(game, opp);
+        return oppView.moves({ verbose: true }).filter(m => Boolean(m.captured));
     }
 
     function getThreatenedPieces(game, color) {
         const threats = getThreatsAgainstColor(game, color);
-        const threatenedMap = new Map();
-
-        for (const threat of threats) {
-            const square = threat.to;
-            const piece = game.get(square);
-            if (!piece || piece.color !== color) {
-                continue;
-            }
-
-            const key = square;
-            const entry = threatenedMap.get(key) || {
-                square,
-                piece,
-                value: getPieceValue(piece.type),
-                attackers: [],
+        const map = new Map();
+        for (const t of threats) {
+            const sq = t.to;
+            const piece = game.get(sq);
+            if (!piece || piece.color !== color) continue;
+            const key = sq;
+            const entry = map.get(key) || {
+                square: sq, piece, value: getPieceValue(piece.type), attackers: []
             };
-
             entry.attackers.push({
-                from: threat.from,
-                attacker: threat.piece,
-                value: getPieceValue(threat.piece),
+                from: t.from, attacker: t.piece, value: getPieceValue(t.piece),
             });
-
-            threatenedMap.set(key, entry);
+            map.set(key, entry);
         }
+        // Highest value threatened first (save queen before pawn, etc.)
+        return Array.from(map.values()).sort((a, b) => b.value - a.value);
+    }
 
-        return Array.from(threatenedMap.values()).sort((a, b) => b.value - a.value);
+    // For tie-breakers: how much do we newly threaten after the move?
+    function ourMaxThreatValueAfter(simulation, ourColor) {
+        const caps = getCaptureOptionsForColor(simulation, ourColor);
+        let maxVal = 0;
+        for (const m of caps) maxVal = Math.max(maxVal, getPieceValue(m.captured));
+        return maxVal;
     }
 
     class StonefishV2 {
         constructor() {
             this.id = 'v2';
             this.name = 'StoneFish V2';
-            this.description = 'Structured Instinct decision engine';
+            this.description = 'Structured Instinct decision engine (future-safety aware)';
         }
 
-        chooseMove(gameInstance) {
-            if (!gameInstance || typeof gameInstance.moves !== 'function') {
+        chooseMove(game) {
+            if (!game || typeof game.moves !== 'function') {
                 console.warn('StoneFish V2 received an invalid game instance.');
                 return null;
             }
+            const legal = game.moves({ verbose: true });
+            if (!legal.length) return null;
 
-            const legalMoves = gameInstance.moves({ verbose: true });
-            if (!legalMoves.length) {
-                return null;
-            }
-
-            const color = gameInstance.turn();
+            const color = game.turn();
 
             return (
-                this.chooseDefenseMove(gameInstance, legalMoves, color) ||
-                this.chooseCaptureMove(gameInstance, legalMoves, color) ||
-                this.chooseAttackMove(gameInstance, legalMoves, color) ||
-                this.chooseFallbackMove(gameInstance, legalMoves, color)
+                this.chooseDefenseMove(game, legal, color) ||
+                this.chooseCaptureMove(game, legal, color) ||
+                this.chooseAttackMove(game, legal, color) ||
+                this.chooseFallbackMove(game, legal, color)
             );
         }
 
-        chooseDefenseMove(game, legalMoves, color) {
-            const threatenedPieces = getThreatenedPieces(game, color);
-            if (!threatenedPieces.length) {
-                return null;
-            }
+        // 1) DEFEND: for each threatened piece (highest value first), find moves that leave it *not capturable*;
+        // among those, prefer smallest opponentMaxCapture, then free capture value, then new threats.
+        chooseDefenseMove(game, legal, color) {
+            const threatened = getThreatenedPieces(game, color);
+            if (!threatened.length) return null;
 
-            for (const threatened of threatenedPieces) {
-                const defensiveMoves = [];
+            for (const th of threatened) {
+                const candidates = [];
+                for (const mv of legal) {
+                    const sim = simulateMove(game, mv);
+                    if (!sim) continue;
 
-                for (const move of legalMoves) {
-                    const simulation = simulateMove(game, move);
-                    if (!simulation) {
+                    // Track where that particular piece ends up (could move away or be shielded)
+                    let protectedSq = th.square;
+                    if (mv.from === th.square) protectedSq = mv.to;
+
+                    const afterPiece = sim.get(protectedSq);
+                    if (!afterPiece || afterPiece.color !== color || afterPiece.type !== th.piece.type) {
+                        // that threatened piece is gone or not ours anymore → not a valid defense of THIS piece
                         continue;
                     }
 
-                    let protectedSquare = threatened.square;
-                    if (move.from === threatened.square) {
-                        protectedSquare = move.to;
-                    }
+                    // Is that piece still capturable after we move?
+                    const stillThreatened = getThreatsAgainstColor(sim, color).some(t => t.to === protectedSq);
+                    if (stillThreatened) continue;
 
-                    const pieceAfter = simulation.get(protectedSquare);
-                    if (!pieceAfter || pieceAfter.color !== color || pieceAfter.type !== threatened.piece.type) {
-                        continue;
-                    }
+                    const oppMax = opponentMaxCaptureValueAfter(sim, color);
+                    const createdThreat = ourMaxThreatValueAfter(sim, color);
+                    const captureValue = mv.captured ? getPieceValue(mv.captured) : 0;
 
-                    const remainingThreats = getThreatsAgainstColor(simulation, color);
-                    const stillUnderAttack = remainingThreats.some((threat) => threat.to === protectedSquare);
-                    if (stillUnderAttack) {
-                        continue;
-                    }
-
-                    const captureValue = move.captured ? getPieceValue(move.captured) : 0;
-                    const createdThreat = getMaxThreatValue(simulation, color);
-
-                    defensiveMoves.push({
-                        move,
-                        captureValue,
-                        createdThreat,
-                    });
+                    candidates.push({ mv, oppMax, captureValue, createdThreat });
                 }
 
-                if (defensiveMoves.length) {
-                    defensiveMoves.sort((a, b) => {
-                        if (b.captureValue !== a.captureValue) {
-                            return b.captureValue - a.captureValue;
-                        }
-                        if (b.createdThreat !== a.createdThreat) {
-                            return b.createdThreat - a.createdThreat;
-                        }
+                if (candidates.length) {
+                    candidates.sort((a, b) => {
+                        if (a.oppMax !== b.oppMax) return a.oppMax - b.oppMax; // SAFEST future first
+                        if (b.captureValue !== a.captureValue) return b.captureValue - a.captureValue; // grab something if tied
+                        if (b.createdThreat !== a.createdThreat) return b.createdThreat - a.createdThreat; // create threats
                         return 0;
                     });
-                    return defensiveMoves[0].move;
+                    return candidates[0].mv;
                 }
             }
-
             return null;
         }
 
-        chooseCaptureMove(game, legalMoves, color) {
-            const captureMoves = [];
-            for (const move of legalMoves) {
-                if (!move.captured) {
-                    continue;
-                }
+        // 2) CAPTURE: consider all captures; simulate; prefer ones that minimize opponentMaxCapture,
+        // then prefer bigger capture, then better net gain, then new threats.
+        chooseCaptureMove(game, legal, color) {
+            const caps = [];
+            for (const mv of legal) {
+                if (!mv.captured) continue;
 
-                const capturingPiece = game.get(move.from);
-                if (!capturingPiece) {
-                    continue;
-                }
+                const sim = simulateMove(game, mv);
+                if (!sim) continue;
 
-                const capturedValue = getPieceValue(move.captured);
+                const capturingPiece = game.get(mv.from);
+                if (!capturingPiece) continue;
+
+                const capturedValue = getPieceValue(mv.captured);
                 const ourValue = getPieceValue(capturingPiece.type);
-                const simulation = simulateMove(game, move);
-                if (!simulation) {
-                    continue;
-                }
-
-                const retaliation = getThreatsAgainstColor(simulation, color).filter((threat) => threat.to === move.to);
-                const isSafe = retaliation.length === 0;
-                const worthwhile = capturedValue >= ourValue;
-                if (!isSafe && !worthwhile) {
-                    continue;
-                }
-
                 const netGain = capturedValue - ourValue;
-                const createdThreat = getMaxThreatValue(simulation, color);
 
-                captureMoves.push({
-                    move,
-                    capturedValue,
-                    netGain,
-                    createdThreat,
-                    isSafe,
-                });
+                const oppMax = opponentMaxCaptureValueAfter(sim, color);
+                const createdThreat = ourMaxThreatValueAfter(sim, color);
+
+                caps.push({ mv, oppMax, capturedValue, netGain, createdThreat });
             }
 
-            if (!captureMoves.length) {
-                return null;
-            }
+            if (!caps.length) return null;
 
-            captureMoves.sort((a, b) => {
-                if (b.capturedValue !== a.capturedValue) {
-                    return b.capturedValue - a.capturedValue;
-                }
-                if (b.netGain !== a.netGain) {
-                    return b.netGain - a.netGain;
-                }
-                if (a.isSafe !== b.isSafe) {
-                    return a.isSafe ? -1 : 1;
-                }
-                if (b.createdThreat !== a.createdThreat) {
-                    return b.createdThreat - a.createdThreat;
-                }
+            caps.sort((a, b) => {
+                if (a.oppMax !== b.oppMax) return a.oppMax - b.oppMax;            // safest future first
+                if (b.capturedValue !== a.capturedValue) return b.capturedValue - a.capturedValue; // bigger prize
+                if (b.netGain !== a.netGain) return b.netGain - a.netGain;        // better trade
+                if (b.createdThreat !== a.createdThreat) return b.createdThreat - a.createdThreat; // threaten more
                 return 0;
             });
 
-            return captureMoves[0].move;
+            return caps[0].mv;
         }
 
-        chooseAttackMove(game, legalMoves, color) {
-            const attackMoves = [];
-            for (const move of legalMoves) {
-                if (move.captured) {
-                    continue;
-                }
+        // 3) ATTACK: non-captures that *create* the ability to take something next turn;
+        // prefer minimal opponentMaxCapture, then the biggest new threatened value.
+        chooseAttackMove(game, legal, color) {
+            const atks = [];
+            for (const mv of legal) {
+                if (mv.captured) continue; // handled in capture phase
+                const sim = simulateMove(game, mv);
+                if (!sim) continue;
 
-                const simulation = simulateMove(game, move);
-                if (!simulation) {
-                    continue;
-                }
+                const createdThreat = ourMaxThreatValueAfter(sim, color);
+                if (createdThreat <= 0) continue; // no new threats → not an "attack" move
 
-                const maxThreat = getMaxThreatValue(simulation, color);
-                if (maxThreat <= 0) {
-                    continue;
-                }
-
-                attackMoves.push({ move, maxThreat });
+                const oppMax = opponentMaxCaptureValueAfter(sim, color);
+                atks.push({ mv, oppMax, createdThreat });
             }
 
-            if (!attackMoves.length) {
-                return null;
-            }
+            if (!atks.length) return null;
 
-            attackMoves.sort((a, b) => b.maxThreat - a.maxThreat);
-            return attackMoves[0].move;
+            atks.sort((a, b) => {
+                if (a.oppMax !== b.oppMax) return a.oppMax - b.oppMax; // safest future
+                if (b.createdThreat !== a.createdThreat) return b.createdThreat - a.createdThreat; // strongest threat
+                return 0;
+            });
+
+            return atks[0].mv;
         }
 
-        chooseFallbackMove(game, legalMoves, color) {
-            const evaluatedMoves = [];
-            for (const move of legalMoves) {
-                const simulation = simulateMove(game, move);
-                if (!simulation) {
-                    continue;
-                }
+        // 4) FALLBACK: nothing to defend/capture/attack — pick the globally *safest* future.
+        // Prefer minimal opponentMaxCapture; if tied, prefer moves that *increase* our max threat a bit.
+        chooseFallbackMove(game, legal, color) {
+            const scored = [];
+            for (const mv of legal) {
+                const sim = simulateMove(game, mv);
+                if (!sim) continue;
 
-                const threats = getThreatsAgainstColor(simulation, color);
-                const highestThreat = threats.reduce((max, threat) => {
-                    const value = getPieceValue(threat.captured);
-                    return Math.max(max, value);
-                }, 0);
+                const oppMax = opponentMaxCaptureValueAfter(sim, color);
+                const createdThreat = ourMaxThreatValueAfter(sim, color);
 
-                evaluatedMoves.push({ move, highestThreat });
+                scored.push({ mv, oppMax, createdThreat });
             }
 
-            if (!evaluatedMoves.length) {
-                return legalMoves[Math.floor(Math.random() * legalMoves.length)];
+            if (!scored.length) {
+                // completely degenerate, pick random
+                return legal[Math.floor(Math.random() * legal.length)];
             }
 
-            evaluatedMoves.sort((a, b) => a.highestThreat - b.highestThreat);
-            const safest = evaluatedMoves.filter((entry) => entry.highestThreat <= 3);
-            if (safest.length) {
-                return safest[0].move;
-            }
+            scored.sort((a, b) => {
+                if (a.oppMax !== b.oppMax) return a.oppMax - b.oppMax;  // safest future first
+                if (b.createdThreat !== a.createdThreat) return b.createdThreat - a.createdThreat;
+                return 0;
+            });
 
-            return evaluatedMoves[0].move;
+            return scored[0].mv;
         }
     }
 
