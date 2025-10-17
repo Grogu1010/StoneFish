@@ -14,31 +14,13 @@
         <header class="page__header">
             <h1 class="page__title">StoneFish Chess Arena</h1>
             <p class="page__subtitle">Challenge the experimental StoneFish engine and follow its evolution.</p>
-            <div class="model-selector" role="radiogroup" aria-label="StoneFish model selector">
-                <label class="model-option model-option--active">
-                    <input type="radio" name="model" value="v1" checked />
-                    <div class="model-option__body">
-                        <div class="model-option__title">StoneFish V1</div>
-                        <div class="model-option__tag model-option__tag--active" data-default="Available">Selected</div>
-                        <p class="model-option__description">Early proof of concept for intelligent play.</p>
-                    </div>
-                </label>
-                <label class="model-option">
-                    <input type="radio" name="model" value="v2" />
-                    <div class="model-option__body">
-                        <div class="model-option__title">StoneFish V2</div>
-                        <div class="model-option__tag" data-default="Available">Available</div>
-                        <p class="model-option__description">Structured instinct with defense, capture, and attack priorities.</p>
-                    </div>
-                </label>
-                <label class="model-option model-option--disabled" aria-disabled="true">
-                    <input type="radio" name="model" value="v2.5" disabled />
-                    <div class="model-option__body">
-                        <div class="model-option__title">StoneFish V2.5</div>
-                        <div class="model-option__tag" data-default="Coming soon">Coming soon</div>
-                        <p class="model-option__description">Improved material awareness.</p>
-                    </div>
-                </label>
+            <div class="model-selector">
+                <label class="model-selector__label" for="model-picker">StoneFish engine</label>
+                <select id="model-picker" class="model-selector__select" aria-label="StoneFish engine picker" aria-describedby="model-description model-usage"></select>
+                <div class="model-selector__details">
+                    <p id="model-description" class="model-selector__description">Select an engine to view its play style.</p>
+                    <p id="model-usage" class="model-selector__usage" aria-live="polite">Not currently assigned.</p>
+                </div>
             </div>
         </header>
         <main class="board-layout">
@@ -100,6 +82,7 @@
 
     <script src="stonefish/stonefishv1.js"></script>
     <script src="stonefish/stonefishv2.js"></script>
+    <script src="stonefish/stonefishv2_5.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

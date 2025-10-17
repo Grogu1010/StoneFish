@@ -67,69 +67,55 @@ body {
 }
 
 .model-selector {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    justify-items: center;
-}
-
-.model-option {
-    position: relative;
-    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 20px 24px;
     border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 16px 24px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    cursor: pointer;
-    transition: transform var(--transition-base), box-shadow var(--transition-base);
-}
-
-.model-option input {
-    display: none;
-}
-
-.model-option:hover:not(.model-option--disabled) {
-    transform: translateY(-4px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
     box-shadow: var(--shadow-elevated);
+    display: grid;
+    gap: 12px;
 }
 
-.model-option--active {
-    background: linear-gradient(135deg, rgba(244, 211, 94, 0.2), rgba(76, 187, 203, 0.2));
-    border-color: rgba(244, 211, 94, 0.5);
+.model-selector__label {
+    font-family: 'Kanit', sans-serif;
+    font-size: 1.1rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0;
 }
 
-.model-option--disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+.model-selector__select {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(13, 27, 42, 0.6);
+    color: var(--color-text);
+    font-size: 1rem;
+    font-family: inherit;
 }
 
-.model-option__body {
+.model-selector__select:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+.model-selector__details {
+    display: grid;
+    gap: 4px;
     text-align: left;
 }
 
-.model-option__title {
-    font-family: 'Kanit', sans-serif;
-    font-size: 1.4rem;
-    margin-bottom: 6px;
+.model-selector__description {
+    margin: 0;
+    color: var(--color-text-muted);
 }
 
-.model-option__tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 600;
-}
-
-.model-option__tag--active {
-    background: rgba(244, 211, 94, 0.25);
+.model-selector__usage {
+    margin: 0;
+    font-size: 0.85rem;
     color: var(--color-accent);
 }
 
