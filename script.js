@@ -23,8 +23,60 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         const capturedBlackEl = document.getElementById('captured-black');
         const newGameBtn = document.getElementById('new-game');
         const flipBoardBtn = document.getElementById('flip-board');
+        const modelOptions = Array.from(document.querySelectorAll('.model-option'));
+        const modelInputs = Array.from(document.querySelectorAll('input[name="model"]'));
 
-        const engine = window.StonefishModels && window.StonefishModels.v1;
+        const availableModels = window.StonefishModels || {};
+        let selectedEngineId = 'v1';
+        let engine = availableModels[selectedEngineId] || null;
+
+        function setActiveModelOption(activeValue) {
+            modelOptions.forEach((option) => {
+                const input = option.querySelector('input[name="model"]');
+                if (!input) {
+                    return;
+                }
+
+                const tag = option.querySelector('.model-option__tag');
+                const defaultText = tag ? tag.dataset.default : '';
+                const isActive = input.value === activeValue;
+
+                input.checked = isActive;
+                option.classList.toggle('model-option--active', isActive);
+
+                if (tag) {
+                    if (isActive) {
+                        tag.textContent = 'Selected';
+                        tag.classList.add('model-option__tag--active');
+                    } else {
+                        tag.textContent = defaultText || tag.textContent;
+                        tag.classList.remove('model-option__tag--active');
+                    }
+                }
+            });
+        }
+
+        function selectEngine(engineId) {
+            const nextEngine = availableModels[engineId];
+            if (!nextEngine) {
+                return false;
+            }
+
+            selectedEngineId = engineId;
+            engine = nextEngine;
+            setActiveModelOption(engineId);
+            return true;
+        }
+
+        if (!engine) {
+            const fallbackInput = modelInputs.find((input) => !input.disabled && availableModels[input.value]);
+            if (fallbackInput) {
+                selectEngine(fallbackInput.value);
+            }
+        } else {
+            setActiveModelOption(selectedEngineId);
+        }
+
         if (!engine) {
             console.error('StoneFish engine is unavailable.');
             statusEl.textContent = 'Engine failed to load.';
@@ -40,6 +92,26 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         let waitingForEngine = false;
         const squareElements = new Map();
         const capturedPieces = { white: [], black: [] };
+
+        modelInputs.forEach((input) => {
+            input.addEventListener('change', () => {
+                if (input.disabled) {
+                    return;
+                }
+
+                const changed = selectEngine(input.value);
+                if (!changed) {
+                    return;
+                }
+
+                if (waitingForEngine) {
+                    const engineLabel = engine && engine.name ? engine.name : 'StoneFish';
+                    updateStatus(`${engineLabel} is contemplating...`);
+                } else {
+                    updateStatus();
+                }
+            });
+        });
 
         function pieceToUnicode(piece) {
             if (!piece) return '';
@@ -210,9 +282,22 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         }
 
         function requestEngineMove() {
+            if (!engine) {
+                updateStatus('Engine unavailable.');
+                return;
+            }
+
             waitingForEngine = true;
-            updateStatus('StoneFish is contemplating...');
+            const engineLabel = engine && engine.name ? engine.name : 'StoneFish';
+            updateStatus(`${engineLabel} is contemplating...`);
             setTimeout(() => {
+                if (!engine || typeof engine.chooseMove !== 'function') {
+                    waitingForEngine = false;
+                    updateStatus('Engine unavailable.');
+                    refreshBoardState();
+                    return;
+                }
+
                 const engineMove = engine.chooseMove(game);
                 if (!engineMove) {
                     waitingForEngine = false;

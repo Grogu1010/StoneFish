@@ -19,16 +19,24 @@
                     <input type="radio" name="model" value="v1" checked />
                     <div class="model-option__body">
                         <div class="model-option__title">StoneFish V1</div>
-                        <div class="model-option__tag model-option__tag--active">Selected</div>
+                        <div class="model-option__tag model-option__tag--active" data-default="Available">Selected</div>
                         <p class="model-option__description">Early proof of concept for intelligent play.</p>
                     </div>
                 </label>
-                <label class="model-option model-option--disabled" aria-disabled="true">
-                    <input type="radio" name="model" value="v2" disabled />
+                <label class="model-option">
+                    <input type="radio" name="model" value="v2" />
                     <div class="model-option__body">
                         <div class="model-option__title">StoneFish V2</div>
-                        <div class="model-option__tag">Coming soon</div>
-                        <p class="model-option__description">Enhanced decision making and logic.</p>
+                        <div class="model-option__tag" data-default="Available">Available</div>
+                        <p class="model-option__description">Structured instinct with defense, capture, and attack priorities.</p>
+                    </div>
+                </label>
+                <label class="model-option model-option--disabled" aria-disabled="true">
+                    <input type="radio" name="model" value="v2.5" disabled />
+                    <div class="model-option__body">
+                        <div class="model-option__title">StoneFish V2.5</div>
+                        <div class="model-option__tag" data-default="Coming soon">Coming soon</div>
+                        <p class="model-option__description">Improved material awareness.</p>
                     </div>
                 </label>
             </div>
@@ -76,7 +84,8 @@
         </footer>
     </div>
 
-    <script src="script.js"></script>
     <script src="stonefish/stonefishv1.js"></script>
+    <script src="stonefish/stonefishv2.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
