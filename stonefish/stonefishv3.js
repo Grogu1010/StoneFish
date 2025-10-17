@@ -23,6 +23,7 @@
         EXPOSED_KING: -0.6,
     };
 
+    // --- Core utilities ---
     function getPieceValue(type) {
         return PIECE_VALUES[type] || 0;
     }
@@ -43,30 +44,18 @@
         return ok ? sim : null;
     }
 
+    // --- Square/file helpers ---
     function fileIndex(square) {
-        return square.charCodeAt(0) - 97;
+        return square.charCodeAt(0) - 97; // a..h -> 0..7
     }
 
     function rankIndex(square) {
-        return parseInt(square[1], 10) - 1;
+        return parseInt(square[1], 10) - 1; // '1'..'8' -> 0..7
     }
 
-    function isCenterPawnSquare(sq) {
-        const f = sq[0];
-        const r = rankIndex(sq) + 1;
-        return (f === 'd' || f === 'e') && (r === 4 || r === 5);
-    }
-
-    function isKnightCenterSquare(sq) {
-        const f = fileIndex(sq);
-        const r = rankIndex(sq);
-        return f >= 2 && f <= 5 && r >= 2 && r <= 5;
-    }
-
-    function isRimSquareForKnight(sq) {
-        const f = fileIndex(sq);
-        const r = rankIndex(sq);
-        return f === 0 || f === 7 || r === 0 || r === 7;
+    function squareFromBoardIndices(file, row) {
+        // chess.js board(): row 0 is rank 8; convert to SAN-like "a1..h8"
+        return String.fromCharCode(97 + file) + (8 - row);
     }
 
     function boardArray(game) {
@@ -77,8 +66,23 @@
         return game.get(sq);
     }
 
-    function squareFromBoardIndices(file, row) {
-        return String.fromCharCode(97 + file) + (8 - row);
+    // --- Positional feature helpers ---
+    function isCenterPawnSquare(sq) {
+        const f = sq[0];
+        const r = rankIndex(sq) + 1;
+        return (f === 'd' || f === 'e') && (r === 4 || r === 5);
+    }
+
+    function isKnightCenterSquare(sq) {
+        const f = fileIndex(sq);
+        const r = rankIndex(sq);
+        return f >= 2 && f <= 5 && r >= 2 && r <= 5; // c..f, ranks 3..6
+    }
+
+    function isRimSquareForKnight(sq) {
+        const f = fileIndex(sq);
+        const r = rankIndex(sq);
+        return f === 0 || f === 7 || r === 0 || r === 7; // a/h or rank 1/8
     }
 
     function countPawnsOnFile(game, file, color = null) {
@@ -114,15 +118,11 @@
         const dir = color === 'w' ? 1 : -1;
         for (let df = -1; df <= 1; df++) {
             const ff = f + df;
-            if (ff < 0 || ff > 7) {
-                continue;
-            }
+            if (ff < 0 || ff > 7) continue;
             for (let rr = r + dir; rr >= 0 && rr < 8; rr += dir) {
                 const targetSquare = String.fromCharCode(97 + ff) + (rr + 1);
                 const p = pieceAt(game, targetSquare);
-                if (p && p.type === 'p' && p.color !== color) {
-                    return false;
-                }
+                if (p && p.type === 'p' && p.color !== color) return false;
             }
         }
         return true;
@@ -131,21 +131,15 @@
     function isSupportedPassed(game, sq, color) {
         const f = fileIndex(sq);
         const r = rankIndex(sq);
-        const dr = color === 'w' ? -1 : 1;
+        const dr = color === 'w' ? -1 : 1; // diagonally behind
         const supportRank = r + dr;
-        if (supportRank < 0 || supportRank > 7) {
-            return false;
-        }
+        if (supportRank < 0 || supportRank > 7) return false;
         for (const df of [-1, 1]) {
             const ff = f + df;
-            if (ff < 0 || ff > 7) {
-                continue;
-            }
+            if (ff < 0 || ff > 7) continue;
             const supportSquare = String.fromCharCode(97 + ff) + (supportRank + 1);
             const p = pieceAt(game, supportSquare);
-            if (p && p.type === 'p' && p.color === color) {
-                return true;
-            }
+            if (p && p.type === 'p' && p.color === color) return true;
         }
         return false;
     }
@@ -170,26 +164,21 @@
 
     function kingExposed(game, color) {
         const ks = kingSquare(game, color);
-        if (!ks) {
-            return false;
-        }
+        if (!ks) return false;
         const f = fileIndex(ks);
-        const shieldRank = color === 'w' ? 2 : 7;
+        const shieldRank = color === 'w' ? 2 : 7; // pawns on rank 2/7
         let missing = 0;
         for (const df of [-1, 0, 1]) {
             const ff = f + df;
-            if (ff < 0 || ff > 7) {
-                continue;
-            }
+            if (ff < 0 || ff > 7) continue;
             const shieldSquare = String.fromCharCode(97 + ff) + shieldRank;
             const p = pieceAt(game, shieldSquare);
-            if (!(p && p.type === 'p' && p.color === color)) {
-                missing++;
-            }
+            if (!(p && p.type === 'p' && p.color === color)) missing++;
         }
         return missing >= 2;
     }
 
+    // --- Threat / capture helpers ---
     function getCaptureMovesForColor(game, color) {
         const view = ensureTurn(game, color);
         return view.moves({ verbose: true }).filter((m) => Boolean(m.captured));
@@ -211,9 +200,7 @@
                 square = String.fromCharCode(97 + f) + (r + 1);
             }
             const piece = view.get(square);
-            if (!piece || piece.color !== color) {
-                continue;
-            }
+            if (!piece || piece.color !== color) continue;
 
             const existing = map.get(square);
             if (existing) {
@@ -241,19 +228,13 @@
     }
 
     function isPromotionDescendant(originalPiece, resultingPiece) {
-        if (!originalPiece || !resultingPiece) {
-            return false;
-        }
-        if (originalPiece.type !== 'p') {
-            return false;
-        }
+        if (!originalPiece || !resultingPiece) return false;
+        if (originalPiece.type !== 'p') return false;
         return resultingPiece.color === originalPiece.color && resultingPiece.type !== 'p';
     }
 
     function computeValueSaved(move, simulation, color, threatenedBefore, threatenedAfter) {
-        if (!threatenedBefore.size) {
-            return 0;
-        }
+        if (!threatenedBefore.size) return 0;
 
         let saved = 0;
         const MAX_VALUE_SAVED = 30;
@@ -265,33 +246,21 @@
             const movedThisPiece = move.from === square;
 
             if (movedThisPiece) {
-                if (!destPiece || destPiece.color !== color) {
-                    return;
-                }
+                if (!destPiece || destPiece.color !== color) return;
 
                 const sameType = destPiece.type === pieceBefore.type;
                 const promoted = isPromotionDescendant(pieceBefore, destPiece);
 
-                if (!sameType && !promoted) {
-                    return;
-                }
-
-                if (threatenedAfter.has(destSquare)) {
-                    return;
-                }
+                if (!sameType && !promoted) return;
+                if (threatenedAfter.has(destSquare)) return;
 
                 saved += entry.value;
                 return;
             }
 
             const pieceStillThere = simulation.get(square);
-            if (!pieceStillThere || pieceStillThere.color !== color) {
-                return;
-            }
-
-            if (threatenedAfter.has(square)) {
-                return;
-            }
+            if (!pieceStillThere || pieceStillThere.color !== color) return;
+            if (threatenedAfter.has(square)) return;
 
             saved += entry.value;
         });
@@ -299,17 +268,14 @@
         return Math.min(saved, MAX_VALUE_SAVED);
     }
 
+    // --- Meta info / tiebreak helpers ---
     function isCheckMove(move) {
-        if (!move || typeof move.san !== 'string') {
-            return false;
-        }
+        if (!move || typeof move.san !== 'string') return false;
         return move.san.includes('+') || move.san.includes('#');
     }
 
     function isDevelopingMove(move, piece, color) {
-        if (!piece || piece.type === 'p') {
-            return false;
-        }
+        if (!piece || piece.type === 'p') return false;
         const homeRank = color === 'w' ? '1' : '8';
         return move.from.endsWith(homeRank);
     }
@@ -325,87 +291,58 @@
         for (let row = 0; row < 8; row++) {
             for (let f = 0; f < 8; f++) {
                 const p = b[row][f];
-                if (!p || p.color !== color) {
-                    continue;
-                }
+                if (!p || p.color !== color) continue;
                 const sq = squareFromBoardIndices(f, row);
 
                 switch (p.type) {
                     case 'p':
-                        if (isCenterPawnSquare(sq)) {
-                            pts += POS.PAWN_CENTER;
-                        }
-                        if (isIsolatedPawn(game, sq, color)) {
-                            pts += POS.ISOLATED_PAWN;
-                        }
-                        if (isDoubledPawn(game, f, color)) {
-                            pts += POS.DOUBLED_PAWN;
-                        }
+                        if (isCenterPawnSquare(sq)) pts += POS.PAWN_CENTER;
+                        if (isIsolatedPawn(game, sq, color)) pts += POS.ISOLATED_PAWN;
+                        if (isDoubledPawn(game, f, color)) pts += POS.DOUBLED_PAWN;
                         if (isPassedPawn(game, sq, color)) {
                             pts += POS.PASSED_PAWN;
-                            if (isSupportedPassed(game, sq, color)) {
-                                pts += POS.PASSED_SUPPORTED_BONUS;
-                            }
+                            if (isSupportedPassed(game, sq, color)) pts += POS.PASSED_SUPPORTED_BONUS;
                         }
                         break;
                     case 'n':
-                        if (isKnightCenterSquare(sq)) {
-                            pts += POS.KNIGHT_CENTER;
-                        }
-                        if (isRimSquareForKnight(sq)) {
-                            pts += POS.RIM_KNIGHT;
-                        }
+                        if (isKnightCenterSquare(sq)) pts += POS.KNIGHT_CENTER;
+                        if (isRimSquareForKnight(sq)) pts += POS.RIM_KNIGHT;
                         break;
                     case 'b': {
                         const back = color === 'w' ? 1 : 8;
-                        if (rankIndex(sq) + 1 !== back) {
-                            pts += POS.BISHOP_DEVELOPED;
-                        }
+                        if (rankIndex(sq) + 1 !== back) pts += POS.BISHOP_DEVELOPED;
                         break;
                     }
                     case 'r':
-                        if (isOpenFileFor(game, f)) {
-                            pts += POS.ROOK_OPEN_FILE;
-                        }
+                        if (isOpenFileFor(game, f)) pts += POS.ROOK_OPEN_FILE;
                         break;
                     case 'k':
-                        if (isCastled(game, color)) {
-                            pts += POS.KING_CASTLED;
-                        }
-                        if (kingExposed(game, color)) {
-                            pts += POS.EXPOSED_KING;
-                        }
+                        if (isCastled(game, color)) pts += POS.KING_CASTLED;
+                        if (kingExposed(game, color)) pts += POS.EXPOSED_KING;
                         break;
                     default:
                         break;
                 }
             }
         }
-
         return pts;
     }
 
-    // === New: Mate & draw policy helpers ===
-
-    // If we play `move`, is the opponent already checkmated?
+    // --- New: mate/draw policy helpers ---
     function isMateInOneMove(game, move) {
         const sim = simulateMove(game, move);
         return !!(sim && typeof sim.in_checkmate === 'function' && sim.in_checkmate());
     }
 
-    // After our move (simulation), can the opponent mate us in one?
     function opponentHasMateInOneAfter(simulation) {
         const oppMoves = simulation.moves({ verbose: true });
         for (const oppMove of oppMoves) {
             const sim2 = simulateMove(simulation, oppMove);
-            if (sim2 && typeof sim2.in_checkmate === 'function' && sim2.in_checkmate()) {
-                return true;
-            }
+            if (sim2 && typeof sim2.in_checkmate === 'function' && sim2.in_checkmate()) return true;
         }
         return false;
     }
 
-    // Material balance from our perspective (positive = ahead)
     function materialBalanceFor(game, ourColor) {
         const b = game.board();
         let ours = 0, theirs = 0;
@@ -420,14 +357,28 @@
         return ours - theirs;
     }
 
-    // Immediate draw detection that doesn't need history
     function isImmediateDraw(sim) {
         if (typeof sim.in_stalemate === 'function' && sim.in_stalemate()) return true;
         if (typeof sim.insufficient_material === 'function' && sim.insufficient_material()) return true;
-        // threefold/50-move need history; we can't reliably detect here
+        // threefold and 50-move require history; not available here
         return false;
     }
 
+    // NEW: after our move, can the opponent force an immediate draw (stalemate/insufficient) in one?
+    function opponentHasImmediateDrawAfter(simulation) {
+        const oppMoves = simulation.moves({ verbose: true });
+        for (const oppMove of oppMoves) {
+            const sim2 = simulateMove(simulation, oppMove);
+            if (!sim2) continue;
+            if ((typeof sim2.in_stalemate === 'function' && sim2.in_stalemate()) ||
+                (typeof sim2.insufficient_material === 'function' && sim2.insufficient_material())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // --- Engine class ---
     class StonefishV3 {
         constructor() {
             this.id = 'v3';
@@ -442,60 +393,47 @@
             }
 
             const legalMoves = game.moves({ verbose: true });
-            if (!legalMoves.length) {
-                return null;
-            }
+            if (!legalMoves.length) return null;
 
             const color = game.turn();
             const threatenedBefore = getThreatenedPiecesMap(game, color);
             const inCheck = typeof game.in_check === 'function' ? game.in_check() : false;
 
-            // 0) Instant win: take mate-in-1 if available
+            // 0) If we have mate-in-1, take it immediately.
             const mates = [];
             for (const mv of legalMoves) {
                 if (isMateInOneMove(game, mv)) mates.push(mv);
             }
-            if (mates.length) {
-                // Can keep your "betterThan" tie-break if you want; first is fine
-                return mates[0];
-            }
+            if (mates.length) return mates[0];
 
-            // Draw policy context
+            // Draw policy context: only accept immediate draws when down by 4+.
             const materialBalance = materialBalanceFor(game, color);
-            const allowDraws = materialBalance <= -4; // only accept immediate draws if we're down by 4+
+            const allowDraws = materialBalance <= -4;
 
-            let bestSafeNonDraw = null;  // preferred bucket
-            let bestSafeOrDraw   = null; // safe, even if immediate draw
-            let bestAny          = null; // absolute fallback
+            // Candidates (ordered by preference)
+            let bestSafeNonDraw = null;  // safe and doesn't allow an immediate draw (by us or them)
+            let bestSafeOrDraw = null;   // safe but drawish (allowed only when losing badly or forced)
+            let bestAny = null;          // absolute fallback
 
             const betterThan = (next, current) => {
-                if (!current) {
-                    return true;
-                }
-                if (next.score !== current.score) {
-                    return next.score > current.score;
-                }
-                if (next.givesCheck !== current.givesCheck) {
-                    return next.givesCheck;
-                }
-                if (next.develops !== current.develops) {
-                    return next.develops;
-                }
+                if (!current) return true;
+                if (next.score !== current.score) return next.score > current.score;
+                if (next.givesCheck !== current.givesCheck) return next.givesCheck;
+                if (next.develops !== current.develops) return next.develops;
                 return next.lexical < current.lexical;
             };
 
             for (const move of legalMoves) {
                 const simulation = simulateMove(game, move);
-                if (!simulation) {
-                    continue;
-                }
+                if (!simulation) continue;
 
-                // 1) Safety & draw gates
+                // Safety & draw gates
                 const unsafe = opponentHasMateInOneAfter(simulation);
                 const drawNow = isImmediateDraw(simulation);
-                const avoidDraw = !allowDraws; // avoid draws unless we're losing badly
+                const oppDrawNext = opponentHasImmediateDrawAfter(simulation);
+                const avoidDraw = !allowDraws; // true when winning/close; false when down by 4+
 
-                // 2) Opponent reply power & local attackers (existing V3)
+                // Opponent reply power & local attackers (as before)
                 const opponentMoves = simulation.moves({ verbose: true });
                 let opponentMaxCapture = 0;
                 let destinationAttackers = 0;
@@ -505,7 +443,7 @@
                     if (oppMove.to === move.to) destinationAttackers += 1;
                 }
 
-                // 3) Material/net gain & value saved (existing V3)
+                // Material/net gain & saved value (as before)
                 const movingPiece = game.get(move.from);
                 const movingValue = movingPiece ? getPieceValue(movingPiece.type) : 0;
                 const capturedValue = move.captured ? getPieceValue(move.captured) : 0;
@@ -516,12 +454,9 @@
                     const threatenedAfter = getThreatenedPiecesMap(simulation, color);
                     valueSaved = computeValueSaved(move, simulation, color, threatenedBefore, threatenedAfter);
                 }
-                if (inCheck) {
-                    // All legal moves here escape; award the escape bonus unconditionally
-                    valueSaved += 100;
-                }
+                if (inCheck) valueSaved += 100; // escaping check bonus
 
-                // 4) Pressure & positional (existing V3)
+                // Pressure & positional
                 const createdThreat = ourMaxThreatValueAfter(simulation, color);
                 const localPenalty = destinationAttackers > 0 ? 0.5 : 0;
                 const posPts = positionalPoints(simulation, color);
@@ -545,10 +480,12 @@
                 // Track absolute fallback
                 if (!bestAny || betterThan(candidate, bestAny)) bestAny = candidate;
 
-                // Skip unsafe moves if any safe move exists
+                // Skip unsafe (walk-into-mate) if any safe move exists
                 if (!unsafe) {
-                    // If we're avoiding draws, prefer non-draw moves when possible
-                    if (!(avoidDraw && drawNow)) {
+                    // Draw risk = we draw now OR (we're avoiding draws and they can force a draw next)
+                    const drawRisk = drawNow || (avoidDraw && oppDrawNext);
+
+                    if (!drawRisk) {
                         if (!bestSafeNonDraw || betterThan(candidate, bestSafeNonDraw)) {
                             bestSafeNonDraw = candidate;
                         }
@@ -561,9 +498,9 @@
             }
 
             const winner =
-                bestSafeNonDraw ||    // safest and tries to win
-                bestSafeOrDraw   ||    // safe but drawish (used when avoiding draws isn't possible)
-                bestAny;               // forced bad/draw/unsafe
+                bestSafeNonDraw ||   // safest and keeps winning chances
+                bestSafeOrDraw ||    // safe but drawish (used when losing badly or forced)
+                bestAny;             // forced (all moves unsafe or drawish)
             return winner ? winner.mv : legalMoves[0];
         }
     }
