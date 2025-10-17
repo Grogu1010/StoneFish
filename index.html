@@ -48,6 +48,20 @@
                 <div class="board__coords board__coords--ranks" aria-hidden="true"></div>
             </section>
             <aside class="info-panel">
+                <div class="setup-card" aria-label="Player configuration">
+                    <h2 class="setup-card__title">Player Setup</h2>
+                    <div class="setup-card__row">
+                        <label class="setup-card__label" for="white-player">
+                            <span>White</span>
+                            <select id="white-player" class="setup-card__select" aria-label="White player selection"></select>
+                        </label>
+                        <label class="setup-card__label" for="black-player">
+                            <span>Black</span>
+                            <select id="black-player" class="setup-card__select" aria-label="Black player selection"></select>
+                        </label>
+                    </div>
+                    <p class="setup-card__note">Choose “Human” to take control or watch two StoneFish engines battle.</p>
+                </div>
                 <div class="status-card">
                     <h2 class="status-card__title">Game Status</h2>
                     <p id="status" class="status-card__message">White to move.</p>
