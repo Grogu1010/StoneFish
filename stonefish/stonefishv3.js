@@ -277,6 +277,10 @@
                 const avoidDrawish = !allowDraws;
                 const violatesNoDrawPolicy = avoidDrawish && (drawNow || threefoldNow || oppThreefoldNext || oppDrawNext);
 
+                if(violatesNoDrawPolicy) {
+                    if(!allowDraws) continue; // treat as illegal when we're not allowing draws
+                }
+
                 // Opponent reply power & local attackers
                 const opponentMoves = sim.moves({ verbose: true });
                 let opponentMaxCapture = 0, destinationAttackers = 0;
@@ -332,7 +336,11 @@
                 }
             }
 
-            const winner = bestSafeNonDraw || bestSafeOrDraw || bestAny || legal[0];
+            let winner = bestSafeNonDraw || bestSafeOrDraw || bestAny;
+            if(!winner){
+                // fall back to first legal move if every option violates policy (no alternative)
+                winner = { mv: legal[0], score: -Infinity, givesCheck:false, develops:false, lexical:'' };
+            }
             return winner.mv;
         }
     }
