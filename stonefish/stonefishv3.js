@@ -203,6 +203,7 @@
 
         for (const mv of captures) {
             let square = mv.to;
+            // en passant: captured pawn is behind mv.to by one rank
             if (mv.flags && mv.flags.includes('e')) {
                 const dir = opponent === 'w' ? -1 : 1;
                 const f = fileIndex(mv.to);
@@ -384,11 +385,54 @@
         return pts;
     }
 
+    // === New: Mate & draw policy helpers ===
+
+    // If we play `move`, is the opponent already checkmated?
+    function isMateInOneMove(game, move) {
+        const sim = simulateMove(game, move);
+        return !!(sim && typeof sim.in_checkmate === 'function' && sim.in_checkmate());
+    }
+
+    // After our move (simulation), can the opponent mate us in one?
+    function opponentHasMateInOneAfter(simulation) {
+        const oppMoves = simulation.moves({ verbose: true });
+        for (const oppMove of oppMoves) {
+            const sim2 = simulateMove(simulation, oppMove);
+            if (sim2 && typeof sim2.in_checkmate === 'function' && sim2.in_checkmate()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Material balance from our perspective (positive = ahead)
+    function materialBalanceFor(game, ourColor) {
+        const b = game.board();
+        let ours = 0, theirs = 0;
+        for (let r = 0; r < 8; r++) {
+            for (let f = 0; f < 8; f++) {
+                const p = b[r][f];
+                if (!p) continue;
+                const v = getPieceValue(p.type);
+                if (p.color === ourColor) ours += v; else theirs += v;
+            }
+        }
+        return ours - theirs;
+    }
+
+    // Immediate draw detection that doesn't need history
+    function isImmediateDraw(sim) {
+        if (typeof sim.in_stalemate === 'function' && sim.in_stalemate()) return true;
+        if (typeof sim.insufficient_material === 'function' && sim.insufficient_material()) return true;
+        // threefold/50-move need history; we can't reliably detect here
+        return false;
+    }
+
     class StonefishV3 {
         constructor() {
             this.id = 'v3';
             this.name = 'StoneFish V3';
-            this.description = 'V2.5 tactical core + small positional scoring';
+            this.description = 'V2.5 tactical core + positional scoring + mate/draw policy';
         }
 
         chooseMove(game) {
@@ -406,8 +450,23 @@
             const threatenedBefore = getThreatenedPiecesMap(game, color);
             const inCheck = typeof game.in_check === 'function' ? game.in_check() : false;
 
-            let bestCandidate = null;
-            let fallbackCandidate = null;
+            // 0) Instant win: take mate-in-1 if available
+            const mates = [];
+            for (const mv of legalMoves) {
+                if (isMateInOneMove(game, mv)) mates.push(mv);
+            }
+            if (mates.length) {
+                // Can keep your "betterThan" tie-break if you want; first is fine
+                return mates[0];
+            }
+
+            // Draw policy context
+            const materialBalance = materialBalanceFor(game, color);
+            const allowDraws = materialBalance <= -4; // only accept immediate draws if we're down by 4+
+
+            let bestSafeNonDraw = null;  // preferred bucket
+            let bestSafeOrDraw   = null; // safe, even if immediate draw
+            let bestAny          = null; // absolute fallback
 
             const betterThan = (next, current) => {
                 if (!current) {
@@ -431,19 +490,22 @@
                     continue;
                 }
 
+                // 1) Safety & draw gates
+                const unsafe = opponentHasMateInOneAfter(simulation);
+                const drawNow = isImmediateDraw(simulation);
+                const avoidDraw = !allowDraws; // avoid draws unless we're losing badly
+
+                // 2) Opponent reply power & local attackers (existing V3)
                 const opponentMoves = simulation.moves({ verbose: true });
                 let opponentMaxCapture = 0;
                 let destinationAttackers = 0;
                 for (const oppMove of opponentMoves) {
-                    if (!oppMove.captured) {
-                        continue;
-                    }
+                    if (!oppMove.captured) continue;
                     opponentMaxCapture = Math.max(opponentMaxCapture, getPieceValue(oppMove.captured));
-                    if (oppMove.to === move.to) {
-                        destinationAttackers += 1;
-                    }
+                    if (oppMove.to === move.to) destinationAttackers += 1;
                 }
 
+                // 3) Material/net gain & value saved (existing V3)
                 const movingPiece = game.get(move.from);
                 const movingValue = movingPiece ? getPieceValue(movingPiece.type) : 0;
                 const capturedValue = move.captured ? getPieceValue(move.captured) : 0;
@@ -454,11 +516,12 @@
                     const threatenedAfter = getThreatenedPiecesMap(simulation, color);
                     valueSaved = computeValueSaved(move, simulation, color, threatenedBefore, threatenedAfter);
                 }
-
                 if (inCheck) {
+                    // All legal moves here escape; award the escape bonus unconditionally
                     valueSaved += 100;
                 }
 
+                // 4) Pressure & positional (existing V3)
                 const createdThreat = ourMaxThreatValueAfter(simulation, color);
                 const localPenalty = destinationAttackers > 0 ? 0.5 : 0;
                 const posPts = positionalPoints(simulation, color);
@@ -479,22 +542,28 @@
                     lexical: lexicalKey(move),
                 };
 
-                if (!fallbackCandidate || betterThan(candidate, fallbackCandidate)) {
-                    fallbackCandidate = candidate;
-                }
+                // Track absolute fallback
+                if (!bestAny || betterThan(candidate, bestAny)) bestAny = candidate;
 
-                const dominated =
-                    !inCheck && opponentMaxCapture >= 9 && capturedValue < 9 && valueSaved < 9;
-                if (dominated) {
-                    continue;
-                }
-
-                if (betterThan(candidate, bestCandidate)) {
-                    bestCandidate = candidate;
+                // Skip unsafe moves if any safe move exists
+                if (!unsafe) {
+                    // If we're avoiding draws, prefer non-draw moves when possible
+                    if (!(avoidDraw && drawNow)) {
+                        if (!bestSafeNonDraw || betterThan(candidate, bestSafeNonDraw)) {
+                            bestSafeNonDraw = candidate;
+                        }
+                    } else {
+                        if (!bestSafeOrDraw || betterThan(candidate, bestSafeOrDraw)) {
+                            bestSafeOrDraw = candidate;
+                        }
+                    }
                 }
             }
 
-            const winner = bestCandidate || fallbackCandidate;
+            const winner =
+                bestSafeNonDraw ||    // safest and tries to win
+                bestSafeOrDraw   ||    // safe but drawish (used when avoiding draws isn't possible)
+                bestAny;               // forced bad/draw/unsafe
             return winner ? winner.mv : legalMoves[0];
         }
     }
