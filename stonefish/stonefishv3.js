@@ -180,7 +180,26 @@
 
     const isImmediateDraw = sim =>
         (sim.in_stalemate && sim.in_stalemate()) ||
-        (sim.insufficient_material && sim.insufficient_material()) || false;
+        (sim.insufficient_material && sim.insufficient_material()) ||
+        (sim.in_draw && sim.in_draw()) || false;
+
+    const halfmoveClockFromFen = fen => {
+        const parts = fen ? fen.split(' ') : [];
+        const hm = parts.length > 4 ? parseInt(parts[4], 10) : 0;
+        return Number.isFinite(hm) ? hm : 0;
+    };
+
+    function opponentCanClaimFiftyMoveNext(sim){
+        const halfmove = halfmoveClockFromFen(sim.fen());
+        if(halfmove < 99) return false;
+        const oppMoves = sim.moves({ verbose:true });
+        for(const mv of oppMoves){
+            if(mv.captured) continue;
+            if(mv.piece === 'p') continue;
+            return true;
+        }
+        return false;
+    }
 
     // Count all historical FENs up to the current position (side-to-move matters)
     function fullFenCounts(game){
@@ -269,13 +288,15 @@
 
                 // Strict anti-draw when we're winning or close
                 const drawNow = isImmediateDraw(sim);
+                const fiftyNow = halfmoveClockFromFen(sim.fen()) >= 100;
                 const threefoldNow = completesThreefoldNow(sim, fenCounts);
                 const oppThreefoldNext = opponentCompletesThreefoldNext(sim, fenCounts);
                 const oppDrawNext = opponentHasImmediateDrawAfter(sim);
+                const oppFiftyNext = opponentCanClaimFiftyMoveNext(sim);
 
                 // If we're avoiding draws (winning or within 3), block *all* of these
                 const avoidDrawish = !allowDraws;
-                const violatesNoDrawPolicy = avoidDrawish && (drawNow || threefoldNow || oppThreefoldNext || oppDrawNext);
+                const violatesNoDrawPolicy = avoidDrawish && (drawNow || fiftyNow || threefoldNow || oppThreefoldNext || oppDrawNext || oppFiftyNext);
 
                 if(violatesNoDrawPolicy) {
                     if(!allowDraws) continue; // treat as illegal when we're not allowing draws
