@@ -34,7 +34,7 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         };
 
         const availableModels = window.StonefishModels || {};
-        let selectedEngineId = 'v2_5';
+        let selectedEngineId = 'v3';
         const playerConfig = {
             w: { type: PLAYER_TYPES.HUMAN, engineId: null },
             b: { type: PLAYER_TYPES.HUMAN, engineId: null },
@@ -207,7 +207,7 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
 
         const availableEngineIds = Object.keys(availableModels);
         if (!availableModels[selectedEngineId] && availableEngineIds.length) {
-            const preferredOrder = ['v2_5', 'v2', 'v1'];
+            const preferredOrder = ['v3', 'v2_5', 'v2', 'v1'];
             const preferredId = preferredOrder.find((id) => availableModels[id]);
             selectedEngineId = preferredId || availableEngineIds[0];
         }
