@@ -25,15 +25,16 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         const capturedBlackEl = document.getElementById('captured-black');
         const newGameBtn = document.getElementById('new-game');
         const flipBoardBtn = document.getElementById('flip-board');
-        const modelOptions = Array.from(document.querySelectorAll('.model-option'));
-        const modelInputs = Array.from(document.querySelectorAll('input[name="model"]'));
+        const modelPicker = document.getElementById('model-picker');
+        const modelDescriptionEl = document.getElementById('model-description');
+        const modelUsageEl = document.getElementById('model-usage');
         const playerSelectors = {
             w: document.getElementById('white-player'),
             b: document.getElementById('black-player'),
         };
 
         const availableModels = window.StonefishModels || {};
-        let selectedEngineId = 'v1';
+        let selectedEngineId = 'v2_5';
         const playerConfig = {
             w: { type: PLAYER_TYPES.HUMAN, engineId: null },
             b: { type: PLAYER_TYPES.HUMAN, engineId: null },
@@ -62,32 +63,74 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             return colors;
         }
 
-        function setActiveModelOption() {
-            modelOptions.forEach((option) => {
-                const input = option.querySelector('input[name="model"]');
-                if (!input) {
-                    return;
+        function updateModelDetails() {
+            if (!modelPicker) {
+                return;
+            }
+
+            if (selectedEngineId && availableModels[selectedEngineId]) {
+                if (modelPicker.value !== selectedEngineId) {
+                    modelPicker.value = selectedEngineId;
                 }
+            }
 
-                const engineId = input.value;
-                const tag = option.querySelector('.model-option__tag');
-                const defaultText = tag ? tag.dataset.default : '';
-                const usedBy = colorsUsingEngine(engineId);
-                const isActive = usedBy.length > 0;
+            const entry = selectedEngineId ? availableModels[selectedEngineId] : null;
 
-                input.checked = selectedEngineId === engineId;
-                option.classList.toggle('model-option--active', isActive);
-
-                if (tag) {
-                    if (isActive) {
-                        tag.textContent = `${usedBy.join(' & ')} in play`;
-                        tag.classList.add('model-option__tag--active');
-                    } else {
-                        tag.textContent = defaultText || tag.textContent;
-                        tag.classList.remove('model-option__tag--active');
-                    }
+            if (modelDescriptionEl) {
+                if (entry && entry.description) {
+                    modelDescriptionEl.textContent = entry.description;
+                } else if (entry) {
+                    modelDescriptionEl.textContent = `${getEngineLabel(selectedEngineId)} is ready to play.`;
+                } else {
+                    modelDescriptionEl.textContent = 'Select an engine to view its play style.';
                 }
+            }
+
+            if (modelUsageEl) {
+                if (!selectedEngineId || !availableModels[selectedEngineId]) {
+                    modelUsageEl.textContent = 'No StoneFish engines available.';
+                } else {
+                    const usedBy = colorsUsingEngine(selectedEngineId);
+                    modelUsageEl.textContent = usedBy.length
+                        ? `${usedBy.join(' & ')} in play`
+                        : 'Not currently assigned.';
+                }
+            }
+        }
+
+        function populateModelPicker() {
+            if (!modelPicker) {
+                return;
+            }
+
+            modelPicker.innerHTML = '';
+
+            const entries = Object.entries(availableModels);
+            if (!entries.length) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No engines available';
+                modelPicker.appendChild(option);
+                modelPicker.disabled = true;
+                updateModelDetails();
+                return;
+            }
+
+            modelPicker.disabled = false;
+
+            entries.forEach(([id, engine]) => {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = engine && engine.name ? engine.name : getEngineLabel(id);
+                modelPicker.appendChild(option);
             });
+
+            if (!selectedEngineId || !availableModels[selectedEngineId]) {
+                selectedEngineId = entries[0][0];
+            }
+
+            modelPicker.value = selectedEngineId;
+            updateModelDetails();
         }
 
         function updateSelectorValue(color) {
@@ -156,7 +199,7 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
                 }
             });
 
-            setActiveModelOption();
+            updateModelDetails();
             updateStatus();
             maybeAutoPlayNextTurn();
             return true;
@@ -164,7 +207,9 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
 
         const availableEngineIds = Object.keys(availableModels);
         if (!availableModels[selectedEngineId] && availableEngineIds.length) {
-            selectedEngineId = availableEngineIds[0];
+            const preferredOrder = ['v2_5', 'v2', 'v1'];
+            const preferredId = preferredOrder.find((id) => availableModels[id]);
+            selectedEngineId = preferredId || availableEngineIds[0];
         }
         if (!availableEngineIds.length) {
             selectedEngineId = null;
@@ -186,8 +231,9 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             playerConfig.b = { type: PLAYER_TYPES.ENGINE, engineId: selectedEngineId };
         }
 
+        populateModelPicker();
         populatePlayerSelectors();
-        setActiveModelOption();
+        updateModelDetails();
 
         Object.entries(playerSelectors).forEach(([color, select]) => {
             if (!select) {
@@ -198,15 +244,17 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             });
         });
 
-        modelInputs.forEach((input) => {
-            input.addEventListener('change', () => {
-                if (input.disabled) {
+        if (modelPicker) {
+            modelPicker.addEventListener('change', () => {
+                if (!modelPicker.value) {
                     return;
                 }
 
-                selectEngine(input.value);
+                if (!selectEngine(modelPicker.value)) {
+                    updateModelDetails();
+                }
             });
-        });
+        }
 
         function cancelPendingEngineMove() {
             if (engineMoveTimeout) {
@@ -255,7 +303,7 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             }
 
             updateSelectorValue(color);
-            setActiveModelOption();
+            updateModelDetails();
             updateStatus();
             maybeAutoPlayNextTurn();
         }
