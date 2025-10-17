@@ -10,19 +10,9 @@
 
     // ---------- Basics ----------
     const getPieceValue = t => PIECE_VALUES[t] || 0;
-
-    function cloneGameWithTurn(game, turn) {
-        const parts = game.fen().split(' ');
-        parts[1] = turn;
-        return new Chess(parts.join(' '));
-    }
+    function cloneGameWithTurn(game, turn){ const parts=game.fen().split(' '); parts[1]=turn; return new Chess(parts.join(' ')); }
     const ensureTurn = (g,t)=> g.turn()===t? g : cloneGameWithTurn(g,t);
-
-    function simulateMove(game, move) {
-        const sim = new Chess(game.fen());
-        const ok = sim.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
-        return ok ? sim : null;
-    }
+    function simulateMove(game, move){ const sim=new Chess(game.fen()); const ok=sim.move({from:move.from,to:move.to,promotion:move.promotion||'q'}); return ok? sim:null; }
 
     // ---------- Squares / board ----------
     const fileIndex = sq => sq.charCodeAt(0)-97;
@@ -35,15 +25,18 @@
     function isCenterPawnSquare(sq){ const f=sq[0], r=rankIndex(sq)+1; return (f==='d'||f==='e') && (r===4||r===5); }
     function isKnightCenterSquare(sq){ const f=fileIndex(sq), r=rankIndex(sq); return f>=2&&f<=5&&r>=2&&r<=5; }
     function isRimSquareForKnight(sq){ const f=fileIndex(sq), r=rankIndex(sq); return f===0||f===7||r===0||r===7; }
+
     function countPawnsOnFile(g,file,color=null){
         let c=0; for(let r=1;r<=8;r++){ const sq=String.fromCharCode(97+file)+r; const p=pieceAt(g,sq);
-            if(p&&p.type==='p'&&(!color||p.color===color)) c++; } return c; }
+            if(p&&p.type==='p'&&(!color||p.color===color)) c++; } return c;
+    }
     const isOpenFileFor = (g,file)=> countPawnsOnFile(g,file,null)===0;
     function isIsolatedPawn(g,sq,color){ const f=fileIndex(sq);
         const left = f>0? countPawnsOnFile(g,f-1,color):0;
         const right= f<7? countPawnsOnFile(g,f+1,color):0;
         return (left+right)===0; }
     const isDoubledPawn=(g,file,color)=> countPawnsOnFile(g,file,color)>=2;
+
     function isPassedPawn(g,sq,color){
         const f=fileIndex(sq), r=rankIndex(sq), dir = color==='w'?1:-1;
         for(let df=-1; df<=1; df++){ const ff=f+df; if(ff<0||ff>7) continue;
@@ -61,6 +54,7 @@
             if(p && p.type==='p' && p.color===color) return true;
         } return false;
     }
+
     function kingSquare(g,color){
         const b=boardArray(g);
         for(let row=0;row<8;row++) for(let f=0;f<8;f++){
@@ -89,16 +83,16 @@
         const map=new Map();
         for(const mv of caps){
             let square = mv.to;
-            if(mv.flags && mv.flags.includes('e')){ // en passant target square adjust
+            if(mv.flags && mv.flags.includes('e')){ // en passant captured pawn square
                 const dir = opp==='w' ? -1 : 1;
                 const f=fileIndex(mv.to), r=rankIndex(mv.to)+dir;
                 square = String.fromCharCode(97+f)+(r+1);
             }
             const piece=view.get(square);
             if(!piece || piece.color!==color) continue;
-            const ex=map.get(square);
             const atk={from:mv.from,piece:mv.piece,value:getPieceValue(mv.piece)};
-            if(ex){ ex.attackers.push(atk); }
+            const ex=map.get(square);
+            if(ex) ex.attackers.push(atk);
             else map.set(square,{square,piece,value:getPieceValue(piece.type),attackers:[atk]});
         }
         return map;
@@ -133,10 +127,7 @@
 
     // ---------- Meta / scoring helpers ----------
     const isCheckMove = mv => !!(mv && typeof mv.san==='string' && (mv.san.includes('+')||mv.san.includes('#')));
-    function isDevelopingMove(mv, piece, color){
-        if(!piece || piece.type==='p') return false;
-        const home = color==='w'?'1':'8'; return mv.from.endsWith(home);
-    }
+    function isDevelopingMove(mv, piece, color){ if(!piece||piece.type==='p') return false; const home=color==='w'?'1':'8'; return mv.from.endsWith(home); }
     const lexicalKey = mv => `${mv.from}-${mv.to}-${mv.promotion||''}`;
 
     function positionalPoints(g,color){
@@ -155,10 +146,7 @@
                     if(isKnightCenterSquare(sq)) pts+=POS.KNIGHT_CENTER;
                     if(isRimSquareForKnight(sq)) pts+=POS.RIM_KNIGHT;
                     break;
-                case 'b': {
-                    const back=color==='w'?1:8; if((rankIndex(sq)+1)!==back) pts+=POS.BISHOP_DEVELOPED;
-                    break;
-                }
+                case 'b': { const back=color==='w'?1:8; if((rankIndex(sq)+1)!==back) pts+=POS.BISHOP_DEVELOPED; break; }
                 case 'r': if(isOpenFileFor(g,f)) pts+=POS.ROOK_OPEN_FILE; break;
                 case 'k':
                     if(isCastled(g,color)) pts+=POS.KING_CASTLED;
@@ -169,7 +157,7 @@
         return pts;
     }
 
-    // ---------- NEW: mate & draw policy + repetition control ----------
+    // ---------- NEW: mate/draw + repetition control ----------
     function isMateInOneMove(game, move){
         const sim=simulateMove(game,move);
         return !!(sim && sim.in_checkmate && sim.in_checkmate());
@@ -182,36 +170,50 @@
         }
         return false;
     }
+
     function materialBalanceFor(game, color){
         const b=game.board(); let ours=0,theirs=0;
         for(const row of b) for(const p of row){ if(!p) continue;
             const v=getPieceValue(p.type); if(p.color===color) ours+=v; else theirs+=v; }
         return ours-theirs;
     }
-    const isImmediateDraw = sim =>
-        (sim.in_stalemate && sim.in_stalemate()) || (sim.insufficient_material && sim.insufficient_material()) || false;
 
-    // Build a small window of recent FEN counts (with full history) to detect repetition risks.
-    function recentFenCounts(game, windowPlies = 12){
-        const h = game.history({ verbose: true }) || [];
-        const base = new Chess(); // startpos
-        const fens = [base.fen()];
-        for(const mv of h){ base.move({from:mv.from,to:mv.to,promotion:mv.promotion||'q'}); fens.push(base.fen()); }
+    const isImmediateDraw = sim =>
+        (sim.in_stalemate && sim.in_stalemate()) ||
+        (sim.insufficient_material && sim.insufficient_material()) || false;
+
+    // Count all historical FENs up to the current position (side-to-move matters)
+    function fullFenCounts(game){
+        const history = game.history({ verbose:true }) || [];
+        const walker = new Chess();
         const counts = new Map();
-        const start = Math.max(0, fens.length - windowPlies);
-        for(let i=start;i<fens.length;i++){
-            const fen=fens[i]; counts.set(fen, (counts.get(fen)||0)+1);
+        counts.set(walker.fen(), 1);
+        for(const mv of history){
+            walker.move({from:mv.from,to:mv.to,promotion:mv.promotion||'q'});
+            const f = walker.fen();
+            counts.set(f, (counts.get(f)||0)+1);
         }
         return counts;
     }
-    function causesImmediateThreefold(sim, fenCounts){
-        const fen = sim.fen();
-        const seen = fenCounts.get(fen) || 0;
-        // if this exact position (incl. side-to-move) has already occurred twice in the recent window,
-        // playing into it now is very likely to complete threefold.
-        return seen >= 2;
+
+    // If our move lands on a FEN seen >= 2 already, we've completed threefold now.
+    const completesThreefoldNow = (sim, counts) => (counts.get(sim.fen()) || 0) >= 2;
+
+    // After our move, can the opponent complete threefold on THEIR very next move?
+    function opponentCompletesThreefoldNext(sim, preCounts){
+        // Pre-counts don't include our simulated move. Threefold claim checks the whole game history.
+        // Opponent will move to a FEN; if that FEN has appeared >=2 earlier, they can claim.
+        const oppMoves = sim.moves({ verbose:true });
+        for(const mv of oppMoves){
+            const sim2 = simulateMove(sim, mv);
+            if(!sim2) continue;
+            const c = preCounts.get(sim2.fen()) || 0;
+            if(c >= 2) return true;
+        }
+        return false;
     }
-    // also block moves that let the opponent force a draw in one (stalemate/insufficient)
+
+    // Opponent can force an immediate draw (stalemate/insufficient) in one?
     function opponentHasImmediateDrawAfter(sim){
         const opp=sim.moves({verbose:true});
         for(const mv of opp){
@@ -227,7 +229,7 @@
         constructor(){
             this.id='v3';
             this.name='StoneFish V3';
-            this.description='V2.5 tactics + positional scoring + mate/draw policy + anti-repetition';
+            this.description='V2.5 tactics + positional scoring + strict anti-draw when ahead/close';
         }
 
         chooseMove(game){
@@ -242,10 +244,10 @@
             // 0) Take mate-in-1 immediately
             for(const mv of legal){ if(isMateInOneMove(game,mv)) return mv; }
 
-            // Draw policy context & repetition window
+            // Draw policy context & FEN counts for repetition control
             const mat = materialBalanceFor(game, color);
-            const allowDraws = mat <= -4;                 // only accept draw moves when losing badly
-            const fenCounts = recentFenCounts(game, 12);  // short rolling window
+            const allowDraws = mat <= -4; // only accept draw lines when down by 4+
+            const fenCounts = fullFenCounts(game);
 
             // Buckets
             let bestSafeNonDraw = null, bestSafeOrDraw = null, bestAny = null;
@@ -258,21 +260,24 @@
                 return a.lexical < b.lexical;
             };
 
-            // Precompute current positional for progress bias
-            const currentPosPts = positionalPoints(game, color);
-
             for(const move of legal){
                 const sim = simulateMove(game, move);
                 if(!sim) continue;
 
-                // Safety / draw / repetition gates
+                // Safety & draw gates
                 const unsafe = opponentHasMateInOneAfter(sim);
-                const drawNow = isImmediateDraw(sim);
-                const oppDrawNext = opponentHasImmediateDrawAfter(sim);
-                const repRisk = causesImmediateThreefold(sim, fenCounts); // repeating a prior FEN in window
-                const avoidDrawish = !allowDraws; // avoid draws when not losing badly
 
-                // Opponent reply power & local attackers (as before)
+                // Strict anti-draw when we're winning or close
+                const drawNow = isImmediateDraw(sim);
+                const threefoldNow = completesThreefoldNow(sim, fenCounts);
+                const oppThreefoldNext = opponentCompletesThreefoldNext(sim, fenCounts);
+                const oppDrawNext = opponentHasImmediateDrawAfter(sim);
+
+                // If we're avoiding draws (winning or within 3), block *all* of these
+                const avoidDrawish = !allowDraws;
+                const violatesNoDrawPolicy = avoidDrawish && (drawNow || threefoldNow || oppThreefoldNext || oppDrawNext);
+
+                // Opponent reply power & local attackers
                 const opponentMoves = sim.moves({ verbose: true });
                 let opponentMaxCapture = 0, destinationAttackers = 0;
                 for(const om of opponentMoves){
@@ -299,19 +304,13 @@
                 const localPenalty = destinationAttackers > 0 ? 0.5 : 0;
                 const posPts = positionalPoints(sim, color);
 
-                // Tiny progress bias & contempt to avoid shuffles when winning
-                const progress = Math.max(0, posPts - currentPosPts); // reward improving positions
-                const contempt = mat > 0 ? 0.1 : 0;                   // nudge against neutral results when ahead
-
                 const score =
                     captureScore +
                     valueSaved -
                     0.9 * opponentMaxCapture +
                     0.25 * createdThreat -
                     localPenalty +
-                    posPts +
-                    0.05 * progress +
-                    contempt;
+                    posPts;
 
                 const cand = {
                     mv: move,
@@ -325,13 +324,7 @@
                 if(!bestAny || betterThan(cand, bestAny)) bestAny = cand;
 
                 if(!unsafe){
-                    // Consider a move "drawish" if:
-                    // - it is an immediate draw now, OR
-                    // - we are avoiding draws and opponent can force an immediate draw next, OR
-                    // - we are avoiding draws and it repeats a recent FEN (repetition risk)
-                    const drawish = drawNow || (avoidDrawish && (oppDrawNext || repRisk));
-
-                    if(!drawish){
+                    if(!violatesNoDrawPolicy){
                         if(!bestSafeNonDraw || betterThan(cand, bestSafeNonDraw)) bestSafeNonDraw = cand;
                     } else {
                         if(!bestSafeOrDraw || betterThan(cand, bestSafeOrDraw)) bestSafeOrDraw = cand;
