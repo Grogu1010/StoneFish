@@ -11,6 +11,8 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
 
     const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     const RANKS = ['8', '7', '6', '5', '4', '3', '2', '1'];
+    const PLAYER_TYPES = { HUMAN: 'human', ENGINE: 'engine' };
+    const COLOR_LABELS = { w: 'White', b: 'Black' };
 
     document.addEventListener('DOMContentLoaded', () => {
         const boardEl = document.getElementById('board');
@@ -25,28 +27,60 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         const flipBoardBtn = document.getElementById('flip-board');
         const modelOptions = Array.from(document.querySelectorAll('.model-option'));
         const modelInputs = Array.from(document.querySelectorAll('input[name="model"]'));
+        const playerSelectors = {
+            w: document.getElementById('white-player'),
+            b: document.getElementById('black-player'),
+        };
 
         const availableModels = window.StonefishModels || {};
         let selectedEngineId = 'v1';
-        let engine = availableModels[selectedEngineId] || null;
+        const playerConfig = {
+            w: { type: PLAYER_TYPES.HUMAN, engineId: null },
+            b: { type: PLAYER_TYPES.HUMAN, engineId: null },
+        };
+        let engineMoveTimeout = null;
 
-        function setActiveModelOption(activeValue) {
+        function getEngineLabel(engineId) {
+            if (!engineId) {
+                return 'StoneFish';
+            }
+            const engineEntry = availableModels[engineId];
+            if (engineEntry && engineEntry.name) {
+                return engineEntry.name;
+            }
+            return `StoneFish ${String(engineId).toUpperCase()}`;
+        }
+
+        function colorsUsingEngine(engineId) {
+            const colors = [];
+            if (playerConfig.w.type === PLAYER_TYPES.ENGINE && playerConfig.w.engineId === engineId) {
+                colors.push('White');
+            }
+            if (playerConfig.b.type === PLAYER_TYPES.ENGINE && playerConfig.b.engineId === engineId) {
+                colors.push('Black');
+            }
+            return colors;
+        }
+
+        function setActiveModelOption() {
             modelOptions.forEach((option) => {
                 const input = option.querySelector('input[name="model"]');
                 if (!input) {
                     return;
                 }
 
+                const engineId = input.value;
                 const tag = option.querySelector('.model-option__tag');
                 const defaultText = tag ? tag.dataset.default : '';
-                const isActive = input.value === activeValue;
+                const usedBy = colorsUsingEngine(engineId);
+                const isActive = usedBy.length > 0;
 
-                input.checked = isActive;
+                input.checked = selectedEngineId === engineId;
                 option.classList.toggle('model-option--active', isActive);
 
                 if (tag) {
                     if (isActive) {
-                        tag.textContent = 'Selected';
+                        tag.textContent = `${usedBy.join(' & ')} in play`;
                         tag.classList.add('model-option__tag--active');
                     } else {
                         tag.textContent = defaultText || tag.textContent;
@@ -56,31 +90,86 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             });
         }
 
+        function updateSelectorValue(color) {
+            const select = playerSelectors[color];
+            if (!select) {
+                return;
+            }
+            const config = playerConfig[color];
+            const value = config.type === PLAYER_TYPES.ENGINE ? config.engineId : PLAYER_TYPES.HUMAN;
+            const finalValue = value || PLAYER_TYPES.HUMAN;
+            if (select.value !== finalValue) {
+                select.value = finalValue;
+            }
+        }
+
+        function populatePlayerSelectors() {
+            const entries = Object.entries(availableModels);
+            Object.entries(playerSelectors).forEach(([color, select]) => {
+                if (!select) {
+                    return;
+                }
+
+                select.innerHTML = '';
+
+                const humanOption = document.createElement('option');
+                humanOption.value = PLAYER_TYPES.HUMAN;
+                humanOption.textContent = 'Human';
+                select.appendChild(humanOption);
+
+                entries.forEach(([id]) => {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = getEngineLabel(id);
+                    select.appendChild(option);
+                });
+
+                const config = playerConfig[color];
+                let desiredValue = config.type === PLAYER_TYPES.ENGINE ? config.engineId : PLAYER_TYPES.HUMAN;
+                if (config.type === PLAYER_TYPES.ENGINE && !availableModels[desiredValue]) {
+                    if (entries.length) {
+                        desiredValue = entries[0][0];
+                        playerConfig[color] = { type: PLAYER_TYPES.ENGINE, engineId: desiredValue };
+                    } else {
+                        desiredValue = PLAYER_TYPES.HUMAN;
+                        playerConfig[color] = { type: PLAYER_TYPES.HUMAN, engineId: null };
+                    }
+                }
+
+                select.value = desiredValue || PLAYER_TYPES.HUMAN;
+            });
+        }
+
         function selectEngine(engineId) {
             const nextEngine = availableModels[engineId];
             if (!nextEngine) {
                 return false;
             }
 
+            const previousId = selectedEngineId;
             selectedEngineId = engineId;
-            engine = nextEngine;
-            setActiveModelOption(engineId);
+
+            Object.entries(playerConfig).forEach(([color, config]) => {
+                if (config.type === PLAYER_TYPES.ENGINE && (config.engineId === previousId || !config.engineId)) {
+                    config.engineId = engineId;
+                    updateSelectorValue(color);
+                }
+            });
+
+            setActiveModelOption();
+            updateStatus();
+            maybeAutoPlayNextTurn();
             return true;
         }
 
-        if (!engine) {
-            const fallbackInput = modelInputs.find((input) => !input.disabled && availableModels[input.value]);
-            if (fallbackInput) {
-                selectEngine(fallbackInput.value);
-            }
-        } else {
-            setActiveModelOption(selectedEngineId);
+        const availableEngineIds = Object.keys(availableModels);
+        if (!availableModels[selectedEngineId] && availableEngineIds.length) {
+            selectedEngineId = availableEngineIds[0];
         }
-
-        if (!engine) {
-            console.error('StoneFish engine is unavailable.');
-            statusEl.textContent = 'Engine failed to load.';
-            return;
+        if (!availableEngineIds.length) {
+            selectedEngineId = null;
+            console.error('StoneFish engines are unavailable.');
+            statusEl.textContent = 'No StoneFish engines available. Play as Human only.';
         }
 
         const game = new Chess();
@@ -93,29 +182,100 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         const squareElements = new Map();
         const capturedPieces = { white: [], black: [] };
 
+        if (selectedEngineId) {
+            playerConfig.b = { type: PLAYER_TYPES.ENGINE, engineId: selectedEngineId };
+        }
+
+        populatePlayerSelectors();
+        setActiveModelOption();
+
+        Object.entries(playerSelectors).forEach(([color, select]) => {
+            if (!select) {
+                return;
+            }
+            select.addEventListener('change', () => {
+                handlePlayerSelectionChange(color, select.value);
+            });
+        });
+
         modelInputs.forEach((input) => {
             input.addEventListener('change', () => {
                 if (input.disabled) {
                     return;
                 }
 
-                const changed = selectEngine(input.value);
-                if (!changed) {
+                selectEngine(input.value);
+            });
+        });
+
+        function cancelPendingEngineMove() {
+            if (engineMoveTimeout) {
+                clearTimeout(engineMoveTimeout);
+                engineMoveTimeout = null;
+            }
+            waitingForEngine = false;
+        }
+
+        function handlePlayerSelectionChange(color, value) {
+            const select = playerSelectors[color];
+            const currentConfig = playerConfig[color];
+            const normalizedValue = value === PLAYER_TYPES.HUMAN ? PLAYER_TYPES.HUMAN : value;
+
+            if (normalizedValue === PLAYER_TYPES.HUMAN) {
+                if (currentConfig.type !== PLAYER_TYPES.HUMAN) {
+                    playerConfig[color] = { type: PLAYER_TYPES.HUMAN, engineId: null };
+                    if (game.turn() === color) {
+                        cancelPendingEngineMove();
+                    }
+                    if (selectedSquare) {
+                        const selectedPiece = game.get(selectedSquare);
+                        if (!selectedPiece || selectedPiece.color === color) {
+                            clearSelection();
+                        }
+                    }
+                }
+            } else {
+                if (!availableModels[normalizedValue]) {
+                    statusEl.textContent = `${getEngineLabel(normalizedValue)} is unavailable for ${COLOR_LABELS[color]}.`;
+                    playerConfig[color] = { type: PLAYER_TYPES.HUMAN, engineId: null };
+                    if (select) {
+                        select.value = PLAYER_TYPES.HUMAN;
+                    }
                     return;
                 }
 
-                if (waitingForEngine) {
-                    const engineLabel = engine && engine.name ? engine.name : 'StoneFish';
-                    updateStatus(`${engineLabel} is contemplating...`);
-                } else {
-                    updateStatus();
+                playerConfig[color] = { type: PLAYER_TYPES.ENGINE, engineId: normalizedValue };
+                selectedEngineId = normalizedValue;
+                if (selectedSquare) {
+                    const selectedPiece = game.get(selectedSquare);
+                    if (selectedPiece && selectedPiece.color === color) {
+                        clearSelection();
+                    }
                 }
-            });
-        });
+            }
+
+            updateSelectorValue(color);
+            setActiveModelOption();
+            updateStatus();
+            maybeAutoPlayNextTurn();
+        }
 
         function pieceToUnicode(piece) {
             if (!piece) return '';
             return PIECE_UNICODE[piece.type][piece.color];
+        }
+
+        function capturedPieceMarkup(type, color) {
+            const map = PIECE_UNICODE[type];
+            if (!map) {
+                return '';
+            }
+            const symbol = map[color];
+            if (!symbol) {
+                return '';
+            }
+            const className = color === 'w' ? 'captured-piece captured-piece--white' : 'captured-piece captured-piece--black';
+            return `<span class="${className}">${symbol}</span>`;
         }
 
         function getSquareElement(square) {
@@ -168,7 +328,18 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
                     ? `${piece.color === 'w' ? 'White' : 'Black'} ${pieceName(piece.type)}`
                     : 'Empty';
                 squareEl.setAttribute('aria-label', `${pieceDescription} on ${square}`);
-                squareEl.classList.remove('square--highlight', 'square--selected', 'square--legal', 'square--capture', 'square--check');
+                squareEl.classList.remove(
+                    'square--highlight',
+                    'square--selected',
+                    'square--legal',
+                    'square--capture',
+                    'square--check',
+                    'square--white-piece',
+                    'square--black-piece'
+                );
+                if (piece) {
+                    squareEl.classList.add(piece.color === 'w' ? 'square--white-piece' : 'square--black-piece');
+                }
             });
 
             if (lastMoveSquares.length) {
@@ -226,8 +397,13 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
                 return;
             }
 
-            const piece = game.get(square);
             const turn = game.turn();
+            const controller = playerConfig[turn];
+            if (!controller || controller.type !== PLAYER_TYPES.HUMAN) {
+                return;
+            }
+
+            const piece = game.get(square);
 
             if (selectedSquare) {
                 const matchingMove = legalMoves.find((move) => move.to === square);
@@ -276,57 +452,18 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             selectedSquare = null;
             legalMoves = [];
             afterMoveUpdates(moveResult);
-            if (!game.game_over()) {
-                requestEngineMove();
-            }
-        }
-
-        function requestEngineMove() {
-            if (!engine) {
-                updateStatus('Engine unavailable.');
-                return;
-            }
-
-            waitingForEngine = true;
-            const engineLabel = engine && engine.name ? engine.name : 'StoneFish';
-            updateStatus(`${engineLabel} is contemplating...`);
-            setTimeout(() => {
-                if (!engine || typeof engine.chooseMove !== 'function') {
-                    waitingForEngine = false;
-                    updateStatus('Engine unavailable.');
-                    refreshBoardState();
-                    return;
-                }
-
-                const engineMove = engine.chooseMove(game);
-                if (!engineMove) {
-                    waitingForEngine = false;
-                    updateStatus();
-                    refreshBoardState();
-                    return;
-                }
-                const result = game.move({
-                    from: engineMove.from,
-                    to: engineMove.to,
-                    promotion: engineMove.promotion || 'q',
-                });
-                waitingForEngine = false;
-                if (result) {
-                    afterMoveUpdates(result);
-                } else {
-                    updateStatus();
-                    refreshBoardState();
-                }
-            }, 550);
+            maybeAutoPlayNextTurn();
         }
 
         function afterMoveUpdates(moveResult) {
             lastMoveSquares = [moveResult.from, moveResult.to];
             if (moveResult.captured) {
                 const capturedColor = moveResult.color === 'w' ? 'black' : 'white';
-                capturedPieces[capturedColor].push(
-                    pieceToUnicode({ type: moveResult.captured, color: capturedColor === 'white' ? 'w' : 'b' })
-                );
+                const capturedPieceColor = capturedColor === 'white' ? 'w' : 'b';
+                const markup = capturedPieceMarkup(moveResult.captured, capturedPieceColor);
+                if (markup) {
+                    capturedPieces[capturedColor].push(markup);
+                }
                 updateCaptured();
             }
             updateMoveLog();
@@ -374,13 +511,26 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             moveLogEl.scrollTop = moveLogEl.scrollHeight;
         }
 
+        function getPlayerLabel(color) {
+            const config = playerConfig[color];
+            if (!config || config.type === PLAYER_TYPES.HUMAN) {
+                return 'Human';
+            }
+            return getEngineLabel(config.engineId);
+        }
+
         function updateStatus(customMessage) {
             let message = customMessage;
-            const turn = game.turn() === 'w' ? 'White' : 'Black';
+            const turnColor = game.turn();
+            const turnName = COLOR_LABELS[turnColor];
+            const turnPlayer = getPlayerLabel(turnColor);
+            const opponentColor = turnColor === 'w' ? 'b' : 'w';
+            const opponentName = COLOR_LABELS[opponentColor];
+            const opponentPlayer = getPlayerLabel(opponentColor);
 
             if (!message) {
                 if (game.in_checkmate()) {
-                    message = `Checkmate! ${turn === 'w' ? 'Black' : 'White'} wins.`;
+                    message = `Checkmate! ${opponentName} (${opponentPlayer}) wins.`;
                 } else if (game.in_stalemate()) {
                     message = 'Stalemate. The game is a draw.';
                 } else if (game.in_threefold_repetition()) {
@@ -390,9 +540,9 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
                 } else if (game.in_draw()) {
                     message = 'Drawn position.';
                 } else if (game.in_check()) {
-                    message = `Check! ${turn} to move.`;
+                    message = `Check! ${turnName} (${turnPlayer}) to move.`;
                 } else {
-                    message = `${turn} to move.`;
+                    message = `${turnName} (${turnPlayer}) to move.`;
                 }
             }
 
@@ -401,10 +551,85 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             const label = turnIndicatorEl.querySelector('.turn-indicator__label');
             dot.className =
                 'turn-indicator__dot ' + (game.turn() === 'w' ? 'turn-indicator__dot--white' : 'turn-indicator__dot--black');
-            label.textContent = game.game_over() ? 'Game over' : `${game.turn() === 'w' ? 'White' : 'Black'} to move`;
+            label.textContent = game.game_over() ? 'Game over' : `${turnName} (${turnPlayer}) to move`;
+        }
+
+        function maybeAutoPlayNextTurn() {
+            cancelPendingEngineMove();
+
+            if (game.game_over()) {
+                waitingForEngine = false;
+                updateStatus();
+                return;
+            }
+
+            const turn = game.turn();
+            const controller = playerConfig[turn];
+            if (!controller || controller.type !== PLAYER_TYPES.ENGINE) {
+                waitingForEngine = false;
+                updateStatus();
+                return;
+            }
+
+            const engine = availableModels[controller.engineId];
+            if (!engine || typeof engine.chooseMove !== 'function') {
+                waitingForEngine = false;
+                updateStatus(`${getEngineLabel(controller.engineId)} is unavailable for ${COLOR_LABELS[turn]}.`);
+                return;
+            }
+
+            waitingForEngine = true;
+            const colorLabel = COLOR_LABELS[turn];
+            const engineLabel = getEngineLabel(controller.engineId);
+            updateStatus(`${engineLabel} (${colorLabel}) is contemplating...`);
+
+            engineMoveTimeout = setTimeout(() => {
+                engineMoveTimeout = null;
+
+                if (game.game_over() || game.turn() !== turn) {
+                    waitingForEngine = false;
+                    updateStatus();
+                    refreshBoardState();
+                    return;
+                }
+
+                const currentController = playerConfig[turn];
+                if (
+                    !currentController ||
+                    currentController.type !== PLAYER_TYPES.ENGINE ||
+                    currentController.engineId !== controller.engineId
+                ) {
+                    waitingForEngine = false;
+                    maybeAutoPlayNextTurn();
+                    return;
+                }
+
+                const engineMove = engine.chooseMove(game);
+                waitingForEngine = false;
+
+                if (engineMove) {
+                    const result = game.move({
+                        from: engineMove.from,
+                        to: engineMove.to,
+                        promotion: engineMove.promotion || 'q',
+                    });
+
+                    if (result) {
+                        afterMoveUpdates(result);
+                        maybeAutoPlayNextTurn();
+                    } else {
+                        updateStatus(`${engineLabel} attempted an illegal move.`);
+                        refreshBoardState();
+                    }
+                } else {
+                    updateStatus(`${engineLabel} could not find a move.`);
+                    refreshBoardState();
+                }
+            }, 450);
         }
 
         function resetGame() {
+            cancelPendingEngineMove();
             game.reset();
             orientation = 'white';
             selectedSquare = null;
@@ -418,6 +643,7 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             updateMoveLog();
             updateStatus();
             buildBoard();
+            maybeAutoPlayNextTurn();
         }
 
         function flipBoard() {
@@ -436,5 +662,6 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         buildBoard();
         updateMoveLog();
         updateStatus();
+        maybeAutoPlayNextTurn();
     });
 })();
