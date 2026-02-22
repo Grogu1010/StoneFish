@@ -1,1 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StoneFish v1 - Random Chess Engine</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>♟️ StoneFish v1</h1>
+        <p>Play White against a chaotic engine that picks random legal moves.</p>
+      </header>
 
+      <section class="game-panel">
+        <div id="board" class="board" aria-label="Chess board"></div>
+
+        <aside class="sidebar">
+          <div class="status-card">
+            <h2>Game Status</h2>
+            <p id="status">Loading...</p>
+          </div>
+
+          <div class="status-card">
+            <h2>Move History</h2>
+            <ol id="move-list" class="move-list"></ol>
+          </div>
+
+          <button id="new-game" class="btn">New Game</button>
+        </aside>
+      </section>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0/chess.min.js" integrity="sha512-6V8m7FrnVY+fLcx9fWi4KFOeFHrgb3R04QLbTjaCj1eO0MJdHj7FVGHvXZHzVvzJeYfijYapqYh6gMPkTF4Xbw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="models/StoneFish/model.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
