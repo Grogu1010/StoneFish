@@ -8,6 +8,10 @@ const lastMoveElement = document.getElementById('last-move');
 const moveListElement = document.getElementById('move-list');
 const newGameButton = document.getElementById('new-game');
 const undoMoveButton = document.getElementById('undo-move');
+const turnIndicatorElement = document.getElementById('turn-indicator');
+const plyCountElement = document.getElementById('ply-count');
+const whiteCapturesElement = document.getElementById('white-captures');
+const blackCapturesElement = document.getElementById('black-captures');
 
 const pieceSymbols = {
   p: '♟',
@@ -68,23 +72,53 @@ function renderBoard() {
 function updateMoveList() {
   moveListElement.innerHTML = '';
   const history = game.history();
-  history.forEach((move, index) => {
+
+  for (let index = 0; index < history.length; index += 2) {
     const item = document.createElement('li');
-    item.textContent = `${index + 1}. ${move}`;
+    const turn = index / 2 + 1;
+    const whiteMove = history[index] ?? '';
+    const blackMove = history[index + 1] ?? '…';
+    item.textContent = `${turn}. ${whiteMove} ${blackMove}`;
     moveListElement.append(item);
+  }
+
+  plyCountElement.textContent = String(history.length);
+}
+
+function updateCaptures() {
+  const historyVerbose = game.history({ verbose: true });
+  const whiteCaptures = [];
+  const blackCaptures = [];
+
+  historyVerbose.forEach((move) => {
+    if (!move.captured) {
+      return;
+    }
+
+    const symbol = pieceSymbols[move.color === 'w' ? move.captured.toUpperCase() : move.captured];
+    if (move.color === 'w') {
+      whiteCaptures.push(symbol);
+    } else {
+      blackCaptures.push(symbol);
+    }
   });
+
+  whiteCapturesElement.textContent = whiteCaptures.length ? whiteCaptures.join(' ') : '-';
+  blackCapturesElement.textContent = blackCaptures.length ? blackCaptures.join(' ') : '-';
 }
 
 function updateStatus() {
   if (game.in_checkmate()) {
     gameOver = true;
     statusElement.textContent = game.turn() === 'w' ? 'Checkmate! StoneFish wins.' : 'Checkmate! You win.';
+    turnIndicatorElement.textContent = 'Game over';
     return;
   }
 
   if (game.in_draw()) {
     gameOver = true;
     statusElement.textContent = 'Draw game.';
+    turnIndicatorElement.textContent = 'Draw';
     return;
   }
 
@@ -92,6 +126,7 @@ function updateStatus() {
   const side = game.turn() === 'w' ? 'White' : activeModel.name;
   const checkText = game.in_check() ? ' (in check)' : '';
   statusElement.textContent = `${side} to move${checkText}.`;
+  turnIndicatorElement.textContent = side;
 }
 
 function setSelection(square) {
@@ -109,6 +144,12 @@ function clearSelection() {
   legalTargets.clear();
 }
 
+function syncDashboard() {
+  updateMoveList();
+  updateStatus();
+  updateCaptures();
+}
+
 function engineMove() {
   if (gameOver || game.turn() !== 'b') {
     return;
@@ -124,8 +165,7 @@ function engineMove() {
   lastMoveElement.textContent = `Last move: ${activeModel.name} played ${move.san}`;
   clearSelection();
   renderBoard();
-  updateMoveList();
-  updateStatus();
+  syncDashboard();
 }
 
 function onSquareClick(event) {
@@ -170,12 +210,10 @@ function onSquareClick(event) {
   clearSelection();
 
   renderBoard();
-  updateMoveList();
-  updateStatus();
+  syncDashboard();
 
   setTimeout(engineMove, 260);
 }
-
 
 undoMoveButton.addEventListener('click', () => {
   if (game.history().length === 0) {
@@ -191,8 +229,7 @@ undoMoveButton.addEventListener('click', () => {
   gameOver = false;
   lastMoveElement.textContent = 'Last move: (undone)';
   renderBoard();
-  updateMoveList();
-  updateStatus();
+  syncDashboard();
 });
 
 newGameButton.addEventListener('click', () => {
@@ -201,10 +238,8 @@ newGameButton.addEventListener('click', () => {
   gameOver = false;
   lastMoveElement.textContent = 'Last move: -';
   renderBoard();
-  updateMoveList();
-  updateStatus();
+  syncDashboard();
 });
 
 renderBoard();
-updateMoveList();
-updateStatus();
+syncDashboard();
