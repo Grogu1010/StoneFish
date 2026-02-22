@@ -1,1 +1,147 @@
+:root {
+  --bg: #111827;
+  --card: #1f2937;
+  --text: #f9fafb;
+  --muted: #cbd5e1;
+  --accent: #22c55e;
+  --light-square: #f0d9b5;
+  --dark-square: #b58863;
+  --selected: #facc15;
+  --hint: #34d399;
+}
 
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: radial-gradient(circle at top, #1f2937, #0b1020 60%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+header p {
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+
+.game-panel {
+  display: grid;
+  grid-template-columns: minmax(320px, 560px) minmax(220px, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 1rem;
+}
+
+.board {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  border: 8px solid #374151;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.square {
+  aspect-ratio: 1 / 1;
+  border: none;
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.square:hover {
+  filter: brightness(1.08);
+}
+
+.square.light {
+  background: var(--light-square);
+}
+
+.square.dark {
+  background: var(--dark-square);
+}
+
+.square.selected {
+  outline: 4px solid var(--selected);
+  outline-offset: -4px;
+}
+
+.square.hint::after {
+  content: "";
+  width: 26%;
+  height: 26%;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--hint) 85%, transparent);
+}
+
+.sidebar {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.status-card {
+  background: color-mix(in srgb, var(--card) 88%, black);
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 0.9rem;
+}
+
+.status-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.status-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.move-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  padding-left: 1.3rem;
+  color: #e5e7eb;
+}
+
+.move-list li {
+  margin: 0.2rem 0;
+}
+
+.btn {
+  border: none;
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #07130a;
+  background: linear-gradient(180deg, #4ade80, var(--accent));
+  font-weight: 700;
+}
+
+.btn:hover {
+  filter: brightness(1.06);
+}
+
+@media (max-width: 860px) {
+  .game-panel {
+    grid-template-columns: 1fr;
+  }
+}
