@@ -17,11 +17,11 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100vh;
   color: var(--text);
   background: radial-gradient(circle at top, #1e1b4b 0%, var(--bg) 45%, #010409 100%);
   position: relative;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 .bg-orb {
@@ -48,8 +48,11 @@ body {
 
 .app-shell {
   width: min(1200px, 94vw);
-  margin: 2rem auto;
+  height: 100vh;
+  margin: 0 auto;
+  padding: 0.7rem 0;
   display: grid;
+  grid-template-rows: auto 1fr;
   gap: 1.2rem;
 }
 
@@ -65,7 +68,7 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 1.2rem;
-  padding: 1.4rem;
+  padding: 1rem 1.2rem;
 }
 
 .eyebrow {
@@ -124,11 +127,18 @@ h1 {
   display: grid;
   grid-template-columns: minmax(360px, 1.25fr) minmax(300px, 0.9fr);
   gap: 1.2rem;
+  min-height: 0;
 }
 
 .board-card,
 .side-panel {
-  padding: 1rem;
+  padding: 0.9rem;
+}
+
+.board-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 0;
 }
 
 .board-head {
@@ -151,22 +161,30 @@ h1 {
 .board-wrap {
   border-radius: 0.8rem;
   border: 1px solid var(--border);
-  padding: 0.75rem;
+  padding: 0.6rem;
   background: rgba(15, 23, 42, 0.62);
+  display: grid;
+  place-items: center;
 }
 
 .board {
-  width: min(76vw, 560px);
+  width: min(54vw, 66vh, 560px);
   aspect-ratio: 1;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
   border-radius: 0.5rem;
   overflow: hidden;
 }
 
 .square {
   border: 0;
-  font-size: clamp(1.2rem, 2.3vw, 2rem);
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  font-size: clamp(1.8rem, 3.6vh, 2.8rem);
   cursor: pointer;
   transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
 }
@@ -194,9 +212,9 @@ h1 {
 }
 
 .board-footer {
-  margin-top: 0.9rem;
+  margin-top: 0.65rem;
   display: grid;
-  gap: 0.4rem;
+  gap: 0.3rem;
 }
 
 #last-move {
@@ -211,8 +229,10 @@ h1 {
 
 .side-panel {
   display: grid;
-  gap: 1rem;
+  gap: 0.8rem;
+  grid-template-rows: auto auto 1fr;
   align-content: start;
+  min-height: 0;
 }
 
 .actions {
@@ -262,8 +282,8 @@ button {
 }
 
 .move-list {
-  margin-top: 0.6rem;
-  max-height: 20rem;
+  margin-top: 0.45rem;
+  max-height: 100%;
   overflow-y: auto;
   padding-left: 1.3rem;
   display: grid;
@@ -276,12 +296,23 @@ button {
 }
 
 @media (max-width: 960px) {
+  body {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+  }
+
   .content-grid {
     grid-template-columns: 1fr;
   }
 
   .board {
-    width: 100%;
+    width: min(92vw, 540px);
   }
 
   .topbar {
