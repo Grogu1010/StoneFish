@@ -25,6 +25,7 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         const capturedBlackEl = document.getElementById('captured-black');
         const newGameBtn = document.getElementById('new-game');
         const flipBoardBtn = document.getElementById('flip-board');
+        const surpriseOpeningBtn = document.getElementById('surprise-opening');
         const modelPicker = document.getElementById('model-picker');
         const modelDescriptionEl = document.getElementById('model-description');
         const modelUsageEl = document.getElementById('model-usage');
@@ -226,6 +227,31 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         let waitingForEngine = false;
         const squareElements = new Map();
         const capturedPieces = { white: [], black: [] };
+
+        const SURPRISE_OPENINGS = [
+            {
+                name: 'Italian Game',
+                moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'],
+            },
+            {
+                name: "Queen's Gambit",
+                moves: ['d4', 'd5', 'c4'],
+            },
+            {
+                name: 'Sicilian Defense',
+                moves: ['e4', 'c5'],
+            },
+            {
+                name: 'London System',
+                moves: ['d4', 'd5', 'Nf3', 'Nf6', 'Bf4'],
+            },
+            {
+                name: "King's Indian Attack",
+                moves: ['Nf3', 'd5', 'g3', 'Nf6', 'Bg2'],
+            },
+        ];
+
+        let surpriseEffectTimeout = null;
 
         if (selectedEngineId) {
             playerConfig.b = { type: PLAYER_TYPES.ENGINE, engineId: selectedEngineId };
@@ -676,6 +702,60 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
             }, 450);
         }
 
+
+        function triggerSurpriseBoardEffect() {
+            if (!boardEl) {
+                return;
+            }
+
+            boardEl.classList.remove('board--surprise');
+            void boardEl.offsetWidth;
+            boardEl.classList.add('board--surprise');
+
+            if (surpriseEffectTimeout) {
+                clearTimeout(surpriseEffectTimeout);
+            }
+
+            surpriseEffectTimeout = setTimeout(() => {
+                boardEl.classList.remove('board--surprise');
+                surpriseEffectTimeout = null;
+            }, 1000);
+        }
+
+        function startSurpriseOpening() {
+            cancelPendingEngineMove();
+
+            const opening = SURPRISE_OPENINGS[Math.floor(Math.random() * SURPRISE_OPENINGS.length)];
+            if (!opening) {
+                return;
+            }
+
+            game.reset();
+            orientation = 'white';
+            selectedSquare = null;
+            legalMoves = [];
+            lastMoveSquares = [];
+            checkSquare = null;
+            waitingForEngine = false;
+            capturedPieces.white = [];
+            capturedPieces.black = [];
+
+            for (const san of opening.moves) {
+                const result = game.move(san);
+                if (!result) {
+                    updateStatus('Unable to load surprise opening.');
+                    refreshBoardState();
+                    return;
+                }
+            }
+
+            updateCaptured();
+            updateMoveLog();
+            refreshBoardState();
+            updateStatus(`Surprise Opening: ${opening.name}. ${COLOR_LABELS[game.turn()]} to move.`);
+            triggerSurpriseBoardEffect();
+            maybeAutoPlayNextTurn();
+        }
         function resetGame() {
             cancelPendingEngineMove();
             game.reset();
@@ -706,6 +786,12 @@ var Chess=function(r){var u="b",s="w",l=-1,_="p",A="n",S="b",m="r",y="q",p="k",t
         flipBoardBtn.addEventListener('click', () => {
             flipBoard();
         });
+
+        if (surpriseOpeningBtn) {
+            surpriseOpeningBtn.addEventListener('click', () => {
+                startSurpriseOpening();
+            });
+        }
 
         buildBoard();
         updateMoveLog();

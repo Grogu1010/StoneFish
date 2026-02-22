@@ -486,3 +486,31 @@ body {
         filter: brightness(1);
     }
 }
+
+
+.btn--accent {
+    border-color: rgba(76, 187, 203, 0.55);
+    color: #d5fbff;
+    background: linear-gradient(135deg, rgba(76, 187, 203, 0.18), rgba(244, 211, 94, 0.18));
+}
+
+.btn--accent:hover {
+    border-color: rgba(76, 187, 203, 0.9);
+    box-shadow: 0 12px 24px rgba(76, 187, 203, 0.35);
+}
+
+.board--surprise {
+    animation: boardPulse 0.9s ease;
+}
+
+@keyframes boardPulse {
+    0% {
+        box-shadow: 0 0 0 rgba(76, 187, 203, 0);
+    }
+    35% {
+        box-shadow: 0 0 0 8px rgba(76, 187, 203, 0.22), 0 0 45px rgba(244, 211, 94, 0.2);
+    }
+    100% {
+        box-shadow: 0 0 0 rgba(76, 187, 203, 0);
+    }
+}
