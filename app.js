@@ -7,6 +7,7 @@ const modelNameElement = document.getElementById('model-name');
 const lastMoveElement = document.getElementById('last-move');
 const moveListElement = document.getElementById('move-list');
 const newGameButton = document.getElementById('new-game');
+const undoMoveButton = document.getElementById('undo-move');
 
 const pieceSymbols = {
   p: '♟',
@@ -27,6 +28,7 @@ const activeModel = stoneFishModels[defaultModelId];
 modelNameElement.textContent = activeModel.name;
 
 let selectedSquare = null;
+let legalTargets = new Set();
 let gameOver = false;
 
 function renderBoard() {
@@ -46,6 +48,10 @@ function renderBoard() {
 
       if (selectedSquare === squareName) {
         squareButton.classList.add('selected');
+      }
+
+      if (legalTargets.has(squareName)) {
+        squareButton.classList.add('legal');
       }
 
       if (piece) {
@@ -88,6 +94,21 @@ function updateStatus() {
   statusElement.textContent = `${side} to move${checkText}.`;
 }
 
+function setSelection(square) {
+  selectedSquare = square;
+  legalTargets = new Set(
+    game
+      .moves({ verbose: true })
+      .filter((candidate) => candidate.from === square)
+      .map((candidate) => candidate.to),
+  );
+}
+
+function clearSelection() {
+  selectedSquare = null;
+  legalTargets.clear();
+}
+
 function engineMove() {
   if (gameOver || game.turn() !== 'b') {
     return;
@@ -101,7 +122,7 @@ function engineMove() {
 
   game.move(move);
   lastMoveElement.textContent = `Last move: ${activeModel.name} played ${move.san}`;
-  selectedSquare = null;
+  clearSelection();
   renderBoard();
   updateMoveList();
   updateStatus();
@@ -120,13 +141,13 @@ function onSquareClick(event) {
       return;
     }
 
-    selectedSquare = square;
+    setSelection(square);
     renderBoard();
     return;
   }
 
   if (selectedSquare === square) {
-    selectedSquare = null;
+    clearSelection();
     renderBoard();
     return;
   }
@@ -138,7 +159,7 @@ function onSquareClick(event) {
   if (!legalMove) {
     const piece = game.get(square);
     if (piece?.color === 'w') {
-      selectedSquare = square;
+      setSelection(square);
       renderBoard();
     }
     return;
@@ -146,7 +167,7 @@ function onSquareClick(event) {
 
   game.move(legalMove);
   lastMoveElement.textContent = `Last move: You played ${legalMove.san}`;
-  selectedSquare = null;
+  clearSelection();
 
   renderBoard();
   updateMoveList();
@@ -155,9 +176,28 @@ function onSquareClick(event) {
   setTimeout(engineMove, 260);
 }
 
+
+undoMoveButton.addEventListener('click', () => {
+  if (game.history().length === 0) {
+    return;
+  }
+
+  game.undo();
+  if (game.turn() === 'b') {
+    game.undo();
+  }
+
+  clearSelection();
+  gameOver = false;
+  lastMoveElement.textContent = 'Last move: (undone)';
+  renderBoard();
+  updateMoveList();
+  updateStatus();
+});
+
 newGameButton.addEventListener('click', () => {
   game.reset();
-  selectedSquare = null;
+  clearSelection();
   gameOver = false;
   lastMoveElement.textContent = 'Last move: -';
   renderBoard();

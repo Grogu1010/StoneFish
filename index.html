@@ -20,7 +20,11 @@
           <h2>Game</h2>
           <p id="status">White to move.</p>
           <p id="last-move">Last move: -</p>
-          <button id="new-game" type="button">New Game</button>
+          <div class="actions">
+            <button id="new-game" type="button">New Game</button>
+            <button id="undo-move" type="button">Undo Last Turn</button>
+          </div>
+          <p class="hint">Tip: click a white piece to see all legal destinations.</p>
 
           <h3>Moves</h3>
           <ol id="move-list"></ol>
