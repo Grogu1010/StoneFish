@@ -7,27 +7,62 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app">
-      <header>
-        <h1>StoneFish Chess</h1>
-        <p>Play as White against <strong id="model-name"></strong>.</p>
+    <div class="bg-orb orb-a" aria-hidden="true"></div>
+    <div class="bg-orb orb-b" aria-hidden="true"></div>
+
+    <main class="app-shell">
+      <header class="topbar glass-card">
+        <div>
+          <p class="eyebrow">Realtime Match Arena</p>
+          <h1>StoneFish Chess Command Center</h1>
+          <p class="subtitle">
+            Play as White against <strong id="model-name"></strong>. Track tempo, check pressure, and move history in one dashboard.
+          </p>
+        </div>
+        <div class="topbar-badges" aria-label="Game overview">
+          <p class="badge"><span>Turn</span><strong id="turn-indicator">White</strong></p>
+          <p class="badge"><span>Move</span><strong id="ply-count">0</strong></p>
+        </div>
       </header>
 
-      <section class="board-layout">
-        <div id="board" class="board" aria-label="Chess board"></div>
-
-        <aside class="panel">
-          <h2>Game</h2>
-          <p id="status">White to move.</p>
-          <p id="last-move">Last move: -</p>
-          <div class="actions">
-            <button id="new-game" type="button">New Game</button>
-            <button id="undo-move" type="button">Undo Last Turn</button>
+      <section class="content-grid">
+        <article class="board-card glass-card" aria-label="Interactive chess board section">
+          <div class="board-head">
+            <h2>Board</h2>
+            <p id="status" class="status-pill">White to move.</p>
           </div>
-          <p class="hint">Tip: click a white piece to see all legal destinations.</p>
 
-          <h3>Moves</h3>
-          <ol id="move-list"></ol>
+          <div class="board-wrap">
+            <div id="board" class="board" aria-label="Chess board"></div>
+          </div>
+
+          <footer class="board-footer">
+            <p id="last-move">Last move: -</p>
+            <p class="hint">Tip: click a white piece to reveal every legal destination.</p>
+          </footer>
+        </article>
+
+        <aside class="side-panel glass-card">
+          <section>
+            <h2>Game Controls</h2>
+            <div class="actions">
+              <button id="new-game" type="button">Start New Match</button>
+              <button id="undo-move" type="button">Undo Last Turn</button>
+            </div>
+          </section>
+
+          <section>
+            <h3>Captured Material</h3>
+            <div class="captures">
+              <p><span>White captured</span><strong id="white-captures">-</strong></p>
+              <p><span>StoneFish captured</span><strong id="black-captures">-</strong></p>
+            </div>
+          </section>
+
+          <section>
+            <h3>Move Ledger</h3>
+            <ol id="move-list" class="move-list"></ol>
+          </section>
         </aside>
       </section>
     </main>
