@@ -73,11 +73,23 @@ function updateStatus() {
     statusEl.textContent = game.turn() === "w" ? `${selectedModel.displayName} wins by checkmate.` : "Checkmate! You win.";
   } else if (game.isDraw()) {
     statusEl.textContent = "Draw game.";
-  } else if (game.inCheck()) {
+  } else if (isKingInCheck()) {
     statusEl.textContent = game.turn() === "w" ? "You are in check." : `${selectedModel.displayName} is in check.`;
   } else {
     statusEl.textContent = game.turn() === "w" ? "Your move (White)." : `${selectedModel.displayName} is thinking...`;
   }
+}
+
+function isKingInCheck() {
+  if (typeof game.isCheck === "function") {
+    return game.isCheck();
+  }
+
+  if (typeof game.inCheck === "function") {
+    return game.inCheck();
+  }
+
+  return false;
 }
 
 function updateMoveList() {
