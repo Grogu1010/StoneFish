@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StoneFish Chess</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>StoneFish Chess</h1>
+        <p>Play as White against <strong id="model-name"></strong>.</p>
+      </header>
+
+      <section class="board-layout">
+        <div id="board" class="board" aria-label="Chess board"></div>
+
+        <aside class="panel">
+          <h2>Game</h2>
+          <p id="status">White to move.</p>
+          <p id="last-move">Last move: -</p>
+          <button id="new-game" type="button">New Game</button>
+
+          <h3>Moves</h3>
+          <ol id="move-list"></ol>
+        </aside>
+      </section>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
