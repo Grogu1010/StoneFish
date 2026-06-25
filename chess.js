@@ -1071,6 +1071,6 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  opponentSelect.value = "v45";
+  opponentSelect.value = "v65";
   newHumanGame();
 });
