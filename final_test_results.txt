@@ -1,0 +1,93 @@
+Stonefish v6 final test results
+
+Build contents:
+- Stonefish v6
+- Stonefish v6 Flash
+- Shared version-aware openings.js
+- test_engines.js
+- benchmark_speed.js
+
+Opening-book changes:
+- All openings remain in the shared openings.js file.
+- New v6 openings use minStonefishVersion: 6, so v5 and older ignore them.
+- v6 and v6 Flash use the same shared opening source but skip selected weak legacy openings via the v6 denylist.
+- Halloween Gambit is not denied for v6; it remains allowed.
+
+10 v6 White additions:
+1. Giuoco Pianissimo
+2. Four Knights Game
+3. Colle System
+4. Torre Attack
+5. Trompowsky Attack
+6. Jobava London System
+7. English Botvinnik System
+8. Queen's Indian Attack
+9. Veresov Attack
+10. Panov Attack
+
+10 v6 Black additions:
+1. Semi-Slav Defense
+2. Queen's Indian Defense
+3. Bogo-Indian Defense
+4. Accelerated Dragon
+5. Kan Sicilian
+6. Classical Sicilian
+7. Scandinavian Defense
+8. Anti-Scholar Defense
+9. Anti-King's Indian Attack
+10. Ragozin Defense
+
+v6 legacy opening denylist:
+White skipped by v6/v6 Flash:
+- Scholar's Mate
+- Blackmar-Diemer Gambit
+- Danish Gambit
+- King's Gambit
+- Vienna Game
+
+Black skipped by v6/v6 Flash:
+- Stafford Gambit
+- Latvian Gambit
+- Elephant Gambit
+- Benko Gambit
+- Modern Defense
+
+Focused strength tests:
+The final 4-game results were run as two fresh 2-game color-pair batches and combined. This avoids cross-match cache carryover in the Node harness while still alternating colors.
+
+1. v6 Flash vs v5
+Result: v6 Flash 4W / 0D / 0L
+Score: 100.0%
+Average length: 96.5 plies
+Runtime: 31.216s combined
+Invalid moves: 0
+Reasons: 4 checkmates
+
+2. v6 vs v5
+Result: v6 4W / 0D / 0L
+Score: 100.0%
+Average length: 96.5 plies
+Runtime: 39.844s combined
+Invalid moves: 0
+Reasons: 4 checkmates
+
+3. v6 vs v6 Flash
+Result: v6 4W / 0D / 0L
+Score: 100.0%
+Average length: 162.5 plies
+Runtime: 52.952s combined
+Invalid moves: 0
+Reasons: 4 checkmates
+
+Speed benchmark, 40 sampled positions:
+- v5 total: 4455 ms; average: 111.375 ms/move
+- v6 Flash total: 2298 ms; average: 57.450 ms/move
+- v6 total: 2963 ms; average: 74.075 ms/move
+- v6 Flash speedup vs v5: 48.42%
+- v6 speed result vs v5: 33.49% faster in this benchmark
+
+Target checks:
+- v6 Flash target vs v5: requested at least 3W/4; achieved 4W/4.
+- v6 target vs v5: requested 4W/4; achieved 4W/4.
+- v6 target vs v6 Flash: requested at least 2W/2D; achieved 4W/0D/0L.
+- v6 Flash speed target: not slower than previous v6 Flash speed; benchmark remains substantially faster than v5.

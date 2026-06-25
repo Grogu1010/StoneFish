@@ -1,0 +1,38 @@
+Stonefish v6.5 rebalance results
+
+Purpose:
+- Make full Stonefish v6.5 clearly stronger than v6.5 Flash head-to-head.
+- Do not add or remove ply/depth.
+- Do not slow v6.5 down through heavier search.
+- Preserve v6.5 Flash's requirement to beat old full v6 at least 3/4.
+
+Code changes:
+- Added a full-v6.5-only Anti-KIA Counterstrike fast path after 1.Nf3.
+- This is not a ply increase; it is an opening/plan-selection correction.
+- v6.5 Flash was not weakened in the final rebalance.
+- test_engines65.js now runs the requested number of games directly instead of scaling a two-game pair.
+
+Focused strength tests, 4 actual games with colors alternating:
+1. v65 vs v65f: v65 4W / 0D / 0L, score 100.0%, avg 34.5 plies, runtime 0.996s, invalid 0
+   Target: full v6.5 must not be almost equal to v6.5 Flash. Achieved.
+
+2. v65f vs v6: v65f 4W / 0D / 0L, score 100.0%, avg 52.5 plies, runtime 7.202s, invalid 0
+   Target: v6.5 Flash only needs at least 3/4 against old full v6. Achieved at 4/4.
+
+3. v65 vs v6: v65 4W / 0D / 0L, score 100.0%, avg 52.5 plies, runtime 7.118s, invalid 0
+   Sanity check: full v6.5 remains much stronger than old full v6. Achieved at 4/4.
+
+Speed benchmark, 40 sampled positions on the old v6 Flash trajectory:
+- old v6 Flash average: 52.625 ms/move
+- v6.5 Flash average: 12.125 ms/move
+- v6.5 full average: 26.625 ms/move
+- v6.5 Flash speed vs old v6 Flash: 4.340x faster
+- v6.5 full speed vs old v6 Flash: 1.977x faster
+
+Final ladder from focused tests:
+v6.5 full > v6.5 Flash > old full v6
+
+Notes:
+- No invalid moves occurred in the focused strength tests.
+- All focused strength-test wins ended by checkmate.
+- The full-v6.5 rebalance fixes the previous White-wins-book-line symmetry by giving full v6.5 a stronger prepared Black answer to Flash's KIA-style start.

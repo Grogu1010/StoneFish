@@ -1,1 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stonefish Chess</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <section class="board-card" aria-label="Chess board">
+      <div id="board" class="board"></div>
+    </section>
 
+    <aside class="side-panel">
+      <header>
+        <h1>Stonefish</h1>
+        <p class="subtitle">Thirteen deeply suspicious chess engines.</p>
+      </header>
+
+      <section class="status-card">
+        <p id="status">White to move</p>
+        <p id="lastMove">You are White.</p>
+      </section>
+
+      <section class="panel-section">
+        <h2>Play</h2>
+        <label for="opponentSelect">Engine to verse</label>
+        <select id="opponentSelect">
+          <option value="v1">Stonefish v1</option>
+          <option value="v2">Stonefish v2</option>
+          <option value="v3">Stonefish v3</option>
+          <option value="v31">Stonefish v3.1</option>
+          <option value="v4">Stonefish v4</option>
+          <option value="v45f">Stonefish v4.5 Flash</option>
+          <option value="v45">Stonefish v4.5</option>
+          <option value="v5f">Stonefish v5 Flash</option>
+          <option value="v5">Stonefish v5</option>
+          <option value="v6f">Stonefish v6 Flash</option>
+          <option value="v6" selected>Stonefish v6</option>
+        </select>
+        <div class="button-grid">
+          <button id="newGameBtn">New game</button>
+          <button id="flipBtn" class="secondary">Flip board</button>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <h2>Engine vs engine</h2>
+        <div class="two-cols">
+          <div>
+            <label for="whiteEngineSelect">White</label>
+            <select id="whiteEngineSelect">
+              <option value="v1">Stonefish v1</option>
+              <option value="v2">Stonefish v2</option>
+              <option value="v3">Stonefish v3</option>
+              <option value="v31">Stonefish v3.1</option>
+              <option value="v4">Stonefish v4</option>
+              <option value="v45f">Stonefish v4.5 Flash</option>
+              <option value="v45">Stonefish v4.5</option>
+              <option value="v5f">Stonefish v5 Flash</option>
+              <option value="v5">Stonefish v5</option>
+              <option value="v6f">Stonefish v6 Flash</option>
+              <option value="v6">Stonefish v6</option>
+              <option value="v65f">Stonefish v6.5 Flash</option>
+              <option value="v65" selected>Stonefish v6.5</option>
+            </select>
+          </div>
+          <div>
+            <label for="blackEngineSelect">Black</label>
+            <select id="blackEngineSelect">
+              <option value="v65">Stonefish v6.5</option>
+              <option value="v65f">Stonefish v6.5 Flash</option>
+              <option value="v6">Stonefish v6</option>
+              <option value="v6f">Stonefish v6 Flash</option>
+              <option value="v5">Stonefish v5</option>
+              <option value="v5f">Stonefish v5 Flash</option>
+              <option value="v45" selected>Stonefish v4.5</option>
+              <option value="v45f">Stonefish v4.5 Flash</option>
+              <option value="v4">Stonefish v4</option>
+              <option value="v31">Stonefish v3.1</option>
+              <option value="v3">Stonefish v3</option>
+              <option value="v2">Stonefish v2</option>
+              <option value="v1">Stonefish v1</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="button-grid">
+          <button id="watchBtn">Watch mode</button>
+          <button id="stopWatchBtn" class="secondary">Stop</button>
+        </div>
+
+        <div class="test-row">
+          <label for="testGamesInput">Test games</label>
+          <input id="testGamesInput" type="number" min="2" max="5000" step="2" value="100" />
+          <button id="runTestBtn">Run test</button>
+        </div>
+        <p id="testResult" class="test-result">Watch mode makes one move every 3 seconds.</p>
+        <div id="openingStats" class="opening-stats hidden"></div>
+      </section>
+
+      <section class="moves-section">
+        <div class="moves-title">
+          <span>Move list</span>
+          <span id="moveCount">0 moves</span>
+        </div>
+        <div id="moves" class="moves"></div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="promotionModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="promotionTitle">
+    <div class="modal-card">
+      <h2 id="promotionTitle">Promote to</h2>
+      <div class="promotion-buttons">
+        <button data-piece="Q">Queen</button>
+        <button data-piece="R">Rook</button>
+        <button data-piece="B">Bishop</button>
+        <button data-piece="N">Knight</button>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="chess.js"></script>
+  <script defer src="stonefishv1.js"></script>
+  <script defer src="stonefishv2.js"></script>
+  <script defer src="stonefishv3.js"></script>
+  <script defer src="stonefishv3.1.js"></script>
+  <script defer src="stonefishv4.js"></script>
+  <script defer src="openings.js"></script>
+  <script defer src="stonefishv4.5flash.js"></script>
+  <script defer src="stonefishv4.5.js"></script>
+  <script defer src="stonefishv5flash.js"></script>
+  <script defer src="stonefishv5.js"></script>
+  <script defer src="stonefishv6flash.js"></script>
+  <script defer src="stonefishv6.js"></script>
+  <script defer src="stonefishv6.5flash.js"></script>
+  <script defer src="stonefishv6.5.js"></script>
+</body>
+</html>
