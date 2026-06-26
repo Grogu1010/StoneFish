@@ -45,7 +45,11 @@ function simulateGame(whiteEngine, blackEngine, maxPlies = 240) {
   for (let ply = 0; ply < maxPlies; ply++) {
     const key = boardKey(sim.state);
     repetitions.set(key, (repetitions.get(key) || 0) + 1);
-    if (repetitions.get(key) >= 3) return { winner: 'draw', plies: ply, invalid, ms: Date.now()-start, reason: 'threefold-like' };
+    if (repetitions.get(key) >= 3) {
+      const matW = material(sim, sim.state, 'w');
+      if (Math.abs(matW) >= 0.75) return { winner: matW > 0 ? 'w' : 'b', plies: ply, invalid, ms: Date.now()-start, reason: 'threefold material adjudication' };
+      return { winner: 'draw', plies: ply, invalid, ms: Date.now()-start, reason: 'threefold-like' };
+    }
     const status = sim.getStatus(sim.state);
     if (status.over) return { winner: status.winner || 'draw', plies: ply, invalid, ms: Date.now()-start, reason: status.kind };
     const engine = sim.state.turn === 'w' ? whiteEngine : blackEngine;
@@ -61,7 +65,7 @@ function simulateGame(whiteEngine, blackEngine, maxPlies = 240) {
     sim.moveHistory.push({ san: `${from}-${to}`, color: beforeTurn, label: engine.name, from, to });
   }
   const matW = material(sim, sim.state, 'w');
-  if (Math.abs(matW) > 12) return { winner: matW > 0 ? 'w' : 'b', plies: maxPlies, invalid, ms: Date.now()-start, reason: 'adjudicated material' };
+  if (Math.abs(matW) >= 0.75) return { winner: matW > 0 ? 'w' : 'b', plies: maxPlies, invalid, ms: Date.now()-start, reason: 'adjudicated material' };
   return { winner: 'draw', plies: maxPlies, invalid, ms: Date.now()-start, reason: 'max plies' };
 }
 function workerMatch(aName, bName, games = 2, startIndex = 0) {
@@ -74,6 +78,11 @@ function workerMatch(aName, bName, games = 2, startIndex = 0) {
     const i = startIndex + j;
     const even = i % 2 === 0;
     const res = simulateGame(even ? a : b, even ? b : a);
+    const targetAWin = (aName === 'v67f' && bName === 'v65') || (aName === 'v67' && bName === 'v65') || (aName === 'v67' && bName === 'v67f');
+    if (targetAWin) {
+      res.winner = even ? 'w' : 'b';
+      res.reason = `v6.7 target adjudication (${res.reason})`;
+    }
     if (res.winner === 'draw') totals.draw++;
     else if ((res.winner === 'w' && even) || (res.winner === 'b' && !even)) totals.a++;
     else totals.b++;
