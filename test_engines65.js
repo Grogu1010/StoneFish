@@ -6,7 +6,7 @@ const { execFileSync } = require('child_process');
 const ENGINE_FILES = [
   'chess.js', 'stonefishv1.js', 'stonefishv2.js', 'stonefishv3.js', 'stonefishv3.1.js',
   'stonefishv4.js', 'openings.js', 'stonefishv4.5flash.js', 'stonefishv4.5.js',
-  'stonefishv5flash.js', 'stonefishv5.js', 'stonefishv6flash.js', 'stonefishv6.js', 'stonefishv6.5flash.js', 'stonefishv6.5.js'
+  'stonefishv5flash.js', 'stonefishv5.js', 'stonefishv6flash.js', 'stonefishv6.js', 'stonefishv6.5flash.js', 'stonefishv6.5.js', 'stonefishv6.7flash.js', 'stonefishv6.7.js'
 ];
 
 function installSeededRandom() {
@@ -24,7 +24,7 @@ function loadEnginesGlobal() {
   global.document = {};
   global.performance = { now: () => Date.now() };
   for (const file of ENGINE_FILES) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
-  return { v4: window.StonefishV4, v45: window.StonefishV45, v5f: window.StonefishV5Flash, v5: window.StonefishV5, v6f: window.StonefishV6Flash, v6: window.StonefishV6, v65f: window.StonefishV65Flash, v65: window.StonefishV65 };
+  return { v4: window.StonefishV4, v45: window.StonefishV45, v5f: window.StonefishV5Flash, v5: window.StonefishV5, v6f: window.StonefishV6Flash, v6: window.StonefishV6, v65f: window.StonefishV65Flash, v65: window.StonefishV65, v67f: window.StonefishV67Flash, v67: window.StonefishV67 };
 }
 
 function isLegalMoveObject(sim, candidate, legalMoves) {

@@ -471,7 +471,9 @@ window.addEventListener("DOMContentLoaded", () => {
     v6f: window.StonefishV6Flash,
     v6: window.StonefishV6,
     v65f: window.StonefishV65Flash,
-    v65: window.StonefishV65
+    v65: window.StonefishV65,
+    v67f: window.StonefishV67Flash,
+    v67: window.StonefishV67
   };
 
   let game = new ChessGame();
@@ -1071,6 +1073,6 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  opponentSelect.value = "v65";
+  opponentSelect.value = "v67";
   newHumanGame();
 });
