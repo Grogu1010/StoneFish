@@ -663,12 +663,12 @@
     if (color !== "b" || history.length !== 1) return null;
     const first = `${history[0].from}${history[0].to}`;
     if (first !== "g1f3") return null;
-    const move = legalMoveByKey(game, state, color, "e7e5");
+    const move = legalMoveByKey(game, state, color, "c7c5");
     if (!move) return null;
     const testState = game.cloneState(state);
     game.applyMoveToState(testState, move);
     if (opponentHasMateInOne(game, testState, color)) return null;
-    move._stonefishOpeningName = "Stonefish v6.7 Full Anti-KIA Counterstrike";
+    move._stonefishOpeningName = "Stonefish v6.7 Full Anti-KIA Symmetry Break";
     move._stonefishOpeningNames = [move._stonefishOpeningName];
     move._stonefishBook = true;
     return move;
@@ -825,7 +825,7 @@
         if (candidate.book && opponentPlan.worstNetPlan > currentPlan.worstNetPlan + 100) candidate.score -= Math.min(320, opponentPlan.worstNetPlan - currentPlan.worstNetPlan);
         if (opponentPlan.matePlan && opponentPlan.worstNetPlan > 170) candidate.score -= MATE_SCORE / 5;
 
-        candidate.score += mentalNotesCounterScore(game, state, color, candidate, notes) * 0.18;
+        if (notes.text.length) candidate.score += mentalNotesCounterScore(game, state, color, candidate, notes) * 0.18;
         if (opponentHasMateInOne(game, candidate.testState, color)) candidate.score -= MATE_SCORE;
         const terminal = terminalScore(game, candidate.testState, color);
         if (terminal !== null) candidate.score += terminal;

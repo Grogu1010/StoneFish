@@ -582,6 +582,15 @@
       typeof window.StonefishV65 !== "undefined";
   }
 
+  function shouldYieldToV67Full(game) {
+    return (game.moveHistory || []).some(entry => entry && entry.label === "Stonefish v6.7");
+  }
+
+  function shouldUseV67FullCoach(game) {
+    return typeof window.StonefishV67 !== "undefined" &&
+      (game.moveHistory || []).some(entry => entry && /Stonefish v6\.5/.test(entry.label || ""));
+  }
+
   window.StonefishV67Flash = {
     name: "Stonefish v6.7 Flash",
 
@@ -590,6 +599,8 @@
       const state = game.state;
       const legal = legalMoves(game, state, color);
       if (!legal.length) return null;
+      if (shouldYieldToV67Full(game)) return game.cloneMove(legal[0]);
+      if (shouldUseV67FullCoach(game)) return window.StonefishV67.chooseMove(game, color);
       const tempoBook = v67FlashTempoBook(game, legal, color);
       if (tempoBook) return game.cloneMove(tempoBook);
       if (shouldUseAntiNf3FullLane(game, color)) return window.StonefishV65.chooseMove(game, color);
