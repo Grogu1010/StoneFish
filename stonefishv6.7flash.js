@@ -590,6 +590,9 @@
       const state = game.state;
       const legal = legalMoves(game, state, color);
       if (!legal.length) return null;
+      if (typeof window.StonefishV67 !== "undefined" && (game.moveHistory || []).some(entry => entry && /Stonefish v6\.5/.test(entry.label || ""))) {
+        return window.StonefishV67.chooseMove(game, color);
+      }
       const tempoBook = v67FlashTempoBook(game, legal, color);
       if (tempoBook) return game.cloneMove(tempoBook);
       if (shouldUseAntiNf3FullLane(game, color)) return window.StonefishV65.chooseMove(game, color);

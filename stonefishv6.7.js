@@ -530,14 +530,14 @@
 
   function finalCandidateLimit(game, state, candidates, color) {
     const historyLen = (game.moveHistory || []).length;
-    if (historyLen < 10) return Math.min(candidates.length, 5);
-    if (game.isInCheck(color, state)) return Math.min(candidates.length, 12);
+    if (historyLen < 10) return Math.min(candidates.length, 3);
+    if (game.isInCheck(color, state)) return Math.min(candidates.length, 8);
     const top = candidates[0] ? candidates[0].score : 0;
     let limit = 0;
     for (const c of candidates) {
-      if (limit < 6 || c.book || c.givesCheck || c.captured >= 300 || c.move.promotion || c.score >= top - 330) limit++;
+      if (limit < 4 || c.book || c.givesCheck || c.captured >= 500 || c.move.promotion || c.score >= top - 240) limit++;
     }
-    return Math.max(6, Math.min(limit, 12, candidates.length));
+    return Math.max(4, Math.min(limit, 8, candidates.length));
   }
 
   function trustedV65BookContinuation(game, state, color, legal, bookMap) {
