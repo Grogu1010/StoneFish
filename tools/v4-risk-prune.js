@@ -20,4 +20,4 @@ add(drop('repetitionAvoid','fiftyReset','endgameCheck','kingProtection'),'lean_'
 console.log('RISK PRUNE 12 x 100');const f=C.map(cfg=>({cfg,r:test(cfg,100,30000)})).sort(rank);for(const x of f)console.log('FINAL',x.cfg.name,x.cfg.order.join('>'),x.r);console.log('WINNER',JSON.stringify(f[0].cfg),f[0].r);
 `;
 src=src.slice(0,start)+replacement+src.slice(end);
-new Function(src)();
+eval(src);
