@@ -20,6 +20,26 @@ const pieceSymbols = {
   bp: '♟', bn: '♞', bb: '♝', br: '♜', bq: '♛', bk: '♚'
 };
 
+const v4Logic = [
+  'Take mate in 1 and preserve v3 tactical/material safety',
+  'Prefer stronger promotions and immediate castling',
+  'Develop minor pieces before positional tie-breaks',
+  'Avoid leaving high-value own pieces hanging',
+  'When ahead by 2.5+ material, avoid cycling back to an already-seen position',
+  'Prefer more legal movement options',
+  'Use queen discipline, repetition, 50-move, endgame, support, king, centre, pawn, rook, and control tie-breaks'
+];
+
+const v45Logic = [
+  'Take immediate mate and recognise common forced-mate geometries',
+  'Follow a weighted 25-line White / 25-line Black opening repertoire',
+  'If the opponent leaves the chosen line, re-weight only openings still compatible with the game',
+  'Fall back to Stonefish_v4 tactical/material and positional filtering',
+  'Among ties, minimise the opponent’s legal moves and checking chances',
+  'Also restrict the opponent king, centre control, and total board control',
+  'Keep tightening known mating nets such as ladder, triangle, back-rank, smothered, Arabian, kill-box, and Boden patterns'
+];
+
 const models = {
   v1: {
     name: 'Stonefish_v1',
@@ -44,31 +64,54 @@ const models = {
   },
   v4: {
     name: 'Stonefish_v4',
-    trait: 'Positional tie-break engine',
-    subtitle: 'Stonefish_v3 decides tactical/material equality first; tied moves use the strongest tested positional ordering.',
-    logic: [
-      'Take mate in 1',
-      'Avoid opponent mate in 1 whenever possible',
-      'Maximise the worst three-ply material trade',
-      'Prefer checks',
-      'Prefer more legal movement options',
-      'Avoid king suffocation and strongly prefer castling',
-      'Keep protection around the king',
-      'Prefer centre control'
-    ],
+    trait: 'Same-depth positional engine',
+    subtitle: 'Stonefish_v3 material logic plus the tested same-depth v4 development, safety, mobility, repetition, and positional filters.',
+    logic: v4Logic,
     getMove: getStonefishV4Move
+  },
+  v45: {
+    name: 'Stonefish_v4.5',
+    trait: 'Knowledge-layer engine',
+    subtitle: 'Stonefish_v4 plus weighted engine-oriented openings, forced-mate patterns, and inverse opponent-restriction filters.',
+    logic: v45Logic,
+    getMove: getStonefishV45Move
   }
 };
+
+const v45TestDefinitions = [
+  ['Stonefish_v4.5_testunit1', 'e4-heavy opening percentages', getStonefishV45Testunit1Move],
+  ['Stonefish_v4.5_testunit2', 'd4/Catalan-heavy opening percentages', getStonefishV45Testunit2Move],
+  ['Stonefish_v4.5_testunit3', 'English/Reti-heavy opening percentages', getStonefishV45Testunit3Move],
+  ['Stonefish_v4.5_testunit4', 'Sicilian-heavy opening percentages', getStonefishV45Testunit4Move],
+  ['Stonefish_v4.5_testunit5', 'solid opening percentages', getStonefishV45Testunit5Move],
+  ['Stonefish_v4.5_testunit6', 'dynamic opening percentages', getStonefishV45Testunit6Move],
+  ['Stonefish_v4.5_testunit7', 'engine-mainline-heavy opening percentages', getStonefishV45Testunit7Move],
+  ['Stonefish_v4.5_testunit8', 'flatter diverse opening percentages', getStonefishV45Testunit8Move]
+];
+
+v45TestDefinitions.forEach((definition, index) => {
+  models[`v45t${index + 1}`] = {
+    name: definition[0],
+    trait: definition[1],
+    subtitle: `Stonefish_v4.5 with ${definition[1]}. Chess logic is otherwise identical to canonical v4.5.`,
+    logic: v45Logic,
+    getMove: definition[2]
+  };
+});
 
 let selectedSquare = null;
 let legalTargets = [];
 let botThinking = false;
 let lastMoveSquares = [];
-let selectedModel = 'v4';
+let selectedModel = 'v45';
 let watchTimer = null;
 let watchMode = false;
 let testing = false;
 let testWorker = null;
+
+function clearV45BookState() {
+  if (typeof STONEFISH_V45_BOOK_STATE !== 'undefined') STONEFISH_V45_BOOK_STATE.delete(game);
+}
 
 function renderBoard() {
   boardElement.innerHTML = '';
@@ -213,12 +256,13 @@ function stopWatching() {
   watchMode = false;
   if (watchTimer) window.clearTimeout(watchTimer);
   watchTimer = null;
-  watchButton.textContent = 'Watch v3 vs v4';
+  watchButton.textContent = 'Watch v4 vs v4.5';
 }
 
 function resetGame() {
   stopWatching();
   game.reset();
+  clearV45BookState();
   clearSelection();
   lastMoveSquares = [];
   botThinking = false;
@@ -237,11 +281,12 @@ function startWatching() {
   }
 
   game.reset();
+  clearV45BookState();
   clearSelection();
   lastMoveSquares = [];
   watchMode = true;
   watchButton.textContent = 'Stop watching';
-  lastMoveElement.textContent = 'Stonefish_v3 is White. Stonefish_v4 is Black.';
+  lastMoveElement.textContent = 'Stonefish_v4 is White. Stonefish_v4.5 is Black.';
   renderBoard();
   updateWatchStatus();
   watchTimer = window.setTimeout(playWatchMove, 3000);
@@ -249,7 +294,7 @@ function startWatching() {
 
 function updateWatchStatus() {
   if (game.in_checkmate()) {
-    const winner = game.turn() === 'w' ? 'Stonefish_v4' : 'Stonefish_v3';
+    const winner = game.turn() === 'w' ? 'Stonefish_v4.5' : 'Stonefish_v4';
     statusElement.textContent = `Checkmate. ${winner} won the spectator game.`;
     stopWatching();
     return;
@@ -261,14 +306,14 @@ function updateWatchStatus() {
     return;
   }
 
-  const side = game.turn() === 'w' ? 'Stonefish_v3' : 'Stonefish_v4';
+  const side = game.turn() === 'w' ? 'Stonefish_v4' : 'Stonefish_v4.5';
   statusElement.textContent = `${side} to move.${game.in_check() ? ' Check!' : ''}`;
 }
 
 function playWatchMove() {
   if (!watchMode || game.game_over()) return updateWatchStatus();
 
-  const modelKey = game.turn() === 'w' ? 'v3' : 'v4';
+  const modelKey = game.turn() === 'w' ? 'v4' : 'v45';
   const model = models[modelKey];
   const move = model.getMove(game);
   const playedMove = playMoveOnGame(game, move);
