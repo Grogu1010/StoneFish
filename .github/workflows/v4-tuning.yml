@@ -1,7 +1,7 @@
-name: v4-tuning-samedepth-rep-priority
+name: v4-tuning-samedepth-five-loss-trace
 on:
   push:
-    branches: ['v4-tuning-samedepth-rep-priority']
+    branches: ['v4-tuning-samedepth-five-loss-trace']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-samedepth-rep-priority.js
+      - run: node tools/v4-samedepth-five-loss-trace.js
