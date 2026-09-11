@@ -39,26 +39,36 @@ const models = {
     name: 'Stonefish_v3',
     trait: 'Three-ply material engine',
     subtitle: 'Scores material across its move, the opponent’s best reply, and its own best response. Bishops are worth 3.1.',
-    logic: ['Take mate in 1 and avoid mate in 1', 'Score material won now minus the opponent’s reply', 'Add the best material response and maximise the worst case'],
+    logic: ['Take mate in 1', 'Avoid opponent mate in 1 whenever possible', 'Maximise the worst three-ply material trade'],
     getMove: getStonefishV3Move
   },
-  v3test1: {
-    name: 'Stonefish_v3(testunit1)',
-    getMove: getStonefishV3TestUnit1Move,
-    testOnly: true
+  v4: {
+    name: 'Stonefish_v4',
+    trait: 'Positional tie-break engine',
+    subtitle: 'Stonefish_v3 decides tactical/material equality first; tied moves are then separated by checks, king safety, mobility, and centre control.',
+    logic: [
+      'Take mate in 1',
+      'Avoid opponent mate in 1 whenever possible',
+      'Maximise the worst three-ply material trade',
+      'Prefer checks',
+      'Avoid king suffocation and strongly prefer castling',
+      'Keep protection around the king',
+      'Prefer more legal movement options',
+      'Prefer centre control'
+    ],
+    getMove: getStonefishV4Move
   },
-  v3test2: {
-    name: 'Stonefish_v3(testunit2)',
-    getMove: getStonefishV3TestUnit2Move,
-    testOnly: true
-  }
+  v4test1: { name: 'Stonefish_v4(testunit1)', getMove: getStonefishV4TestUnit1Move, testOnly: true },
+  v4test2: { name: 'Stonefish_v4(testunit2)', getMove: getStonefishV4TestUnit2Move, testOnly: true },
+  v4test3: { name: 'Stonefish_v4(testunit3)', getMove: getStonefishV4TestUnit3Move, testOnly: true },
+  v4test4: { name: 'Stonefish_v4(testunit4)', getMove: getStonefishV4TestUnit4Move, testOnly: true }
 };
 
 let selectedSquare = null;
 let legalTargets = [];
 let botThinking = false;
 let lastMoveSquares = [];
-let selectedModel = 'v3';
+let selectedModel = 'v4';
 let watchTimer = null;
 let watchMode = false;
 let testing = false;
@@ -66,7 +76,6 @@ let testWorker = null;
 
 function renderBoard() {
   boardElement.innerHTML = '';
-
   for (let rank = 8; rank >= 1; rank -= 1) {
     for (let fileIndex = 0; fileIndex < 8; fileIndex += 1) {
       const file = String.fromCharCode(97 + fileIndex);
@@ -110,13 +119,11 @@ function handleSquareClick(square) {
     if (piece && piece.color === 'w') selectSquare(square);
     return;
   }
-
   if (square === selectedSquare) {
     clearSelection();
     renderBoard();
     return;
   }
-
   if (piece && piece.color === 'w') {
     selectSquare(square);
     return;
@@ -151,19 +158,17 @@ function clearSelection() {
 
 function playMoveOnGame(targetGame, move) {
   if (!move) return null;
-  return targetGame.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+  return targetGame.move({ from: move.from, to: move.to, promotion: move.promotion || 'q', _raw: move._raw });
 }
 
 function makeSelectedBotMove() {
   const model = models[selectedModel];
   const move = model.getMove(game);
-
   if (move) {
     const playedMove = playMoveOnGame(game, move);
     lastMoveSquares = [playedMove.from, playedMove.to];
     lastMoveElement.textContent = `${model.name} played ${playedMove.san}.`;
   }
-
   botThinking = false;
   updateStatus();
   renderBoard();
@@ -171,18 +176,15 @@ function makeSelectedBotMove() {
 
 function updateStatus() {
   if (watchMode) return updateWatchStatus();
-
   if (game.in_checkmate()) {
     const winner = game.turn() === 'w' ? models[selectedModel].name : 'You';
     statusElement.textContent = `Checkmate. ${winner} won.`;
     return;
   }
-
   if (game.in_draw()) {
     statusElement.textContent = 'Draw.';
     return;
   }
-
   const checkText = game.in_check() ? ' Check!' : '';
   statusElement.textContent = game.turn() === 'w'
     ? `Your move. You are White.${checkText}`
@@ -203,7 +205,7 @@ function stopWatching() {
   watchMode = false;
   if (watchTimer) window.clearTimeout(watchTimer);
   watchTimer = null;
-  watchButton.textContent = 'Watch v2 vs v3';
+  watchButton.textContent = 'Watch v3 vs v4';
 }
 
 function resetGame() {
@@ -231,7 +233,7 @@ function startWatching() {
   lastMoveSquares = [];
   watchMode = true;
   watchButton.textContent = 'Stop watching';
-  lastMoveElement.textContent = 'Stonefish_v2 is White. Stonefish_v3 is Black.';
+  lastMoveElement.textContent = 'Stonefish_v3 is White. Stonefish_v4 is Black.';
   renderBoard();
   updateWatchStatus();
   watchTimer = window.setTimeout(playWatchMove, 3000);
@@ -239,26 +241,23 @@ function startWatching() {
 
 function updateWatchStatus() {
   if (game.in_checkmate()) {
-    const winner = game.turn() === 'w' ? 'Stonefish_v3' : 'Stonefish_v2';
+    const winner = game.turn() === 'w' ? 'Stonefish_v4' : 'Stonefish_v3';
     statusElement.textContent = `Checkmate. ${winner} won the spectator game.`;
     stopWatching();
     return;
   }
-
-  if (game.in_draw() || game.game_over()) {
+  if (game.in_draw()) {
     statusElement.textContent = 'Spectator game ended in a draw.';
     stopWatching();
     return;
   }
-
-  const side = game.turn() === 'w' ? 'Stonefish_v2' : 'Stonefish_v3';
+  const side = game.turn() === 'w' ? 'Stonefish_v3' : 'Stonefish_v4';
   statusElement.textContent = `${side} to move.${game.in_check() ? ' Check!' : ''}`;
 }
 
 function playWatchMove() {
   if (!watchMode || game.game_over()) return updateWatchStatus();
-
-  const modelKey = game.turn() === 'w' ? 'v2' : 'v3';
+  const modelKey = game.turn() === 'w' ? 'v3' : 'v4';
   const model = models[modelKey];
   const move = model.getMove(game);
   const playedMove = playMoveOnGame(game, move);
@@ -288,16 +287,13 @@ function getSelectedTestModels() {
 function createStats(selectedKeys) {
   const overall = {};
   const matchups = {};
-
   for (const key of selectedKeys) overall[key] = { wins: 0, losses: 0, draws: 0, games: 0 };
   for (let i = 0; i < selectedKeys.length; i += 1) {
     for (let j = i + 1; j < selectedKeys.length; j += 1) {
-      const a = selectedKeys[i];
-      const b = selectedKeys[j];
+      const a = selectedKeys[i], b = selectedKeys[j];
       matchups[pairKey(a, b)] = { a, b, aWins: 0, bWins: 0, draws: 0, games: 0, targetGames: 0 };
     }
   }
-
   return { overall, matchups };
 }
 
@@ -309,10 +305,7 @@ function buildSchedule(selectedKeys, totalGames, stats) {
 
   const baseGames = Math.floor(totalGames / pairs.length);
   const remainder = totalGames % pairs.length;
-  const pairTargets = pairs.map((pair, index) => ({
-    pair,
-    count: baseGames + (index < remainder ? 1 : 0)
-  }));
+  const pairTargets = pairs.map((pair, index) => ({ pair, count: baseGames + (index < remainder ? 1 : 0) }));
 
   for (const entry of pairTargets) {
     const [a, b] = entry.pair;
@@ -321,7 +314,6 @@ function buildSchedule(selectedKeys, totalGames, stats) {
 
   const jobs = [];
   const maxRounds = Math.max(...pairTargets.map(entry => entry.count));
-
   for (let round = 0; round < maxRounds; round += 1) {
     pairTargets.forEach((entry, pairIndex) => {
       if (round >= entry.count) return;
@@ -330,7 +322,6 @@ function buildSchedule(selectedKeys, totalGames, stats) {
       jobs.push({ a, b, whiteModelKey: aIsWhite ? a : b, blackModelKey: aIsWhite ? b : a });
     });
   }
-
   return jobs;
 }
 
