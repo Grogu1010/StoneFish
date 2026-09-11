@@ -1,7 +1,7 @@
-name: v4-tuning
+name: v4-tuning-thresholds
 on:
   push:
-    branches: ['v4-tuning-*']
+    branches: ['v4-tuning-risk-prune']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-risk-prune.js
+      - run: node tools/v4-thresholds.js
