@@ -10,8 +10,8 @@ const STONEFISH_V3_OWN_VALUES = { p: 1, n: 3, b: 3.1, r: 5, q: 9, k: 1000 };
 const STONEFISH_V3_OPPONENT_VALUES = { p: 1, n: 3, b: 3.1, r: 5, q: 9, k: 1000 };
 const STONEFISH_V3_MATE_SCORE = 1000000;
 const STONEFISH_V3_CACHE = new Map();
-const STONEFISH_V3_RESPONSE_CACHE = new Map();
-const STONEFISH_V3_CACHE_LIMIT = 50000;
+const STONEFISH_V3_LEGAL_CACHE = new Map();
+const STONEFISH_V3_CACHE_LIMIT = 100000;
 
 function stonefishV3Signature(values) {
   return `p${values.p}|n${values.n}|b${values.b}|r${values.r}|q${values.q}`;
@@ -43,28 +43,38 @@ function stonefishV3Compact(move) {
   return { from: move.from, to: move.to, promotion: move.promotion || null };
 }
 
-function stonefishV3BestResponseGain(game, opponentValues) {
-  const key = `${stonefishV3PositionKey(game)}|gain:${stonefishV3Signature(opponentValues)}`;
-  const cached = STONEFISH_V3_RESPONSE_CACHE.get(key);
-  if (cached !== undefined) return cached;
+// Move generation is the expensive part of v3. Cache a value-independent summary
+// of every legal move so all v3 variants can reuse the same chess.js work.
+function stonefishV3LegalSummaries(game) {
+  const key = stonefishV3PositionKey(game);
+  const cached = STONEFISH_V3_LEGAL_CACHE.get(key);
+  if (cached) return cached;
 
-  const responses = game.moves({ verbose: true });
+  const summaries = game.moves({ verbose: true }).map(move => ({
+    from: move.from,
+    to: move.to,
+    promotion: move.promotion || null,
+    captured: move.captured || null,
+    mate: Boolean(move.san && move.san.endsWith('#'))
+  }));
+
+  stonefishV3TrimCache(STONEFISH_V3_LEGAL_CACHE);
+  STONEFISH_V3_LEGAL_CACHE.set(key, summaries);
+  return summaries;
+}
+
+function stonefishV3BestResponseGain(game, opponentValues) {
+  const responses = stonefishV3LegalSummaries(game);
   let best = 0;
 
   for (const response of responses) {
-    if (response.san && response.san.endsWith('#')) {
-      best = STONEFISH_V3_MATE_SCORE;
-      break;
-    }
+    if (response.mate) return STONEFISH_V3_MATE_SCORE;
+    if (!response.captured) continue;
 
-    if (response.captured) {
-      const gain = opponentValues[response.captured] || 0;
-      if (gain > best) best = gain;
-    }
+    const gain = opponentValues[response.captured] || 0;
+    if (gain > best) best = gain;
   }
 
-  stonefishV3TrimCache(STONEFISH_V3_RESPONSE_CACHE);
-  STONEFISH_V3_RESPONSE_CACHE.set(key, best);
   return best;
 }
 
@@ -73,10 +83,10 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
   const cached = STONEFISH_V3_CACHE.get(cacheKey);
   if (cached) return stonefishV3Random(cached);
 
-  const legalMoves = game.moves({ verbose: true });
+  const legalMoves = stonefishV3LegalSummaries(game);
   if (legalMoves.length === 0) return null;
 
-  const matingMoves = legalMoves.filter(move => move.san && move.san.endsWith('#'));
+  const matingMoves = legalMoves.filter(move => move.mate);
   if (matingMoves.length > 0) {
     const compact = matingMoves.map(stonefishV3Compact);
     stonefishV3TrimCache(STONEFISH_V3_CACHE);
@@ -90,14 +100,14 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
     const immediateGain = move.captured ? (opponentValues[move.captured] || 0) : 0;
     stonefishV3Play(game, move);
 
-    const replies = game.moves({ verbose: true });
+    const replies = stonefishV3LegalSummaries(game);
     let allowsMateInOne = false;
     let worstCaseScore = Infinity;
 
     if (replies.length === 0) worstCaseScore = immediateGain;
 
     for (const reply of replies) {
-      if (reply.san && reply.san.endsWith('#')) {
+      if (reply.mate) {
         allowsMateInOne = true;
         worstCaseScore = -STONEFISH_V3_MATE_SCORE;
         continue;
