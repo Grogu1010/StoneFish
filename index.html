@@ -57,7 +57,7 @@
           <details class="developer-menu">
             <summary>Developer menu</summary>
             <div class="developer-panel">
-              <p class="developer-note">Select any 2 or more models. The game count is per matchup, with colours alternating within each pairing.</p>
+              <p class="developer-note">Select any 2 or more models. The total game count is split as evenly as possible across every selected matchup, with colours balanced within each pairing.</p>
 
               <div id="test-models" class="model-checklist">
                 <label><input type="checkbox" name="test-model" value="v1" /> Stonefish_v1</label>
@@ -68,7 +68,7 @@
               </div>
 
               <div class="test-controls">
-                <label for="test-count">Games per matchup</label>
+                <label for="test-count">Total games</label>
                 <div class="test-row">
                   <input id="test-count" type="number" min="1" max="10000" step="1" value="100" />
                   <button id="run-test" class="secondary-button compact" type="button">Run round robin</button>
