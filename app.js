@@ -294,27 +294,43 @@ function createStats(selectedKeys) {
     for (let j = i + 1; j < selectedKeys.length; j += 1) {
       const a = selectedKeys[i];
       const b = selectedKeys[j];
-      matchups[pairKey(a, b)] = { a, b, aWins: 0, bWins: 0, draws: 0, games: 0 };
+      matchups[pairKey(a, b)] = { a, b, aWins: 0, bWins: 0, draws: 0, games: 0, targetGames: 0 };
     }
   }
 
   return { overall, matchups };
 }
 
-function buildSchedule(selectedKeys, gamesPerMatchup) {
+function buildSchedule(selectedKeys, totalGames, stats) {
   const pairs = [];
   for (let i = 0; i < selectedKeys.length; i += 1) {
     for (let j = i + 1; j < selectedKeys.length; j += 1) pairs.push([selectedKeys[i], selectedKeys[j]]);
   }
 
+  const baseGames = Math.floor(totalGames / pairs.length);
+  const remainder = totalGames % pairs.length;
+  const pairTargets = pairs.map((pair, index) => ({
+    pair,
+    count: baseGames + (index < remainder ? 1 : 0)
+  }));
+
+  for (const entry of pairTargets) {
+    const [a, b] = entry.pair;
+    stats.matchups[pairKey(a, b)].targetGames = entry.count;
+  }
+
   const jobs = [];
-  for (let round = 0; round < gamesPerMatchup; round += 1) {
-    pairs.forEach((pair, pairIndex) => {
-      const [a, b] = pair;
+  const maxRounds = Math.max(...pairTargets.map(entry => entry.count));
+
+  for (let round = 0; round < maxRounds; round += 1) {
+    pairTargets.forEach((entry, pairIndex) => {
+      if (round >= entry.count) return;
+      const [a, b] = entry.pair;
       const aIsWhite = (round + pairIndex) % 2 === 0;
       jobs.push({ a, b, whiteModelKey: aIsWhite ? a : b, blackModelKey: aIsWhite ? b : a });
     });
   }
+
   return jobs;
 }
 
@@ -339,18 +355,20 @@ function applyResult(stats, job, result) {
   else matchup.bWins += 1;
 }
 
-function renderRoundRobin(stats, selectedKeys, completed, total, gamesPerMatchup, done = false) {
+function renderRoundRobin(stats, selectedKeys, completed, total, done = false) {
   const overallRows = selectedKeys.map(key => {
     const s = stats.overall[key];
-    return `<div class="result-row"><strong>${models[key].name}</strong><span>${s.wins}W · ${s.losses}L · ${s.draws}D</span><span>W ${percent(s.wins, s.games)} · L ${percent(s.losses, s.games)} · D ${percent(s.draws, s.games)}</span></div>`;
+    return `<div class="result-row"><strong>${models[key].name}</strong><span>${s.wins}W · ${s.losses}L · ${s.draws}D · ${s.games} played</span><span>W ${percent(s.wins, s.games)} · L ${percent(s.losses, s.games)} · D ${percent(s.draws, s.games)}</span></div>`;
   }).join('');
 
   const matchupRows = Object.values(stats.matchups).map(m => {
-    return `<div class="matchup-row"><strong>${models[m.a].name} vs ${models[m.b].name}</strong><span>${m.games}/${gamesPerMatchup} games</span><span>${models[m.a].name}: ${m.aWins}W · ${m.draws}D · ${m.games - m.aWins - m.draws}L (${percent(m.aWins, m.games)} win)</span><span>${models[m.b].name}: ${m.bWins}W · ${m.draws}D · ${m.games - m.bWins - m.draws}L (${percent(m.bWins, m.games)} win)</span></div>`;
+    const aLosses = m.games - m.aWins - m.draws;
+    const bLosses = m.games - m.bWins - m.draws;
+    return `<div class="matchup-row"><strong>${models[m.a].name} vs ${models[m.b].name}</strong><span>${m.games}/${m.targetGames} games</span><span>${models[m.a].name}: ${m.aWins}W · ${aLosses}L · ${m.draws}D — W ${percent(m.aWins, m.games)} · D ${percent(m.draws, m.games)}</span><span>${models[m.b].name}: ${m.bWins}W · ${bLosses}L · ${m.draws}D — W ${percent(m.bWins, m.games)} · D ${percent(m.draws, m.games)}</span></div>`;
   }).join('');
 
   testResults.innerHTML = `
-    <div class="test-progress-heading">${done ? 'Final' : 'Running'} — ${completed} / ${total} games</div>
+    <div class="test-progress-heading">${done ? 'Final' : 'Running'} — ${completed} / ${total} total games</div>
     <div class="results-section-title">Overall</div>
     ${overallRows}
     <div class="results-section-title">Matchups</div>
@@ -395,14 +413,15 @@ async function runRoundRobinTest() {
 
   stopWatching();
   const requested = Number.parseInt(testCountInput.value, 10);
-  const gamesPerMatchup = Number.isFinite(requested) ? Math.max(1, Math.min(10000, requested)) : 100;
-  testCountInput.value = gamesPerMatchup;
-  const schedule = buildSchedule(selectedKeys, gamesPerMatchup);
+  const totalGames = Number.isFinite(requested) ? Math.max(1, Math.min(10000, requested)) : 100;
+  testCountInput.value = totalGames;
+
   const stats = createStats(selectedKeys);
+  const schedule = buildSchedule(selectedKeys, totalGames, stats);
 
   testing = true;
   setTestControlsDisabled(true);
-  renderRoundRobin(stats, selectedKeys, 0, schedule.length, gamesPerMatchup);
+  renderRoundRobin(stats, selectedKeys, 0, schedule.length);
 
   try {
     const worker = getTestWorker();
@@ -415,9 +434,9 @@ async function runRoundRobinTest() {
         maxPlies: 1000
       });
       applyResult(stats, job, result);
-      renderRoundRobin(stats, selectedKeys, i + 1, schedule.length, gamesPerMatchup);
+      renderRoundRobin(stats, selectedKeys, i + 1, schedule.length);
     }
-    renderRoundRobin(stats, selectedKeys, schedule.length, schedule.length, gamesPerMatchup, true);
+    renderRoundRobin(stats, selectedKeys, schedule.length, schedule.length, true);
   } catch (error) {
     testResults.textContent = `Test stopped: ${error.message}`;
     if (testWorker) testWorker.terminate();
