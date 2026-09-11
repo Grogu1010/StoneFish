@@ -1,7 +1,7 @@
-name: v4-tuning
+name: v4-tuning-ablation
 on:
   push:
-    branches: ['v4-tuning-*']
+    branches: ['v4-tuning-ablation']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-ablate.js
+      - name: Match browser 1000-ply limit
+        run: sed -i 's/max=500/max=1000/g; s/maxPlies = 500/maxPlies = 1000/g' tools/v4-tune.js
+      - run: node tools/v4-ablation.js
