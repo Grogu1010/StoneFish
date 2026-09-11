@@ -14,6 +14,9 @@ const STONEFISH_PIECE_VALUES = {
   k: 1000
 };
 
+const STONEFISH_V2_CACHE = new Map();
+const STONEFISH_V2_CACHE_LIMIT = 50000;
+
 function playStonefishCandidate(game, move) {
   return game.move({
     from: move.from,
@@ -22,79 +25,103 @@ function playStonefishCandidate(game, move) {
   });
 }
 
-// Analyse all opponent replies in one pass. This avoids generating the same
-// legal-move list twice for every candidate move during large test runs.
-function analyseOpponentReplies(game, pieceValues) {
-  const replies = game.moves({ verbose: true });
-  let allowsMateInOne = false;
-  let maxCaptureValue = 0;
+function stonefishValueSignature(pieceValues) {
+  return `p${pieceValues.p}|n${pieceValues.n}|b${pieceValues.b}|r${pieceValues.r}|q${pieceValues.q}`;
+}
 
-  for (const reply of replies) {
-    if (reply.captured) {
-      const captureValue = pieceValues[reply.captured] || 0;
-      if (captureValue > maxCaptureValue) maxCaptureValue = captureValue;
-    }
+function stonefishPositionKey(game, pieceValues) {
+  // Board, side to move, castling rights and en-passant square determine legal
+  // moves. Halfmove/fullmove counters do not affect this engine's choice.
+  const fenParts = game.fen().split(' ');
+  return `${fenParts.slice(0, 4).join(' ')}|${stonefishValueSignature(pieceValues)}`;
+}
 
-    // Once mate-in-1 is found we still continue scanning captures, because the
-    // capture-risk score is needed if every legal candidate allows mate.
-    if (!allowsMateInOne) {
-      playStonefishCandidate(game, reply);
-      allowsMateInOne = game.in_checkmate();
-      game.undo();
-    }
+function cacheStonefishBestMoves(key, moves) {
+  if (STONEFISH_V2_CACHE.size >= STONEFISH_V2_CACHE_LIMIT) {
+    const oldestKey = STONEFISH_V2_CACHE.keys().next().value;
+    STONEFISH_V2_CACHE.delete(oldestKey);
   }
 
-  return { allowsMateInOne, maxCaptureValue };
+  STONEFISH_V2_CACHE.set(key, moves.map(move => ({
+    from: move.from,
+    to: move.to,
+    promotion: move.promotion || null
+  })));
+}
+
+function chooseRandomStonefishMove(moves) {
+  if (!moves || moves.length === 0) return null;
+  return moves[Math.floor(Math.random() * moves.length)];
 }
 
 function getStonefishV2MoveWithValues(game, pieceValues) {
-  const legalMoves = game.moves({ verbose: true });
-  if (legalMoves.length === 0) return null;
+  const cacheKey = stonefishPositionKey(game, pieceValues);
+  const cachedMoves = STONEFISH_V2_CACHE.get(cacheKey);
 
-  // Reuse one analysis board instead of constructing a new Chess object for
-  // every branch.
-  const analysisGame = new Chess(game.fen());
-  const matingMoves = [];
-
-  for (const move of legalMoves) {
-    playStonefishCandidate(analysisGame, move);
-    const isMate = analysisGame.in_checkmate();
-    analysisGame.undo();
-    if (isMate) matingMoves.push(move);
+  if (cachedMoves) {
+    return chooseRandomStonefishMove(cachedMoves);
   }
+
+  const legalMoves = game.moves({ verbose: true });
+
+  if (legalMoves.length === 0) {
+    return null;
+  }
+
+  // chess.js has already calculated SAN for each legal move. A trailing '#'
+  // means that move is checkmate, so no extra simulation is necessary here.
+  const matingMoves = legalMoves.filter(move => move.san && move.san.endsWith('#'));
 
   if (matingMoves.length > 0) {
-    return matingMoves[Math.floor(Math.random() * matingMoves.length)];
+    cacheStonefishBestMoves(cacheKey, matingMoves);
+    return chooseRandomStonefishMove(matingMoves);
   }
 
+  const analysisGame = new Chess(game.fen());
   const scoredMoves = [];
-  let hasSafeMove = false;
 
   for (const move of legalMoves) {
     playStonefishCandidate(analysisGame, move);
-    const replyAnalysis = analyseOpponentReplies(analysisGame, pieceValues);
-    analysisGame.undo();
 
-    if (!replyAnalysis.allowsMateInOne) hasSafeMove = true;
-    scoredMoves.push({ move, ...replyAnalysis });
+    // One reply generation gives us everything v2 needs: SAN identifies mate
+    // in one, and `captured` identifies the value at risk.
+    const replies = analysisGame.moves({ verbose: true });
+    let allowsMateInOne = false;
+    let maxCaptureValue = 0;
+
+    for (const reply of replies) {
+      if (reply.san && reply.san.endsWith('#')) {
+        allowsMateInOne = true;
+      }
+
+      if (reply.captured) {
+        const captureValue = pieceValues[reply.captured] || 0;
+        if (captureValue > maxCaptureValue) {
+          maxCaptureValue = captureValue;
+        }
+      }
+    }
+
+    scoredMoves.push({ move, allowsMateInOne, maxCaptureValue });
+    analysisGame.undo();
   }
 
+  const safeMoves = scoredMoves.filter(candidate => !candidate.allowsMateInOne);
+  const candidates = safeMoves.length > 0 ? safeMoves : scoredMoves;
+
   let lowestMaxCapture = Infinity;
-  const bestMoves = [];
-
-  for (const candidate of scoredMoves) {
-    if (hasSafeMove && candidate.allowsMateInOne) continue;
-
+  for (const candidate of candidates) {
     if (candidate.maxCaptureValue < lowestMaxCapture) {
       lowestMaxCapture = candidate.maxCaptureValue;
-      bestMoves.length = 0;
-      bestMoves.push(candidate.move);
-    } else if (candidate.maxCaptureValue === lowestMaxCapture) {
-      bestMoves.push(candidate.move);
     }
   }
 
-  return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+  const bestMoves = candidates
+    .filter(candidate => candidate.maxCaptureValue === lowestMaxCapture)
+    .map(candidate => candidate.move);
+
+  cacheStonefishBestMoves(cacheKey, bestMoves);
+  return chooseRandomStonefishMove(bestMoves);
 }
 
 function getStonefishV2Move(game) {
