@@ -1,7 +1,7 @@
-name: v4-tuning-samedepth-rep-combo
+name: v4-tuning-samedepth-trade-exposure
 on:
   push:
-    branches: ['v4-tuning-samedepth-rep-combo']
+    branches: ['v4-tuning-samedepth-trade-exposure']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-samedepth-rep-combo.js
+      - run: node tools/v4-samedepth-trade-exposure.js
