@@ -1,11 +1,11 @@
-name: v4-tuning
+name: v4-lossdoctor
 on:
   push:
-    branches: ['v4-tuning-*']
+    branches: ['v4-lossdoctor-work']
   workflow_dispatch:
 
 jobs:
-  tune:
+  diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -13,6 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Match browser 1000-ply limit
-        run: sed -i 's/max=500/max=1000/g; s/maxPlies = 500/maxPlies = 1000/g' tools/v4-tune.js
-      - run: node tools/v4-tune.js
+      - run: node tools/v4-lossdoctor.js
