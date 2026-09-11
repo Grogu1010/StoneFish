@@ -53,30 +53,38 @@
           <button id="watch-game" class="secondary-button" type="button">Watch v1 vs v2</button>
           <p class="helper-text">Spectator games make one move every 3 seconds.</p>
 
-          <div class="test-controls">
-            <label for="test-model-a">Model A</label>
-            <select id="test-model-a" class="model-select" aria-label="Choose test model A">
-              <option value="v2" selected>Stonefish_v2</option>
-              <option value="v1">Stonefish_v1</option>
-              <option value="v2test1">Stonefish_v2(testunit1) — bishop 3.1</option>
-              <option value="v2test2">Stonefish_v2(testunit2) — knight 3.1</option>
-            </select>
+          <details class="developer-menu">
+            <summary>Developer menu</summary>
+            <div class="developer-panel">
+              <p class="developer-note">Test-only models live here and never appear in normal play.</p>
 
-            <label for="test-model-b">Model B</label>
-            <select id="test-model-b" class="model-select" aria-label="Choose test model B">
-              <option value="v1" selected>Stonefish_v1</option>
-              <option value="v2">Stonefish_v2</option>
-              <option value="v2test1">Stonefish_v2(testunit1) — bishop 3.1</option>
-              <option value="v2test2">Stonefish_v2(testunit2) — knight 3.1</option>
-            </select>
+              <div class="test-controls">
+                <label for="test-model-a">Model A</label>
+                <select id="test-model-a" class="model-select" aria-label="Choose test model A">
+                  <option value="v2" selected>Stonefish_v2</option>
+                  <option value="v1">Stonefish_v1</option>
+                  <option value="v2test1">Stonefish_v2(testunit1) — bishop 3.1</option>
+                  <option value="v2test2">Stonefish_v2(testunit2) — knight 3.1</option>
+                </select>
 
-            <label for="test-count">Head-to-head games</label>
-            <div class="test-row">
-              <input id="test-count" type="number" min="1" max="10000" step="1" value="20" />
-              <button id="run-test" class="secondary-button compact" type="button">Run test</button>
+                <label for="test-model-b">Model B</label>
+                <select id="test-model-b" class="model-select" aria-label="Choose test model B">
+                  <option value="v1" selected>Stonefish_v1</option>
+                  <option value="v2">Stonefish_v2</option>
+                  <option value="v2test1">Stonefish_v2(testunit1) — bishop 3.1</option>
+                  <option value="v2test2">Stonefish_v2(testunit2) — knight 3.1</option>
+                </select>
+
+                <label for="test-count">Head-to-head games</label>
+                <div class="test-row">
+                  <input id="test-count" type="number" min="1" max="10000" step="1" value="20" />
+                  <button id="run-test" class="secondary-button compact" type="button">Run test</button>
+                </div>
+              </div>
+
+              <div id="test-results" class="test-results" aria-live="polite">Tests alternate White and Black every round.</div>
             </div>
-          </div>
-          <p id="test-results" class="test-results">Tests alternate White and Black every round.</p>
+          </details>
         </div>
 
         <button id="new-game" class="new-game-button" type="button">New game</button>
