@@ -3,14 +3,32 @@ importScripts(
   './Stonefish_v1.js',
   './Stonefish_v2.js',
   './Stonefish_v3.js',
-  './Stonefish_v4.js'
+  './Stonefish_v4.js',
+  './Stonefish_v4_5.js',
+  './Stonefish_v4_5_testunit1.js',
+  './Stonefish_v4_5_testunit2.js',
+  './Stonefish_v4_5_testunit3.js',
+  './Stonefish_v4_5_testunit4.js',
+  './Stonefish_v4_5_testunit5.js',
+  './Stonefish_v4_5_testunit6.js',
+  './Stonefish_v4_5_testunit7.js',
+  './Stonefish_v4_5_testunit8.js'
 );
 
 const workerModels = {
   v1: getStonefishMove,
   v2: getStonefishV2Move,
   v3: getStonefishV3Move,
-  v4: getStonefishV4Move
+  v4: getStonefishV4Move,
+  v45: getStonefishV45Move,
+  v45t1: getStonefishV45Testunit1Move,
+  v45t2: getStonefishV45Testunit2Move,
+  v45t3: getStonefishV45Testunit3Move,
+  v45t4: getStonefishV45Testunit4Move,
+  v45t5: getStonefishV45Testunit5Move,
+  v45t6: getStonefishV45Testunit6Move,
+  v45t7: getStonefishV45Testunit7Move,
+  v45t8: getStonefishV45Testunit8Move
 };
 
 function commitChosenMove(game, move) {
