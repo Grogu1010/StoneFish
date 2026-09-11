@@ -1,7 +1,7 @@
-name: v4-tuning-samedepth-M-repetition
+name: v4-tuning-samedepth-rep-conditional
 on:
   push:
-    branches: ['v4-tuning-samedepth-M-repetition']
+    branches: ['v4-tuning-samedepth-rep-conditional']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-samedepth-M-repetition.js
+      - run: node tools/v4-samedepth-rep-conditional.js
