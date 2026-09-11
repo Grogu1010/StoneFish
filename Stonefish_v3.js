@@ -107,29 +107,13 @@ function stonefishV3IsCurrentPositionMate(game, legalMoves) {
   return legalMoves.length === 0 && game.in_check();
 }
 
-function stonefishV3BestResponseGain(game, opponentValues) {
-  const responses = stonefishV3LegalSummaries(game);
-  if (stonefishV3IsCurrentPositionMate(game, responses)) return STONEFISH_V3_MATE_SCORE;
-
-  let best = 0;
-  for (const response of responses) {
-    const gain = stonefishV3Value(game, response.captured, opponentValues);
-    if (gain > best) best = gain;
-
-    // Only checking moves can be mate. Test mate lazily instead of probing
-    // every legal response up front.
-    stonefishV3Play(game, response);
-    const givesCheck = game.in_check();
-    if (givesCheck) {
-      const replies = stonefishV3LegalSummaries(game);
-      if (replies.length === 0) {
-        stonefishV3Undo(game);
-        return STONEFISH_V3_MATE_SCORE;
-      }
-    }
-    stonefishV3Undo(game);
-  }
-  return best;
+function stonefishV3OrderedMoves(game, moves, values, descending = true) {
+  // Sorting a shallow copy changes search order only, never the evaluated score.
+  return moves.slice().sort((a, b) => {
+    const av = stonefishV3Value(game, a.captured, values);
+    const bv = stonefishV3Value(game, b.captured, values);
+    return descending ? bv - av : av - bv;
+  });
 }
 
 function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
@@ -140,29 +124,31 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
   const legalMoves = stonefishV3LegalSummaries(game);
   if (legalMoves.length === 0) return null;
 
+  // Try captures first. Strong candidate scores discovered early make the
+  // exact minimax pruning below much more effective.
+  const orderedMoves = stonefishV3OrderedMoves(game, legalMoves, opponentValues, true);
   const scored = [];
+  const matingMoves = [];
   let bestCompletedScore = -Infinity;
 
-  for (const move of legalMoves) {
+  for (const move of orderedMoves) {
     const immediateGain = stonefishV3Value(game, move.captured, opponentValues);
     stonefishV3Play(game, move);
 
     const replies = stonefishV3LegalSummaries(game);
-
-    // We already generated the opponent's legal moves, so mate-in-one can be
-    // identified directly without re-applying the candidate and searching again.
     if (stonefishV3IsCurrentPositionMate(game, replies)) {
       stonefishV3Undo(game);
-      const compact = [stonefishV3Compact(game, move)];
-      stonefishV3TrimCache(STONEFISH_V3_CACHE);
-      STONEFISH_V3_CACHE.set(cacheKey, compact);
-      return compact[0];
+      matingMoves.push(move);
+      continue;
     }
 
+    // The opponent tries its largest captures first. If a move is bad, this
+    // tends to prove it quickly and lets us skip the rest of the replies.
+    const orderedReplies = stonefishV3OrderedMoves(game, replies, ownValues, true);
     let allowsMateInOne = false;
-    let worstCaseScore = replies.length ? Infinity : immediateGain;
+    let worstCaseScore = orderedReplies.length ? Infinity : immediateGain;
 
-    for (const reply of replies) {
+    for (const reply of orderedReplies) {
       const opponentGain = stonefishV3Value(game, reply.captured, ownValues);
       stonefishV3Play(game, reply);
 
@@ -174,13 +160,17 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
         break;
       }
 
+      // Our best material response is normally found quickly by trying the
+      // largest available captures first.
+      const orderedResponses = stonefishV3OrderedMoves(game, ourResponses, opponentValues, true);
       let ourBestResponseGain = 0;
-      for (const response of ourResponses) {
+
+      for (const response of orderedResponses) {
         const gain = stonefishV3Value(game, response.captured, opponentValues);
         if (gain > ourBestResponseGain) ourBestResponseGain = gain;
 
-        // Mate on our response outranks all material. Only probe moves that
-        // actually give check; most moves therefore need no deeper generation.
+        // Mate on our third ply outranks material. Only checking moves require
+        // one more legal-move generation to establish checkmate.
         stonefishV3Play(game, response);
         if (game.in_check()) {
           const afterResponse = stonefishV3LegalSummaries(game);
@@ -198,10 +188,9 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
       const score = immediateGain - opponentGain + ourBestResponseGain;
       if (score < worstCaseScore) worstCaseScore = score;
 
-      // The opponent is minimising our score. Once this candidate is already
-      // worse than the best fully-evaluated safe candidate, further replies can
-      // only keep it equal or make it worse, so the remainder cannot affect the
-      // chosen move.
+      // Exact minimax pruning: the opponent can already force this score. More
+      // replies can only lower it further, so a candidate already below the
+      // best completed safe candidate cannot become a winner or a tie.
       if (!allowsMateInOne && bestCompletedScore > -Infinity && worstCaseScore < bestCompletedScore) {
         break;
       }
@@ -213,6 +202,13 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
     if (!allowsMateInOne && worstCaseScore > bestCompletedScore) {
       bestCompletedScore = worstCaseScore;
     }
+  }
+
+  if (matingMoves.length) {
+    const bestMates = matingMoves.map(move => stonefishV3Compact(game, move));
+    stonefishV3TrimCache(STONEFISH_V3_CACHE);
+    STONEFISH_V3_CACHE.set(cacheKey, bestMates);
+    return stonefishV3Random(bestMates);
   }
 
   const safe = scored.filter(candidate => !candidate.allowsMateInOne);
