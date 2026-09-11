@@ -36,21 +36,21 @@ function opponentHasMateInOne(game) {
   });
 }
 
-function highestOpponentCaptureValue(game) {
+function highestOpponentCaptureValue(game, pieceValues) {
   const replies = game.moves({ verbose: true });
   let highestValue = 0;
 
   for (const reply of replies) {
     if (!reply.captured) continue;
 
-    const captureValue = STONEFISH_PIECE_VALUES[reply.captured] || 0;
+    const captureValue = pieceValues[reply.captured] || 0;
     highestValue = Math.max(highestValue, captureValue);
   }
 
   return highestValue;
 }
 
-function getStonefishV2Move(game) {
+function getStonefishV2MoveWithValues(game, pieceValues) {
   const legalMoves = game.moves({ verbose: true });
 
   if (legalMoves.length === 0) {
@@ -75,7 +75,7 @@ function getStonefishV2Move(game) {
     return {
       move,
       allowsMateInOne: opponentHasMateInOne(testGame),
-      maxCaptureValue: highestOpponentCaptureValue(testGame)
+      maxCaptureValue: highestOpponentCaptureValue(testGame, pieceValues)
     };
   });
 
@@ -88,4 +88,8 @@ function getStonefishV2Move(game) {
   const choice = bestMoves[Math.floor(Math.random() * bestMoves.length)];
 
   return choice.move;
+}
+
+function getStonefishV2Move(game) {
+  return getStonefishV2MoveWithValues(game, STONEFISH_PIECE_VALUES);
 }
