@@ -1,13 +1,13 @@
 // Stonefish_v4
 // Built directly on Stonefish_v3. v3 decides mate safety and three-ply material first.
-// Only moves tied by v3 reach these positional tie-breakers, in this order:
+// Only moves tied by v3 reach these positional tie-breakers, in this tested order:
 // 1. Give check.
-// 2. Avoid king suffocation, strongly preferring castling.
-// 3. Keep protection around the king.
-// 4. Keep many legal movement options.
+// 2. Keep many legal movement options.
+// 3. Avoid king suffocation, strongly preferring castling.
+// 4. Keep protection around the king.
 // 5. Control the centre.
 
-const STONEFISH_V4_ORDER = ['check', 'kingFreedom', 'kingProtection', 'mobility', 'center'];
+const STONEFISH_V4_ORDER = ['check', 'mobility', 'kingFreedom', 'kingProtection', 'center'];
 const STONEFISH_V4_CENTER = [27, 28, 35, 36]; // d4, e4, d5, e5
 
 function stonefishV4KingFreedom(game, side) {
