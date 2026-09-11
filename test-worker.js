@@ -15,6 +15,28 @@ const workerModels = {
   v3test2: getStonefishV3TestUnit2Move
 };
 
+function commitChosenMove(game, move) {
+  // Bot moves already carry the raw legal move. Commit it directly instead of
+  // regenerating every legal move just to find the same move again.
+  if (move && move._raw) {
+    game._applyRaw(move._raw, true);
+    return;
+  }
+
+  const played = game.move({
+    from: move.from,
+    to: move.to,
+    promotion: move.promotion || 'q'
+  });
+  if (!played) throw new Error(`Engine returned illegal move: ${move.from}-${move.to}`);
+}
+
+function cheapDrawReached(game) {
+  if (game.halfmove >= 100) return true;
+  if (game._insufficientMaterial()) return true;
+  return (game.positionCounts.get(game.fastPositionKey()) || 0) >= 3;
+}
+
 function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
   const game = new Chess();
   let plies = 0;
@@ -29,15 +51,9 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
       return game.in_check() ? (game.turn() === 'w' ? 'black' : 'white') : 'draw';
     }
 
-    const played = game.move({
-      from: move.from,
-      to: move.to,
-      promotion: move.promotion || 'q'
-    });
-    if (!played) throw new Error(`Engine returned illegal move: ${move.from}-${move.to}`);
+    commitChosenMove(game, move);
     plies += 1;
-
-    if (game.in_draw()) return 'draw';
+    if (cheapDrawReached(game)) return 'draw';
   }
 
   return 'draw';
