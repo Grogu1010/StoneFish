@@ -1,7 +1,7 @@
-name: v4-tuning-fourply-safety
+name: v4-tuning-mobility-guard
 on:
   push:
-    branches: ['v4-tuning-fourply-safety']
+    branches: ['v4-tuning-mobility-guard']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-fourply-safety.js
+      - run: node tools/v4-mobility-guard.js
