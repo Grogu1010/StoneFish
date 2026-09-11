@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Play chess against Stonefish_v1, a bot that picks a completely random legal move." />
+  <title>StoneFish — Play Stonefish_v1</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero">
+      <p class="eyebrow">STONEFISH CHESS LAB</p>
+      <h1>Play <span>Stonefish_v1</span></h1>
+      <p class="subtitle">The least calculating chess engine on the internet. It sees every legal move. Then it picks one at random.</p>
+    </section>
+
+    <section class="game-layout" aria-label="Chess game against Stonefish_v1">
+      <div class="board-panel">
+        <div class="board-frame">
+          <div id="board" class="board" role="grid" aria-label="Chess board"></div>
+        </div>
+      </div>
+
+      <aside class="game-panel">
+        <div class="bot-card">
+          <div class="bot-avatar">S</div>
+          <div>
+            <p class="bot-label">YOUR OPPONENT</p>
+            <h2>Stonefish_v1</h2>
+            <p class="bot-trait"><span class="status-dot"></span> Random-move engine</p>
+          </div>
+        </div>
+
+        <div class="status-card">
+          <p class="section-label">GAME STATUS</p>
+          <p id="status" class="status-text">Your move. You are White.</p>
+          <p id="last-move" class="last-move">Stonefish is waiting.</p>
+        </div>
+
+        <div class="legend-card">
+          <p class="section-label">HOW IT THINKS</p>
+          <div class="logic-line"><span>1</span><p>Find every legal move</p></div>
+          <div class="logic-line"><span>2</span><p>Pick one completely at random</p></div>
+          <div class="logic-line"><span>3</span><p>Play it with zero regrets</p></div>
+        </div>
+
+        <button id="new-game" class="new-game-button" type="button">New game</button>
+      </aside>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <script src="Stonefish_v1.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
