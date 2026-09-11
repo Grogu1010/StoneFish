@@ -12,7 +12,7 @@
     <section class="hero">
       <p class="eyebrow">STONEFISH CHESS LAB</p>
       <h1>Play <span id="hero-model">Stonefish_v4</span></h1>
-      <p id="hero-subtitle" class="subtitle">Stonefish_v3 material logic, then positional tie-breakers for checks, king safety, mobility, and centre control.</p>
+      <p id="hero-subtitle" class="subtitle">Stonefish_v3 material logic, then tested positional tie-breakers for checks, mobility, king safety, and centre control.</p>
     </section>
 
     <section class="game-layout" aria-label="StoneFish chess lab">
@@ -63,12 +63,8 @@
               <div id="test-models" class="model-checklist">
                 <label><input type="checkbox" name="test-model" value="v1" /> Stonefish_v1</label>
                 <label><input type="checkbox" name="test-model" value="v2" /> Stonefish_v2</label>
-                <label><input type="checkbox" name="test-model" value="v3" /> Stonefish_v3</label>
-                <label><input type="checkbox" name="test-model" value="v4" checked /> Stonefish_v4 — exact proposed order</label>
-                <label><input type="checkbox" name="test-model" value="v4test1" checked /> Stonefish_v4(testunit1) — king protection before king freedom</label>
-                <label><input type="checkbox" name="test-model" value="v4test2" checked /> Stonefish_v4(testunit2) — mobility before king safety</label>
-                <label><input type="checkbox" name="test-model" value="v4test3" checked /> Stonefish_v4(testunit3) — centre control before mobility/king safety</label>
-                <label><input type="checkbox" name="test-model" value="v4test4" checked /> Stonefish_v4(testunit4) — king safety before checks</label>
+                <label><input type="checkbox" name="test-model" value="v3" checked /> Stonefish_v3</label>
+                <label><input type="checkbox" name="test-model" value="v4" checked /> Stonefish_v4</label>
               </div>
 
               <div class="test-controls">
@@ -94,10 +90,6 @@
   <script src="Stonefish_v2.js"></script>
   <script src="Stonefish_v3.js"></script>
   <script src="Stonefish_v4.js"></script>
-  <script src="Stonefish_v4_testunit1.js"></script>
-  <script src="Stonefish_v4_testunit2.js"></script>
-  <script src="Stonefish_v4_testunit3.js"></script>
-  <script src="Stonefish_v4_testunit4.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
