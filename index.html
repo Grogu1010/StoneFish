@@ -12,7 +12,7 @@
     <section class="hero">
       <p class="eyebrow">STONEFISH CHESS LAB</p>
       <h1>Play <span id="hero-model">Stonefish_v4</span></h1>
-      <p id="hero-subtitle" class="subtitle">Stonefish_v3 material logic, then tested positional tie-breakers for checks, mobility, king safety, and centre control.</p>
+      <p id="hero-subtitle" class="subtitle">Stonefish_v3 material logic, then tested same-depth positional tie-breakers with development, safety, mobility, and selective repetition avoidance.</p>
     </section>
 
     <section class="game-layout" aria-label="StoneFish chess lab">
@@ -91,5 +91,18 @@
   <script src="Stonefish_v3.js"></script>
   <script src="Stonefish_v4.js"></script>
   <script src="app.js"></script>
+  <script>
+    models.v4.subtitle = 'Stonefish_v3 decides tactical/material equality first; tied moves use the tested same-depth v4 ordering with development, safety, mobility, and selective repetition avoidance.';
+    models.v4.logic = [
+      'Take mate in 1 and preserve v3 tactical/material safety',
+      'Prefer stronger promotions and immediate castling',
+      'Develop minor pieces before positional tie-breaks',
+      'Avoid leaving high-value own pieces hanging',
+      'When ahead by 2.5+ material, avoid cycling back to an already-seen position',
+      'Prefer more legal movement options',
+      'Use queen discipline, repetition, 50-move, endgame, support, king, centre, pawn, rook, and control tie-breaks'
+    ];
+    if (selectedModel === 'v4') updateModelUI();
+  </script>
 </body>
 </html>
