@@ -1,7 +1,7 @@
-name: v4-tuning-samedepth-rep-fifty
+name: v4-tuning-samedepth-best-paired
 on:
   push:
-    branches: ['v4-tuning-samedepth-rep-fifty']
+    branches: ['v4-tuning-samedepth-best-paired']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-samedepth-rep-fifty.js
+      - run: node tools/v4-samedepth-best-paired.js
