@@ -1,7 +1,7 @@
-name: v4-tuning-samedepth-rep-priority-fifty
+name: v4-tuning-samedepth-conversion-stack
 on:
   push:
-    branches: ['v4-tuning-samedepth-rep-priority-fifty']
+    branches: ['v4-tuning-samedepth-conversion-stack']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-samedepth-rep-priority-fifty.js
+      - run: node tools/v4-samedepth-conversion-stack.js
