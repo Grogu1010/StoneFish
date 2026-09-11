@@ -224,7 +224,8 @@ input { font: inherit; }
 .bot-trait,
 .last-move,
 .helper-text,
-.test-results {
+.test-results,
+.developer-note {
   margin: 0;
   color: var(--muted);
   font-size: 0.88rem;
@@ -320,19 +321,48 @@ input { font: inherit; }
 
 .secondary-button:disabled,
 .new-game-button:disabled,
-.model-select:disabled {
+.model-select:disabled,
+.test-row input:disabled {
   cursor: not-allowed;
   opacity: 0.5;
   transform: none;
 }
 
+.developer-menu {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.developer-menu summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  user-select: none;
+}
+
+.developer-menu[open] summary {
+  color: var(--accent);
+}
+
+.developer-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(8, 11, 16, 0.34);
+}
+
 .test-controls {
   display: grid;
   gap: 7px;
-  padding-top: 5px;
 }
 
 .test-controls label {
+  margin-top: 4px;
   color: #d9e0e9;
   font-size: 0.82rem;
   font-weight: 700;
@@ -351,6 +381,18 @@ input { font: inherit; }
 
 .test-results {
   min-height: 2.6em;
+  display: grid;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.test-progress-heading {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.test-results strong {
+  color: var(--text);
 }
 
 .new-game-button {
