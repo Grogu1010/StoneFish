@@ -10,11 +10,10 @@ const heroSubtitle = document.getElementById('hero-subtitle');
 const botTrait = document.getElementById('bot-trait');
 const logicLines = document.getElementById('logic-lines');
 const watchButton = document.getElementById('watch-game');
-const testModelASelect = document.getElementById('test-model-a');
-const testModelBSelect = document.getElementById('test-model-b');
 const testCountInput = document.getElementById('test-count');
 const runTestButton = document.getElementById('run-test');
 const testResults = document.getElementById('test-results');
+const testModelCheckboxes = [...document.querySelectorAll('input[name="test-model"]')];
 
 const pieceSymbols = {
   wp: '♙', wn: '♘', wb: '♗', wr: '♖', wq: '♕', wk: '♔',
@@ -25,25 +24,32 @@ const models = {
   v1: {
     name: 'Stonefish_v1',
     trait: 'Random-move engine',
-    subtitle: 'The least calculating chess engine on the internet. It sees every legal move. Then it picks one at random.',
-    logic: ['Find every legal move', 'Pick one completely at random', 'Play it with zero regrets'],
+    subtitle: 'It sees every legal move and picks one completely at random.',
+    logic: ['Find every legal move', 'Pick one at random', 'Play it'],
     getMove: getStonefishMove
   },
   v2: {
     name: 'Stonefish_v2',
     trait: 'One-ply defensive engine',
-    subtitle: 'A one-ply survivalist: takes mate in one, avoids giving mate in one, then minimises the biggest capture you can make next.',
-    logic: ['Take mate in 1 whenever possible', 'Avoid allowing mate in 1 when possible', 'Minimise the opponent’s biggest next capture'],
+    subtitle: 'Takes mate in one, avoids giving mate in one, then minimises the biggest capture available to the opponent next move.',
+    logic: ['Take mate in 1', 'Avoid allowing mate in 1', 'Minimise the opponent’s biggest next capture'],
     getMove: getStonefishV2Move
   },
-  v2test1: {
-    name: 'Stonefish_v2(testunit1)',
-    getMove: getStonefishV2TestUnit1Move,
+  v3: {
+    name: 'Stonefish_v3',
+    trait: 'Three-ply material engine',
+    subtitle: 'Scores material across its move, the opponent’s best reply, and its own best response. Bishops are worth 3.1.',
+    logic: ['Take mate in 1 and avoid mate in 1', 'Score material won now minus the opponent’s reply', 'Add the best material response and maximise the worst case'],
+    getMove: getStonefishV3Move
+  },
+  v3test1: {
+    name: 'Stonefish_v3(testunit1)',
+    getMove: getStonefishV3TestUnit1Move,
     testOnly: true
   },
-  v2test2: {
-    name: 'Stonefish_v2(testunit2)',
-    getMove: getStonefishV2TestUnit2Move,
+  v3test2: {
+    name: 'Stonefish_v3(testunit2)',
+    getMove: getStonefishV3TestUnit2Move,
     testOnly: true
   }
 };
@@ -52,7 +58,7 @@ let selectedSquare = null;
 let legalTargets = [];
 let botThinking = false;
 let lastMoveSquares = [];
-let selectedModel = 'v2';
+let selectedModel = 'v3';
 let watchTimer = null;
 let watchMode = false;
 let testing = false;
@@ -67,7 +73,6 @@ function renderBoard() {
       const square = `${file}${rank}`;
       const piece = game.get(square);
       const squareButton = document.createElement('button');
-
       squareButton.type = 'button';
       squareButton.className = `square ${(rank + fileIndex) % 2 === 0 ? 'light' : 'dark'}`;
       squareButton.dataset.square = square;
@@ -99,7 +104,6 @@ function describeSquare(square, piece) {
 
 function handleSquareClick(square) {
   if (watchMode || testing || botThinking || game.game_over() || game.turn() !== 'w') return;
-
   const piece = game.get(square);
 
   if (!selectedSquare) {
@@ -166,10 +170,7 @@ function makeSelectedBotMove() {
 }
 
 function updateStatus() {
-  if (watchMode) {
-    updateWatchStatus();
-    return;
-  }
+  if (watchMode) return updateWatchStatus();
 
   if (game.in_checkmate()) {
     const winner = game.turn() === 'w' ? models[selectedModel].name : 'You';
@@ -179,11 +180,6 @@ function updateStatus() {
 
   if (game.in_draw()) {
     statusElement.textContent = 'Draw.';
-    return;
-  }
-
-  if (game.game_over()) {
-    statusElement.textContent = 'Game over.';
     return;
   }
 
@@ -205,11 +201,9 @@ function updateModelUI() {
 
 function stopWatching() {
   watchMode = false;
-  if (watchTimer) {
-    window.clearTimeout(watchTimer);
-    watchTimer = null;
-  }
-  watchButton.textContent = 'Watch v1 vs v2';
+  if (watchTimer) window.clearTimeout(watchTimer);
+  watchTimer = null;
+  watchButton.textContent = 'Watch v2 vs v3';
 }
 
 function resetGame() {
@@ -219,7 +213,6 @@ function resetGame() {
   legalTargets = [];
   lastMoveSquares = [];
   botThinking = false;
-  statusElement.textContent = 'Your move. You are White.';
   lastMoveElement.textContent = `${models[selectedModel].name} is waiting.`;
   renderBoard();
   updateStatus();
@@ -227,7 +220,6 @@ function resetGame() {
 
 function startWatching() {
   if (testing) return;
-
   if (watchMode) {
     stopWatching();
     statusElement.textContent = 'Spectator game paused.';
@@ -237,10 +229,9 @@ function startWatching() {
   game.reset();
   clearSelection();
   lastMoveSquares = [];
-  botThinking = false;
   watchMode = true;
   watchButton.textContent = 'Stop watching';
-  lastMoveElement.textContent = 'Stonefish_v1 is White. Stonefish_v2 is Black.';
+  lastMoveElement.textContent = 'Stonefish_v2 is White. Stonefish_v3 is Black.';
   renderBoard();
   updateWatchStatus();
   watchTimer = window.setTimeout(playWatchMove, 3000);
@@ -248,7 +239,7 @@ function startWatching() {
 
 function updateWatchStatus() {
   if (game.in_checkmate()) {
-    const winner = game.turn() === 'w' ? 'Stonefish_v2' : 'Stonefish_v1';
+    const winner = game.turn() === 'w' ? 'Stonefish_v3' : 'Stonefish_v2';
     statusElement.textContent = `Checkmate. ${winner} won the spectator game.`;
     stopWatching();
     return;
@@ -260,17 +251,14 @@ function updateWatchStatus() {
     return;
   }
 
-  const side = game.turn() === 'w' ? 'Stonefish_v1' : 'Stonefish_v2';
+  const side = game.turn() === 'w' ? 'Stonefish_v2' : 'Stonefish_v3';
   statusElement.textContent = `${side} to move.${game.in_check() ? ' Check!' : ''}`;
 }
 
 function playWatchMove() {
-  if (!watchMode || game.game_over()) {
-    updateWatchStatus();
-    return;
-  }
+  if (!watchMode || game.game_over()) return updateWatchStatus();
 
-  const modelKey = game.turn() === 'w' ? 'v1' : 'v2';
+  const modelKey = game.turn() === 'w' ? 'v2' : 'v3';
   const model = models[modelKey];
   const move = model.getMove(game);
   const playedMove = playMoveOnGame(game, move);
@@ -282,45 +270,105 @@ function playWatchMove() {
 
   renderBoard();
   updateWatchStatus();
+  if (watchMode && !game.game_over()) watchTimer = window.setTimeout(playWatchMove, 3000);
+}
 
-  if (watchMode && !game.game_over()) {
-    watchTimer = window.setTimeout(playWatchMove, 3000);
+function percent(value, total) {
+  return total ? `${((value / total) * 100).toFixed(1)}%` : '0.0%';
+}
+
+function pairKey(a, b) {
+  return [a, b].sort().join('::');
+}
+
+function getSelectedTestModels() {
+  return testModelCheckboxes.filter(box => box.checked).map(box => box.value);
+}
+
+function createStats(selectedKeys) {
+  const overall = {};
+  const matchups = {};
+
+  for (const key of selectedKeys) overall[key] = { wins: 0, losses: 0, draws: 0, games: 0 };
+  for (let i = 0; i < selectedKeys.length; i += 1) {
+    for (let j = i + 1; j < selectedKeys.length; j += 1) {
+      const a = selectedKeys[i];
+      const b = selectedKeys[j];
+      matchups[pairKey(a, b)] = { a, b, aWins: 0, bWins: 0, draws: 0, games: 0 };
+    }
   }
+
+  return { overall, matchups };
 }
 
-function formatWinRate(wins, completedGames) {
-  if (completedGames === 0) return '0.0%';
-  return `${((wins / completedGames) * 100).toFixed(1)}%`;
+function buildSchedule(selectedKeys, gamesPerMatchup) {
+  const pairs = [];
+  for (let i = 0; i < selectedKeys.length; i += 1) {
+    for (let j = i + 1; j < selectedKeys.length; j += 1) pairs.push([selectedKeys[i], selectedKeys[j]]);
+  }
+
+  const jobs = [];
+  for (let round = 0; round < gamesPerMatchup; round += 1) {
+    pairs.forEach((pair, pairIndex) => {
+      const [a, b] = pair;
+      const aIsWhite = (round + pairIndex) % 2 === 0;
+      jobs.push({ a, b, whiteModelKey: aIsWhite ? a : b, blackModelKey: aIsWhite ? b : a });
+    });
+  }
+  return jobs;
 }
 
-function renderTestProgress(modelAKey, modelBKey, results, completed, total, done = false) {
-  const modelAName = models[modelAKey].name;
-  const modelBName = models[modelBKey].name;
-  const heading = done ? `Final — ${completed} games` : `Running ${completed} / ${total}`;
-  const drawRate = completed === 0 ? '0.0%' : `${((results.draw / completed) * 100).toFixed(1)}%`;
+function applyResult(stats, job, result) {
+  const matchup = stats.matchups[pairKey(job.a, job.b)];
+  matchup.games += 1;
+  stats.overall[job.a].games += 1;
+  stats.overall[job.b].games += 1;
+
+  if (result === 'draw') {
+    matchup.draws += 1;
+    stats.overall[job.a].draws += 1;
+    stats.overall[job.b].draws += 1;
+    return;
+  }
+
+  const winner = result === 'white' ? job.whiteModelKey : job.blackModelKey;
+  const loser = winner === job.a ? job.b : job.a;
+  stats.overall[winner].wins += 1;
+  stats.overall[loser].losses += 1;
+  if (winner === matchup.a) matchup.aWins += 1;
+  else matchup.bWins += 1;
+}
+
+function renderRoundRobin(stats, selectedKeys, completed, total, gamesPerMatchup, done = false) {
+  const overallRows = selectedKeys.map(key => {
+    const s = stats.overall[key];
+    return `<div class="result-row"><strong>${models[key].name}</strong><span>${s.wins}W · ${s.losses}L · ${s.draws}D</span><span>W ${percent(s.wins, s.games)} · L ${percent(s.losses, s.games)} · D ${percent(s.draws, s.games)}</span></div>`;
+  }).join('');
+
+  const matchupRows = Object.values(stats.matchups).map(m => {
+    return `<div class="matchup-row"><strong>${models[m.a].name} vs ${models[m.b].name}</strong><span>${m.games}/${gamesPerMatchup} games</span><span>${models[m.a].name}: ${m.aWins}W · ${m.draws}D · ${m.games - m.aWins - m.draws}L (${percent(m.aWins, m.games)} win)</span><span>${models[m.b].name}: ${m.bWins}W · ${m.draws}D · ${m.games - m.bWins - m.draws}L (${percent(m.bWins, m.games)} win)</span></div>`;
+  }).join('');
 
   testResults.innerHTML = `
-    <div class="test-progress-heading">${heading}</div>
-    <div>${modelAName}: <strong>${results.a} wins</strong> · ${formatWinRate(results.a, completed)}</div>
-    <div>${modelBName}: <strong>${results.b} wins</strong> · ${formatWinRate(results.b, completed)}</div>
-    <div>Draws: <strong>${results.draw}</strong> · ${drawRate}</div>
+    <div class="test-progress-heading">${done ? 'Final' : 'Running'} — ${completed} / ${total} games</div>
+    <div class="results-section-title">Overall</div>
+    ${overallRows}
+    <div class="results-section-title">Matchups</div>
+    ${matchupRows}
   `;
 }
 
 function setTestControlsDisabled(disabled) {
   runTestButton.disabled = disabled;
   modelSelect.disabled = disabled;
-  testModelASelect.disabled = disabled;
-  testModelBSelect.disabled = disabled;
   testCountInput.disabled = disabled;
   watchButton.disabled = disabled;
   newGameButton.disabled = disabled;
+  testModelCheckboxes.forEach(box => { box.disabled = disabled; });
 }
 
 function getTestWorker() {
-  if (!testWorker) {
-    testWorker = new Worker('test-worker.js');
-  }
+  if (!testWorker) testWorker = new Worker('test-worker.js');
   return testWorker;
 }
 
@@ -329,68 +377,51 @@ function runWorkerGame(worker, job) {
     const handler = event => {
       if (event.data.jobId !== job.jobId) return;
       worker.removeEventListener('message', handler);
-
       if (event.data.error) reject(new Error(event.data.error));
       else resolve(event.data.result);
     };
-
     worker.addEventListener('message', handler);
     worker.postMessage(job);
   });
 }
 
-async function runHeadToHeadTest() {
+async function runRoundRobinTest() {
   if (testing) return;
+  const selectedKeys = getSelectedTestModels();
+  if (selectedKeys.length < 2) {
+    testResults.textContent = 'Select at least two models.';
+    return;
+  }
 
   stopWatching();
-  const modelAKey = testModelASelect.value;
-  const modelBKey = testModelBSelect.value;
   const requested = Number.parseInt(testCountInput.value, 10);
-  const totalGames = Number.isFinite(requested) ? Math.max(1, Math.min(10000, requested)) : 20;
-  testCountInput.value = totalGames;
+  const gamesPerMatchup = Number.isFinite(requested) ? Math.max(1, Math.min(10000, requested)) : 100;
+  testCountInput.value = gamesPerMatchup;
+  const schedule = buildSchedule(selectedKeys, gamesPerMatchup);
+  const stats = createStats(selectedKeys);
 
   testing = true;
   setTestControlsDisabled(true);
-
-  const results = { a: 0, b: 0, draw: 0 };
-  renderTestProgress(modelAKey, modelBKey, results, 0, totalGames);
+  renderRoundRobin(stats, selectedKeys, 0, schedule.length, gamesPerMatchup);
 
   try {
     const worker = getTestWorker();
-
-    // Deliberately run one background worker at a time. v2 is CPU-heavy and
-    // spawning one worker per core makes laptops much hotter for only a modest
-    // real-world speed gain.
-    for (let i = 0; i < totalGames; i += 1) {
-      const modelAIsWhite = i % 2 === 0;
-      const whiteModelKey = modelAIsWhite ? modelAKey : modelBKey;
-      const blackModelKey = modelAIsWhite ? modelBKey : modelAKey;
+    for (let i = 0; i < schedule.length; i += 1) {
+      const job = schedule[i];
       const result = await runWorkerGame(worker, {
         jobId: i + 1,
-        whiteModelKey,
-        blackModelKey,
+        whiteModelKey: job.whiteModelKey,
+        blackModelKey: job.blackModelKey,
         maxPlies: 1000
       });
-
-      if (result === 'draw') {
-        results.draw += 1;
-      } else {
-        const winnerIsModelA = (result === 'white' && modelAIsWhite) || (result === 'black' && !modelAIsWhite);
-        if (winnerIsModelA) results.a += 1;
-        else results.b += 1;
-      }
-
-      renderTestProgress(modelAKey, modelBKey, results, i + 1, totalGames);
+      applyResult(stats, job, result);
+      renderRoundRobin(stats, selectedKeys, i + 1, schedule.length, gamesPerMatchup);
     }
-
-    renderTestProgress(modelAKey, modelBKey, results, totalGames, totalGames, true);
+    renderRoundRobin(stats, selectedKeys, schedule.length, schedule.length, gamesPerMatchup, true);
   } catch (error) {
     testResults.textContent = `Test stopped: ${error.message}`;
-
-    if (testWorker) {
-      testWorker.terminate();
-      testWorker = null;
-    }
+    if (testWorker) testWorker.terminate();
+    testWorker = null;
   } finally {
     testing = false;
     setTestControlsDisabled(false);
@@ -402,10 +433,9 @@ modelSelect.addEventListener('change', () => {
   updateModelUI();
   resetGame();
 });
-
 newGameButton.addEventListener('click', resetGame);
 watchButton.addEventListener('click', startWatching);
-runTestButton.addEventListener('click', runHeadToHeadTest);
+runTestButton.addEventListener('click', runRoundRobinTest);
 
 updateModelUI();
 renderBoard();
