@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Play chess against Stonefish engines, watch them compete, and run head-to-head tests." />
+  <meta name="description" content="Play chess against Stonefish engines, watch them compete, and run round-robin tests." />
   <title>StoneFish — Chess Bot Lab</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -11,8 +11,8 @@
   <main class="page-shell">
     <section class="hero">
       <p class="eyebrow">STONEFISH CHESS LAB</p>
-      <h1>Play <span id="hero-model">Stonefish_v2</span></h1>
-      <p id="hero-subtitle" class="subtitle">A one-ply survivalist: takes mate in one, avoids giving mate in one, then minimises the biggest capture you can make next.</p>
+      <h1>Play <span id="hero-model">Stonefish_v3</span></h1>
+      <p id="hero-subtitle" class="subtitle">A three-ply material engine: win material now, survive the opponent's best reply, then count the best material response.</p>
     </section>
 
     <section class="game-layout" aria-label="StoneFish chess lab">
@@ -29,18 +29,19 @@
             <p class="bot-label">YOUR OPPONENT</p>
             <div class="model-row">
               <select id="model-select" class="model-select" aria-label="Choose Stonefish model">
-                <option value="v2" selected>Stonefish_v2</option>
+                <option value="v3" selected>Stonefish_v3</option>
+                <option value="v2">Stonefish_v2</option>
                 <option value="v1">Stonefish_v1</option>
               </select>
             </div>
-            <p id="bot-trait" class="bot-trait"><span class="status-dot"></span> One-ply defensive engine</p>
+            <p id="bot-trait" class="bot-trait"><span class="status-dot"></span> Three-ply material engine</p>
           </div>
         </div>
 
         <div class="status-card">
           <p class="section-label">GAME STATUS</p>
           <p id="status" class="status-text">Your move. You are White.</p>
-          <p id="last-move" class="last-move">Stonefish_v2 is waiting.</p>
+          <p id="last-move" class="last-move">Stonefish_v3 is waiting.</p>
         </div>
 
         <div class="legend-card">
@@ -50,39 +51,31 @@
 
         <div class="lab-card">
           <p class="section-label">BOT LAB</p>
-          <button id="watch-game" class="secondary-button" type="button">Watch v1 vs v2</button>
+          <button id="watch-game" class="secondary-button" type="button">Watch v2 vs v3</button>
           <p class="helper-text">Spectator games make one move every 3 seconds.</p>
 
           <details class="developer-menu">
             <summary>Developer menu</summary>
             <div class="developer-panel">
-              <p class="developer-note">Test-only models live here and never appear in normal play.</p>
+              <p class="developer-note">Select any 2 or more models. The game count is per matchup, with colours alternating within each pairing.</p>
+
+              <div id="test-models" class="model-checklist">
+                <label><input type="checkbox" name="test-model" value="v1" /> Stonefish_v1</label>
+                <label><input type="checkbox" name="test-model" value="v2" /> Stonefish_v2</label>
+                <label><input type="checkbox" name="test-model" value="v3" checked /> Stonefish_v3</label>
+                <label><input type="checkbox" name="test-model" value="v3test1" checked /> Stonefish_v3(testunit1) — opponent bishop 3.0</label>
+                <label><input type="checkbox" name="test-model" value="v3test2" checked /> Stonefish_v3(testunit2) — opponent knight 3.1, bishop 3.0</label>
+              </div>
 
               <div class="test-controls">
-                <label for="test-model-a">Model A</label>
-                <select id="test-model-a" class="model-select" aria-label="Choose test model A">
-                  <option value="v2" selected>Stonefish_v2</option>
-                  <option value="v1">Stonefish_v1</option>
-                  <option value="v2test1">Stonefish_v2(testunit1) — bishop 3.1</option>
-                  <option value="v2test2">Stonefish_v2(testunit2) — knight 3.1</option>
-                </select>
-
-                <label for="test-model-b">Model B</label>
-                <select id="test-model-b" class="model-select" aria-label="Choose test model B">
-                  <option value="v1" selected>Stonefish_v1</option>
-                  <option value="v2">Stonefish_v2</option>
-                  <option value="v2test1">Stonefish_v2(testunit1) — bishop 3.1</option>
-                  <option value="v2test2">Stonefish_v2(testunit2) — knight 3.1</option>
-                </select>
-
-                <label for="test-count">Head-to-head games</label>
+                <label for="test-count">Games per matchup</label>
                 <div class="test-row">
-                  <input id="test-count" type="number" min="1" max="10000" step="1" value="20" />
-                  <button id="run-test" class="secondary-button compact" type="button">Run test</button>
+                  <input id="test-count" type="number" min="1" max="10000" step="1" value="100" />
+                  <button id="run-test" class="secondary-button compact" type="button">Run round robin</button>
                 </div>
               </div>
 
-              <div id="test-results" class="test-results" aria-live="polite">Tests alternate White and Black every round.</div>
+              <div id="test-results" class="test-results" aria-live="polite">Choose at least two models to begin.</div>
             </div>
           </details>
         </div>
@@ -95,8 +88,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <script src="Stonefish_v1.js"></script>
   <script src="Stonefish_v2.js"></script>
-  <script src="Stonefish_v2_testunit1.js"></script>
-  <script src="Stonefish_v2_testunit2.js"></script>
+  <script src="Stonefish_v3.js"></script>
+  <script src="Stonefish_v3_testunit1.js"></script>
+  <script src="Stonefish_v3_testunit2.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
