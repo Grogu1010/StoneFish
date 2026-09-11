@@ -1,7 +1,7 @@
-name: v4-tuning
+name: v4-combine-tuning
 on:
   push:
-    branches: ['v4-tuning-*']
+    branches: [v4-combine-work]
   workflow_dispatch:
 
 jobs:
