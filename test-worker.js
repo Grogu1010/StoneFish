@@ -1,5 +1,5 @@
 importScripts(
-  './fast-chess.js',
+  './StonefishChess.js',
   './Stonefish_v1.js',
   './Stonefish_v2.js',
   './Stonefish_v3.js',
@@ -15,24 +15,8 @@ const workerModels = {
   v3test2: getStonefishV3TestUnit2Move
 };
 
-function commitFastMove(game, move) {
-  if (typeof game.fastCommit === 'function') {
-    game.fastCommit(move);
-    return move;
-  }
-  return game.move({
-    from: move.from,
-    to: move.to,
-    promotion: move.promotion || 'q'
-  });
-}
-
-function cheapDrawReached(game) {
-  return game.halfmove >= 100 || game.insufficient_material() || game.in_threefold_repetition();
-}
-
 function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
-  const game = new FastChess();
+  const game = new Chess();
   let plies = 0;
 
   while (plies < maxPlies) {
@@ -41,16 +25,19 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
     if (!getMove) throw new Error(`Unknown model: ${modelKey}`);
 
     const move = getMove(game);
-
     if (!move) {
-      if (game.in_check()) return game.turn() === 'w' ? 'black' : 'white';
-      return 'draw';
+      return game.in_check() ? (game.turn() === 'w' ? 'black' : 'white') : 'draw';
     }
 
-    commitFastMove(game, move);
+    const played = game.move({
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion || 'q'
+    });
+    if (!played) throw new Error(`Engine returned illegal move: ${move.from}-${move.to}`);
     plies += 1;
 
-    if (cheapDrawReached(game)) return 'draw';
+    if (game.in_draw()) return 'draw';
   }
 
   return 'draw';
