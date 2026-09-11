@@ -14,4 +14,4 @@ console.log('ABLATION SCREEN',C.length,'x 30');const s=C.map(cfg=>({cfg,r:test(c
 console.log('FINAL top 6 x 100');const f=s.slice(0,6).map(x=>({cfg:x.cfg,r:test(x.cfg,100,25000)})).sort(rank);for(const x of f)console.log('FINAL',x.cfg.name,x.cfg.order.join('>'),x.r);console.log('WINNER',JSON.stringify(f[0].cfg),f[0].r);
 `;
 src=src.slice(0,start)+replacement+src.slice(end);
-new Function(src)();
+eval(src);
