@@ -16,10 +16,6 @@ const STONEFISH_PIECE_VALUES = {
 
 const STONEFISH_V2_CACHE = new Map();
 const STONEFISH_V2_CACHE_LIMIT = 50000;
-
-// Value-independent cache for "what can the opponent do from here?".
-// This is shared by v2 and both test units, because legal replies and captured
-// piece TYPES are identical regardless of whether bishop/knight is worth 3.1.
 const STONEFISH_REPLY_CACHE = new Map();
 const STONEFISH_REPLY_CACHE_LIMIT = 100000;
 
@@ -28,8 +24,8 @@ function stonefishValueSignature(pieceValues) {
 }
 
 function stonefishCoreFen(game) {
-  const fenParts = game.fen().split(' ');
-  return fenParts.slice(0, 4).join(' ');
+  if (typeof game.fastPositionKey === 'function') return game.fastPositionKey();
+  return game.fen().split(' ').slice(0, 4).join(' ');
 }
 
 function stonefishPositionKey(game, pieceValues) {
@@ -38,17 +34,21 @@ function stonefishPositionKey(game, pieceValues) {
 
 function trimStonefishCache(cache, limit) {
   if (cache.size < limit) return;
-  const oldestKey = cache.keys().next().value;
-  cache.delete(oldestKey);
+  cache.delete(cache.keys().next().value);
+}
+
+function compactStonefishMove(move) {
+  return {
+    from: move.from,
+    to: move.to,
+    promotion: move.promotion || null,
+    _raw: move._raw || null
+  };
 }
 
 function cacheStonefishBestMoves(key, moves) {
   trimStonefishCache(STONEFISH_V2_CACHE, STONEFISH_V2_CACHE_LIMIT);
-  STONEFISH_V2_CACHE.set(key, moves.map(move => ({
-    from: move.from,
-    to: move.to,
-    promotion: move.promotion || null
-  })));
+  STONEFISH_V2_CACHE.set(key, moves.map(compactStonefishMove));
 }
 
 function chooseRandomStonefishMove(moves) {
@@ -56,26 +56,51 @@ function chooseRandomStonefishMove(moves) {
   return moves[Math.floor(Math.random() * moves.length)];
 }
 
+function stonefishMoves(game) {
+  if (typeof game.fastMoves === 'function') {
+    return game.fastMoves().map(raw => ({
+      from: game._alg(raw.from),
+      to: game._alg(raw.to),
+      promotion: raw.promotion || null,
+      captured: raw.captured || null,
+      _raw: raw
+    }));
+  }
+  return game.moves({ verbose: true });
+}
+
+function stonefishApply(game, move) {
+  if (typeof game.fastApply === 'function') return game.fastApply(move);
+  return game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+}
+
+function stonefishUndo(game) {
+  if (typeof game.fastUndo === 'function') return game.fastUndo();
+  return game.undo();
+}
+
+function stonefishMoveIsMate(game, move) {
+  if (move.san && move.san.endsWith('#')) return true;
+  if (typeof game.fastIsMateMove === 'function') return game.fastIsMateMove(move);
+  stonefishApply(game, move);
+  const mate = game.in_checkmate();
+  stonefishUndo(game);
+  return mate;
+}
+
 function getStonefishReplySummary(game) {
   const key = stonefishCoreFen(game);
   const cached = STONEFISH_REPLY_CACHE.get(key);
   if (cached) return cached;
 
-  const replies = game.moves({ verbose: true });
+  const replies = stonefishMoves(game);
   let allowsMateInOne = false;
   let captureMask = 0;
-
-  // Bits: pawn 1, knight 2, bishop 4, rook 8, queen 16, king 32.
   const captureBits = { p: 1, n: 2, b: 4, r: 8, q: 16, k: 32 };
 
   for (const reply of replies) {
-    if (!allowsMateInOne && reply.san && reply.san.endsWith('#')) {
-      allowsMateInOne = true;
-    }
-
-    if (reply.captured) {
-      captureMask |= captureBits[reply.captured] || 0;
-    }
+    if (!allowsMateInOne && stonefishMoveIsMate(game, reply)) allowsMateInOne = true;
+    if (reply.captured) captureMask |= captureBits[reply.captured] || 0;
   }
 
   const summary = { allowsMateInOne, captureMask };
@@ -98,43 +123,30 @@ function highestCaptureFromMask(captureMask, pieceValues) {
 function getStonefishV2MoveWithValues(game, pieceValues) {
   const cacheKey = stonefishPositionKey(game, pieceValues);
   const cachedMoves = STONEFISH_V2_CACHE.get(cacheKey);
+  if (cachedMoves) return chooseRandomStonefishMove(cachedMoves);
 
-  if (cachedMoves) {
-    return chooseRandomStonefishMove(cachedMoves);
-  }
+  const legalMoves = stonefishMoves(game);
+  if (legalMoves.length === 0) return null;
 
-  const legalMoves = game.moves({ verbose: true });
-
-  if (legalMoves.length === 0) {
-    return null;
-  }
-
-  // chess.js already calculated SAN; '#' means mate in one.
   const matingMoves = [];
   for (const move of legalMoves) {
-    if (move.san && move.san.endsWith('#')) matingMoves.push(move);
+    if (stonefishMoveIsMate(game, move)) matingMoves.push(move);
   }
-
   if (matingMoves.length > 0) {
     cacheStonefishBestMoves(cacheKey, matingMoves);
     return chooseRandomStonefishMove(matingMoves);
   }
 
   const scoredMoves = [];
-
-  // Analyse directly on the supplied game and always undo before continuing.
-  // This avoids allocating/copying a complete Chess instance every move.
   for (const move of legalMoves) {
-    game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
-
+    stonefishApply(game, move);
     const replySummary = getStonefishReplySummary(game);
     scoredMoves.push({
       move,
       allowsMateInOne: replySummary.allowsMateInOne,
       maxCaptureValue: highestCaptureFromMask(replySummary.captureMask, pieceValues)
     });
-
-    game.undo();
+    stonefishUndo(game);
   }
 
   const safeMoves = scoredMoves.filter(candidate => !candidate.allowsMateInOne);
@@ -142,16 +154,12 @@ function getStonefishV2MoveWithValues(game, pieceValues) {
 
   let lowestMaxCapture = Infinity;
   for (const candidate of candidates) {
-    if (candidate.maxCaptureValue < lowestMaxCapture) {
-      lowestMaxCapture = candidate.maxCaptureValue;
-    }
+    if (candidate.maxCaptureValue < lowestMaxCapture) lowestMaxCapture = candidate.maxCaptureValue;
   }
 
   const bestMoves = [];
   for (const candidate of candidates) {
-    if (candidate.maxCaptureValue === lowestMaxCapture) {
-      bestMoves.push(candidate.move);
-    }
+    if (candidate.maxCaptureValue === lowestMaxCapture) bestMoves.push(candidate.move);
   }
 
   cacheStonefishBestMoves(cacheKey, bestMoves);
