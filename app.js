@@ -45,23 +45,19 @@ const models = {
   v4: {
     name: 'Stonefish_v4',
     trait: 'Positional tie-break engine',
-    subtitle: 'Stonefish_v3 decides tactical/material equality first; tied moves are then separated by checks, king safety, mobility, and centre control.',
+    subtitle: 'Stonefish_v3 decides tactical/material equality first; tied moves use the strongest tested positional ordering.',
     logic: [
       'Take mate in 1',
       'Avoid opponent mate in 1 whenever possible',
       'Maximise the worst three-ply material trade',
       'Prefer checks',
+      'Prefer more legal movement options',
       'Avoid king suffocation and strongly prefer castling',
       'Keep protection around the king',
-      'Prefer more legal movement options',
       'Prefer centre control'
     ],
     getMove: getStonefishV4Move
-  },
-  v4test1: { name: 'Stonefish_v4(testunit1)', getMove: getStonefishV4TestUnit1Move, testOnly: true },
-  v4test2: { name: 'Stonefish_v4(testunit2)', getMove: getStonefishV4TestUnit2Move, testOnly: true },
-  v4test3: { name: 'Stonefish_v4(testunit3)', getMove: getStonefishV4TestUnit3Move, testOnly: true },
-  v4test4: { name: 'Stonefish_v4(testunit4)', getMove: getStonefishV4TestUnit4Move, testOnly: true }
+  }
 };
 
 let selectedSquare = null;
@@ -76,6 +72,7 @@ let testWorker = null;
 
 function renderBoard() {
   boardElement.innerHTML = '';
+
   for (let rank = 8; rank >= 1; rank -= 1) {
     for (let fileIndex = 0; fileIndex < 8; fileIndex += 1) {
       const file = String.fromCharCode(97 + fileIndex);
@@ -111,6 +108,17 @@ function describeSquare(square, piece) {
   return `${square}, ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.type]}`;
 }
 
+function clearSelection() {
+  selectedSquare = null;
+  legalTargets = [];
+}
+
+function selectSquare(square) {
+  selectedSquare = square;
+  legalTargets = game.moves({ square, verbose: true }).map(move => move.to);
+  renderBoard();
+}
+
 function handleSquareClick(square) {
   if (watchMode || testing || botThinking || game.game_over() || game.turn() !== 'w') return;
   const piece = game.get(square);
@@ -119,11 +127,13 @@ function handleSquareClick(square) {
     if (piece && piece.color === 'w') selectSquare(square);
     return;
   }
+
   if (square === selectedSquare) {
     clearSelection();
     renderBoard();
     return;
   }
+
   if (piece && piece.color === 'w') {
     selectSquare(square);
     return;
@@ -145,30 +155,25 @@ function handleSquareClick(square) {
   }
 }
 
-function selectSquare(square) {
-  selectedSquare = square;
-  legalTargets = game.moves({ square, verbose: true }).map(move => move.to);
-  renderBoard();
-}
-
-function clearSelection() {
-  selectedSquare = null;
-  legalTargets = [];
-}
-
 function playMoveOnGame(targetGame, move) {
   if (!move) return null;
-  return targetGame.move({ from: move.from, to: move.to, promotion: move.promotion || 'q', _raw: move._raw });
+  return targetGame.move({
+    from: move.from,
+    to: move.to,
+    promotion: move.promotion || 'q'
+  });
 }
 
 function makeSelectedBotMove() {
   const model = models[selectedModel];
   const move = model.getMove(game);
+
   if (move) {
     const playedMove = playMoveOnGame(game, move);
     lastMoveSquares = [playedMove.from, playedMove.to];
     lastMoveElement.textContent = `${model.name} played ${playedMove.san}.`;
   }
+
   botThinking = false;
   updateStatus();
   renderBoard();
@@ -176,15 +181,18 @@ function makeSelectedBotMove() {
 
 function updateStatus() {
   if (watchMode) return updateWatchStatus();
+
   if (game.in_checkmate()) {
     const winner = game.turn() === 'w' ? models[selectedModel].name : 'You';
     statusElement.textContent = `Checkmate. ${winner} won.`;
     return;
   }
+
   if (game.in_draw()) {
     statusElement.textContent = 'Draw.';
     return;
   }
+
   const checkText = game.in_check() ? ' Check!' : '';
   statusElement.textContent = game.turn() === 'w'
     ? `Your move. You are White.${checkText}`
@@ -211,8 +219,7 @@ function stopWatching() {
 function resetGame() {
   stopWatching();
   game.reset();
-  selectedSquare = null;
-  legalTargets = [];
+  clearSelection();
   lastMoveSquares = [];
   botThinking = false;
   lastMoveElement.textContent = `${models[selectedModel].name} is waiting.`;
@@ -222,6 +229,7 @@ function resetGame() {
 
 function startWatching() {
   if (testing) return;
+
   if (watchMode) {
     stopWatching();
     statusElement.textContent = 'Spectator game paused.';
@@ -246,17 +254,20 @@ function updateWatchStatus() {
     stopWatching();
     return;
   }
+
   if (game.in_draw()) {
     statusElement.textContent = 'Spectator game ended in a draw.';
     stopWatching();
     return;
   }
+
   const side = game.turn() === 'w' ? 'Stonefish_v3' : 'Stonefish_v4';
   statusElement.textContent = `${side} to move.${game.in_check() ? ' Check!' : ''}`;
 }
 
 function playWatchMove() {
   if (!watchMode || game.game_over()) return updateWatchStatus();
+
   const modelKey = game.turn() === 'w' ? 'v3' : 'v4';
   const model = models[modelKey];
   const move = model.getMove(game);
@@ -287,25 +298,43 @@ function getSelectedTestModels() {
 function createStats(selectedKeys) {
   const overall = {};
   const matchups = {};
-  for (const key of selectedKeys) overall[key] = { wins: 0, losses: 0, draws: 0, games: 0 };
+
+  for (const key of selectedKeys) {
+    overall[key] = { wins: 0, losses: 0, draws: 0, games: 0 };
+  }
+
   for (let i = 0; i < selectedKeys.length; i += 1) {
     for (let j = i + 1; j < selectedKeys.length; j += 1) {
-      const a = selectedKeys[i], b = selectedKeys[j];
-      matchups[pairKey(a, b)] = { a, b, aWins: 0, bWins: 0, draws: 0, games: 0, targetGames: 0 };
+      const a = selectedKeys[i];
+      const b = selectedKeys[j];
+      matchups[pairKey(a, b)] = {
+        a, b,
+        aWins: 0,
+        bWins: 0,
+        draws: 0,
+        games: 0,
+        targetGames: 0
+      };
     }
   }
+
   return { overall, matchups };
 }
 
 function buildSchedule(selectedKeys, totalGames, stats) {
   const pairs = [];
   for (let i = 0; i < selectedKeys.length; i += 1) {
-    for (let j = i + 1; j < selectedKeys.length; j += 1) pairs.push([selectedKeys[i], selectedKeys[j]]);
+    for (let j = i + 1; j < selectedKeys.length; j += 1) {
+      pairs.push([selectedKeys[i], selectedKeys[j]]);
+    }
   }
 
   const baseGames = Math.floor(totalGames / pairs.length);
   const remainder = totalGames % pairs.length;
-  const pairTargets = pairs.map((pair, index) => ({ pair, count: baseGames + (index < remainder ? 1 : 0) }));
+  const pairTargets = pairs.map((pair, index) => ({
+    pair,
+    count: baseGames + (index < remainder ? 1 : 0)
+  }));
 
   for (const entry of pairTargets) {
     const [a, b] = entry.pair;
@@ -314,14 +343,21 @@ function buildSchedule(selectedKeys, totalGames, stats) {
 
   const jobs = [];
   const maxRounds = Math.max(...pairTargets.map(entry => entry.count));
+
   for (let round = 0; round < maxRounds; round += 1) {
     pairTargets.forEach((entry, pairIndex) => {
       if (round >= entry.count) return;
       const [a, b] = entry.pair;
       const aIsWhite = (round + pairIndex) % 2 === 0;
-      jobs.push({ a, b, whiteModelKey: aIsWhite ? a : b, blackModelKey: aIsWhite ? b : a });
+      jobs.push({
+        a,
+        b,
+        whiteModelKey: aIsWhite ? a : b,
+        blackModelKey: aIsWhite ? b : a
+      });
     });
   }
+
   return jobs;
 }
 
@@ -389,6 +425,7 @@ function runWorkerGame(worker, job) {
       if (event.data.error) reject(new Error(event.data.error));
       else resolve(event.data.result);
     };
+
     worker.addEventListener('message', handler);
     worker.postMessage(job);
   });
@@ -396,6 +433,7 @@ function runWorkerGame(worker, job) {
 
 async function runRoundRobinTest() {
   if (testing) return;
+
   const selectedKeys = getSelectedTestModels();
   if (selectedKeys.length < 2) {
     testResults.textContent = 'Select at least two models.';
@@ -404,7 +442,9 @@ async function runRoundRobinTest() {
 
   stopWatching();
   const requested = Number.parseInt(testCountInput.value, 10);
-  const totalGames = Number.isFinite(requested) ? Math.max(1, Math.min(10000, requested)) : 100;
+  const totalGames = Number.isFinite(requested)
+    ? Math.max(1, Math.min(10000, requested))
+    : 100;
   testCountInput.value = totalGames;
 
   const stats = createStats(selectedKeys);
