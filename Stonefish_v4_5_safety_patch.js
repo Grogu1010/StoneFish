@@ -1,13 +1,5 @@
-// v4.5 safety rebuild: knowledge can refine v4, never bypass its proven safety chain.
-
-const STONEFISH_V45_BOOK_GATE_ORDER = [
-  'promotion',
-  'castleNow',
-  'openingDevelop',
-  'hangingMax',
-  'repetitionLeadGuard',
-  'mobility'
-];
+// v4.5 safety rebuild: the three allowed knowledge layers may refine v4 ties,
+// but they may never bypass the complete proven v4 lexicographic chain.
 
 function stonefishV45FilterByV4Order(game, candidates, order) {
   let kept = candidates.slice();
@@ -22,9 +14,9 @@ function stonefishV45V4FinalCandidates(game) {
   return stonefishV45FilterByV4Order(game, v3, STONEFISH_V4_ORDER);
 }
 
-// Override the opening selector so a book line is eligible only when its next move
-// survives v4's critical safety/development/mobility filters.
-stonefishV45BookMove = function(game, profileIndex) {
+// OPENINGS: a book move is eligible only if it is one of v4's FINAL tied moves.
+// The weighted repertoire therefore breaks a v4 tie; it can never override v4.
+stonefishV45BookMove = function(game, profileIndex, allowedCandidates) {
   const side = game.turn();
   const history = stonefishV45HistoryUci(game);
   const key = profileIndex + ':' + side;
@@ -34,8 +26,9 @@ stonefishV45BookMove = function(game, profileIndex) {
     STONEFISH_V45_BOOK_STATE.set(game, stateMap);
   }
 
-  let safe = getStonefishV3BestRawMoves(game).slice();
-  safe = stonefishV45FilterByV4Order(game, safe, STONEFISH_V45_BOOK_GATE_ORDER);
+  const safe = (allowedCandidates && allowedCandidates.length)
+    ? allowedCandidates
+    : stonefishV45V4FinalCandidates(game);
   if (!safe.length) return null;
 
   const safeByUci = new Map();
@@ -59,11 +52,10 @@ stonefishV45BookMove = function(game, profileIndex) {
     if (!selected) return null;
     stateMap.set(key, { lineId: selected.id });
   }
-
   return safeByUci.get(selected.moves[history.length]) || null;
 };
 
-// Mate-pattern knowledge may only choose among moves accepted by the complete v4 chain.
+// FORCED-MATE PATTERNS: pattern knowledge only breaks ties among final v4 moves.
 function stonefishV45PatternTieBreak(game, candidates) {
   if (candidates.length <= 1) return candidates;
   let best = -Infinity;
@@ -77,33 +69,38 @@ function stonefishV45PatternTieBreak(game, candidates) {
   return candidates.filter((_, i) => scores[i] === best);
 }
 
-stonefishV45BestRawMoves = function(game) {
+// INVERSES: these are also only allowed to break final v4 ties.
+function stonefishV45ApplyInverseOrder(game, candidates, inverseOrder = STONEFISH_V45_INVERSE_ORDER) {
+  let kept = candidates.slice();
+  for (let i = 0; i < inverseOrder.length && kept.length > 1; i += 1) {
+    kept = stonefishV45BestByInverse(game, kept, inverseOrder[i]);
+  }
+  return kept;
+}
+
+stonefishV45BestRawMoves = function(game, inverseOrder = STONEFISH_V45_INVERSE_ORDER, usePatterns = true) {
   let candidates = stonefishV45V4FinalCandidates(game);
   if (!candidates.length) return candidates;
-
-  // Inverses are strictly tie-breakers AFTER v4 has finished, so they cannot
-  // override any v4 preference.
-  for (let i = 0; i < STONEFISH_V45_INVERSE_ORDER.length && candidates.length > 1; i += 1) {
-    candidates = stonefishV45BestByInverse(game, candidates, STONEFISH_V45_INVERSE_ORDER[i]);
-  }
-
-  candidates = stonefishV45PatternTieBreak(game, candidates);
+  candidates = stonefishV45ApplyInverseOrder(game, candidates, inverseOrder);
+  if (usePatterns) candidates = stonefishV45PatternTieBreak(game, candidates);
   return candidates;
 };
 
 getStonefishV45MoveWithProfile = function(game, profileIndex = 0) {
-  const v3 = getStonefishV3BestRawMoves(game).slice();
-  if (!v3.length) return null;
+  const finalV4 = stonefishV45V4FinalCandidates(game);
+  if (!finalV4.length) return null;
 
-  // v3 already guarantees mate-in-one candidates dominate all non-mating moves.
-  for (let i = 0; i < v3.length; i += 1) {
-    if (game.fastIsMateMove(v3[i])) return stonefishV3PublicMove(game, v3[i]);
+  // v3/v4 already make mate-in-one dominant; preserve that property exactly.
+  for (let i = 0; i < finalV4.length; i += 1) {
+    if (game.fastIsMateMove(finalV4[i])) return stonefishV3PublicMove(game, finalV4[i]);
   }
 
-  const book = stonefishV45BookMove(game, profileIndex);
+  // Opening knowledge is now a tie-breaker among COMPLETE v4 survivors only.
+  const book = stonefishV45BookMove(game, profileIndex, finalV4);
   if (book) return stonefishV3PublicMove(game, book);
 
-  const candidates = stonefishV45BestRawMoves(game);
+  let candidates = stonefishV45ApplyInverseOrder(game, finalV4);
+  candidates = stonefishV45PatternTieBreak(game, candidates);
   const raw = stonefishV3RandomRaw(candidates);
   return raw ? stonefishV3PublicMove(game, raw) : null;
 };
