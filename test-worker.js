@@ -1,5 +1,5 @@
 importScripts(
-  'https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js',
+  './fast-chess.js',
   './Stonefish_v1.js',
   './Stonefish_v2.js',
   './Stonefish_v3.js',
@@ -15,7 +15,11 @@ const workerModels = {
   v3test2: getStonefishV3TestUnit2Move
 };
 
-function playMove(game, move) {
+function commitFastMove(game, move) {
+  if (typeof game.fastCommit === 'function') {
+    game.fastCommit(move);
+    return move;
+  }
   return game.move({
     from: move.from,
     to: move.to,
@@ -23,43 +27,30 @@ function playMove(game, move) {
   });
 }
 
-function isNonStalemateDraw(game) {
-  const fenParts = game.fen().split(' ');
-  const halfmoveClock = Number.parseInt(fenParts[4], 10) || 0;
-
-  if (halfmoveClock >= 100) return true;
-  if (typeof game.insufficient_material === 'function' && game.insufficient_material()) return true;
-  if (typeof game.in_threefold_repetition === 'function' && game.in_threefold_repetition()) return true;
-  return false;
+function cheapDrawReached(game) {
+  return game.halfmove >= 100 || game.insufficient_material() || game.in_threefold_repetition();
 }
 
 function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
-  const game = new Chess();
+  const game = new FastChess();
+  let plies = 0;
 
-  for (let plies = 0; plies < maxPlies; plies += 1) {
+  while (plies < maxPlies) {
     const modelKey = game.turn() === 'w' ? whiteModelKey : blackModelKey;
     const getMove = workerModels[modelKey];
     if (!getMove) throw new Error(`Unknown model: ${modelKey}`);
 
-    // Each model already generates legal moves. Avoid game.game_over() here,
-    // which would generate the same move list a second time every ply.
     const move = getMove(game);
 
     if (!move) {
-      // No legal moves: checkmate if the side to move is in check, otherwise stalemate.
-      return game.in_check() ? (game.turn() === 'w' ? 'black' : 'white') : 'draw';
+      if (game.in_check()) return game.turn() === 'w' ? 'black' : 'white';
+      return 'draw';
     }
 
-    const playedMove = playMove(game, move);
-    if (!playedMove) throw new Error(`Illegal move returned by ${modelKey}`);
+    commitFastMove(game, move);
+    plies += 1;
 
-    // SAN already tells us if the just-played move delivered mate.
-    if (playedMove.san && playedMove.san.endsWith('#')) {
-      return playedMove.color === 'w' ? 'white' : 'black';
-    }
-
-    // Handle draw rules that do not require another legal-move generation.
-    if (isNonStalemateDraw(game)) return 'draw';
+    if (cheapDrawReached(game)) return 'draw';
   }
 
   return 'draw';
@@ -74,7 +65,7 @@ self.onmessage = event => {
   } catch (error) {
     self.postMessage({
       jobId,
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.stack || error.message : String(error)
     });
   }
 };
