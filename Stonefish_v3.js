@@ -74,16 +74,6 @@ function stonefishV3Compact(game, move) {
   };
 }
 
-function stonefishV3MoveIsMate(game, move) {
-  if (move.mate !== undefined) return move.mate;
-  if (move.san && move.san.endsWith('#')) return true;
-  if (typeof game.fastIsMateMove === 'function') return game.fastIsMateMove(move);
-  stonefishV3Play(game, move);
-  const mate = game.in_checkmate();
-  stonefishV3Undo(game);
-  return mate;
-}
-
 function stonefishV3LegalSummaries(game) {
   const key = stonefishV3PositionKey(game);
   const cached = STONEFISH_V3_LEGAL_CACHE.get(key);
@@ -96,7 +86,6 @@ function stonefishV3LegalSummaries(game) {
       to: game._alg(raw.to),
       promotion: raw.promotion ? game._typeChar(raw.promotion) : null,
       captured: raw.captured ? game._typeChar(raw.captured) : null,
-      mate: undefined,
       _raw: raw
     }));
   } else {
@@ -105,7 +94,6 @@ function stonefishV3LegalSummaries(game) {
       to: move.to,
       promotion: move.promotion || null,
       captured: move.captured || null,
-      mate: Boolean(move.san && move.san.endsWith('#')),
       _raw: null
     }));
   }
@@ -115,13 +103,31 @@ function stonefishV3LegalSummaries(game) {
   return summaries;
 }
 
+function stonefishV3IsCurrentPositionMate(game, legalMoves) {
+  return legalMoves.length === 0 && game.in_check();
+}
+
 function stonefishV3BestResponseGain(game, opponentValues) {
   const responses = stonefishV3LegalSummaries(game);
+  if (stonefishV3IsCurrentPositionMate(game, responses)) return STONEFISH_V3_MATE_SCORE;
+
   let best = 0;
   for (const response of responses) {
-    if (stonefishV3MoveIsMate(game, response)) return STONEFISH_V3_MATE_SCORE;
     const gain = stonefishV3Value(game, response.captured, opponentValues);
     if (gain > best) best = gain;
+
+    // Only checking moves can be mate. Test mate lazily instead of probing
+    // every legal response up front.
+    stonefishV3Play(game, response);
+    const givesCheck = game.in_check();
+    if (givesCheck) {
+      const replies = stonefishV3LegalSummaries(game);
+      if (replies.length === 0) {
+        stonefishV3Undo(game);
+        return STONEFISH_V3_MATE_SCORE;
+      }
+    }
+    stonefishV3Undo(game);
   }
   return best;
 }
@@ -134,44 +140,79 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
   const legalMoves = stonefishV3LegalSummaries(game);
   if (legalMoves.length === 0) return null;
 
-  const matingMoves = [];
-  for (const move of legalMoves) {
-    if (stonefishV3MoveIsMate(game, move)) matingMoves.push(move);
-  }
-  if (matingMoves.length) {
-    const compact = matingMoves.map(move => stonefishV3Compact(game, move));
-    stonefishV3TrimCache(STONEFISH_V3_CACHE);
-    STONEFISH_V3_CACHE.set(cacheKey, compact);
-    return stonefishV3Random(compact);
-  }
-
   const scored = [];
+  let bestCompletedScore = -Infinity;
+
   for (const move of legalMoves) {
     const immediateGain = stonefishV3Value(game, move.captured, opponentValues);
     stonefishV3Play(game, move);
 
     const replies = stonefishV3LegalSummaries(game);
+
+    // We already generated the opponent's legal moves, so mate-in-one can be
+    // identified directly without re-applying the candidate and searching again.
+    if (stonefishV3IsCurrentPositionMate(game, replies)) {
+      stonefishV3Undo(game);
+      const compact = [stonefishV3Compact(game, move)];
+      stonefishV3TrimCache(STONEFISH_V3_CACHE);
+      STONEFISH_V3_CACHE.set(cacheKey, compact);
+      return compact[0];
+    }
+
     let allowsMateInOne = false;
     let worstCaseScore = replies.length ? Infinity : immediateGain;
 
     for (const reply of replies) {
-      if (stonefishV3MoveIsMate(game, reply)) {
-        allowsMateInOne = true;
-        worstCaseScore = -STONEFISH_V3_MATE_SCORE;
-        continue;
-      }
-
       const opponentGain = stonefishV3Value(game, reply.captured, ownValues);
       stonefishV3Play(game, reply);
-      const ourBestResponseGain = stonefishV3BestResponseGain(game, opponentValues);
+
+      const ourResponses = stonefishV3LegalSummaries(game);
+      if (stonefishV3IsCurrentPositionMate(game, ourResponses)) {
+        allowsMateInOne = true;
+        worstCaseScore = -STONEFISH_V3_MATE_SCORE;
+        stonefishV3Undo(game);
+        break;
+      }
+
+      let ourBestResponseGain = 0;
+      for (const response of ourResponses) {
+        const gain = stonefishV3Value(game, response.captured, opponentValues);
+        if (gain > ourBestResponseGain) ourBestResponseGain = gain;
+
+        // Mate on our response outranks all material. Only probe moves that
+        // actually give check; most moves therefore need no deeper generation.
+        stonefishV3Play(game, response);
+        if (game.in_check()) {
+          const afterResponse = stonefishV3LegalSummaries(game);
+          if (afterResponse.length === 0) {
+            ourBestResponseGain = STONEFISH_V3_MATE_SCORE;
+            stonefishV3Undo(game);
+            break;
+          }
+        }
+        stonefishV3Undo(game);
+      }
+
       stonefishV3Undo(game);
 
       const score = immediateGain - opponentGain + ourBestResponseGain;
       if (score < worstCaseScore) worstCaseScore = score;
+
+      // The opponent is minimising our score. Once this candidate is already
+      // worse than the best fully-evaluated safe candidate, further replies can
+      // only keep it equal or make it worse, so the remainder cannot affect the
+      // chosen move.
+      if (!allowsMateInOne && bestCompletedScore > -Infinity && worstCaseScore < bestCompletedScore) {
+        break;
+      }
     }
 
     stonefishV3Undo(game);
     scored.push({ move, allowsMateInOne, score: worstCaseScore });
+
+    if (!allowsMateInOne && worstCaseScore > bestCompletedScore) {
+      bestCompletedScore = worstCaseScore;
+    }
   }
 
   const safe = scored.filter(candidate => !candidate.allowsMateInOne);
