@@ -1,7 +1,7 @@
-name: v4-tuning-samedepth-rep-conditional
+name: v4-tuning-samedepth-rep-combo
 on:
   push:
-    branches: ['v4-tuning-samedepth-rep-conditional']
+    branches: ['v4-tuning-samedepth-rep-combo']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-samedepth-rep-conditional.js
+      - run: node tools/v4-samedepth-rep-combo.js
