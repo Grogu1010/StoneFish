@@ -1,0 +1,10 @@
+const fs=require('fs');
+let src=fs.readFileSync('tools/v4-tune.js','utf8');
+src=src.replace("function choose4(g,r,cfg){let a=getStonefishV3BestRawMoves(g).slice();", "const POOL={turns:0,single:0,total:0,max:0,buckets:{}};function choose4(g,r,cfg){let a=getStonefishV3BestRawMoves(g).slice();POOL.turns++;POOL.total+=a.length;if(a.length===1)POOL.single++;if(a.length>POOL.max)POOL.max=a.length;const b=a.length<=1?'1':a.length<=3?'2-3':a.length<=7?'4-7':a.length<=15?'8-15':'16+';POOL.buckets[b]=(POOL.buckets[b]||0)+1;");
+const start=src.indexOf("const C=[];let id=0;function add");
+const end=src.indexOf("`;\nnew Function",start);
+if(start<0||end<0)throw new Error('Could not locate candidate block');
+const replacement=String.raw`const cfg={name:'base',order:base.slice()};const r=test(cfg,100,95000);console.log('RESULT',r);console.log('POOL',JSON.stringify({...POOL,avg:POOL.total/POOL.turns,singlePct:100*POOL.single/POOL.turns}));
+`;
+src=src.slice(0,start)+replacement+src.slice(end);
+eval(src);
