@@ -1,0 +1,17 @@
+name: v45-layer-ablation
+on:
+  push:
+    branches: [v45-safety-rebuild]
+    paths:
+      - 'Stonefish_v4_5_safety_patch.js'
+      - 'tools/v45-layer-ablation.js'
+      - '.github/workflows/v45-layer-ablation.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/v45-layer-ablation.js
