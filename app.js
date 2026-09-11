@@ -10,6 +10,8 @@ const heroSubtitle = document.getElementById('hero-subtitle');
 const botTrait = document.getElementById('bot-trait');
 const logicLines = document.getElementById('logic-lines');
 const watchButton = document.getElementById('watch-game');
+const testModelASelect = document.getElementById('test-model-a');
+const testModelBSelect = document.getElementById('test-model-b');
 const testCountInput = document.getElementById('test-count');
 const runTestButton = document.getElementById('run-test');
 const testResults = document.getElementById('test-results');
@@ -33,6 +35,16 @@ const models = {
     subtitle: 'A one-ply survivalist: takes mate in one, avoids giving mate in one, then minimises the biggest capture you can make next.',
     logic: ['Take mate in 1 whenever possible', 'Avoid allowing mate in 1 when possible', 'Minimise the opponent’s biggest next capture'],
     getMove: getStonefishV2Move
+  },
+  v2test1: {
+    name: 'Stonefish_v2(testunit1)',
+    getMove: getStonefishV2TestUnit1Move,
+    testOnly: true
+  },
+  v2test2: {
+    name: 'Stonefish_v2(testunit2)',
+    getMove: getStonefishV2TestUnit2Move,
+    testOnly: true
   }
 };
 
@@ -275,13 +287,6 @@ function playWatchMove() {
   }
 }
 
-function resultFromFinishedGame(testGame, whiteModel, blackModel) {
-  if (testGame.in_checkmate()) {
-    return testGame.turn() === 'w' ? blackModel : whiteModel;
-  }
-  return 'draw';
-}
-
 function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
   const testGame = new Chess();
   let plies = 0;
@@ -295,13 +300,35 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
   }
 
   if (plies >= maxPlies && !testGame.game_over()) return 'draw';
-  return resultFromFinishedGame(testGame, whiteModelKey, blackModelKey);
+  if (testGame.in_checkmate()) return testGame.turn() === 'w' ? 'black' : 'white';
+  return 'draw';
+}
+
+function formatWinRate(wins, completedGames) {
+  if (completedGames === 0) return '0.0%';
+  return `${((wins / completedGames) * 100).toFixed(1)}%`;
+}
+
+function renderTestProgress(modelAKey, modelBKey, results, completed, total, done = false) {
+  const modelAName = models[modelAKey].name;
+  const modelBName = models[modelBKey].name;
+  const heading = done ? `Final — ${completed} games` : `Running ${completed} / ${total}`;
+  const drawRate = completed === 0 ? '0.0%' : `${((results.draw / completed) * 100).toFixed(1)}%`;
+
+  testResults.innerHTML = `
+    <div class="test-progress-heading">${heading}</div>
+    <div>${modelAName}: <strong>${results.a} wins</strong> · ${formatWinRate(results.a, completed)}</div>
+    <div>${modelBName}: <strong>${results.b} wins</strong> · ${formatWinRate(results.b, completed)}</div>
+    <div>Draws: <strong>${results.draw}</strong> · ${drawRate}</div>
+  `;
 }
 
 async function runHeadToHeadTest() {
   if (testing) return;
 
   stopWatching();
+  const modelAKey = testModelASelect.value;
+  const modelBKey = testModelBSelect.value;
   const requested = Number.parseInt(testCountInput.value, 10);
   const totalGames = Number.isFinite(requested) ? Math.max(1, Math.min(10000, requested)) : 20;
   testCountInput.value = totalGames;
@@ -309,29 +336,42 @@ async function runHeadToHeadTest() {
   testing = true;
   runTestButton.disabled = true;
   modelSelect.disabled = true;
+  testModelASelect.disabled = true;
+  testModelBSelect.disabled = true;
+  testCountInput.disabled = true;
   watchButton.disabled = true;
   newGameButton.disabled = true;
 
-  const results = { v1: 0, v2: 0, draw: 0 };
-  testResults.textContent = `Running 0 / ${totalGames} games…`;
+  const results = { a: 0, b: 0, draw: 0 };
+  renderTestProgress(modelAKey, modelBKey, results, 0, totalGames);
 
   for (let i = 0; i < totalGames; i += 1) {
-    const v1IsWhite = i % 2 === 0;
-    const white = v1IsWhite ? 'v1' : 'v2';
-    const black = v1IsWhite ? 'v2' : 'v1';
-    const result = playTestGame(white, black);
-    results[result] += 1;
+    const modelAIsWhite = i % 2 === 0;
+    const whiteKey = modelAIsWhite ? modelAKey : modelBKey;
+    const blackKey = modelAIsWhite ? modelBKey : modelAKey;
+    const result = playTestGame(whiteKey, blackKey);
 
-    if ((i + 1) % 10 === 0 || i === totalGames - 1) {
-      testResults.textContent = `Running ${i + 1} / ${totalGames} games…`;
-      await new Promise(resolve => window.setTimeout(resolve, 0));
+    if (result === 'draw') {
+      results.draw += 1;
+    } else {
+      const winnerIsModelA = (result === 'white' && modelAIsWhite) || (result === 'black' && !modelAIsWhite);
+      if (winnerIsModelA) results.a += 1;
+      else results.b += 1;
     }
+
+    const completed = i + 1;
+    renderTestProgress(modelAKey, modelBKey, results, completed, totalGames);
+    await new Promise(resolve => window.setTimeout(resolve, 0));
   }
 
-  testResults.textContent = `Stonefish_v1: ${results.v1} wins · Stonefish_v2: ${results.v2} wins · Draws: ${results.draw} · ${totalGames} games total.`;
+  renderTestProgress(modelAKey, modelBKey, results, totalGames, totalGames, true);
+
   testing = false;
   runTestButton.disabled = false;
   modelSelect.disabled = false;
+  testModelASelect.disabled = false;
+  testModelBSelect.disabled = false;
+  testCountInput.disabled = false;
   watchButton.disabled = false;
   newGameButton.disabled = false;
 }
