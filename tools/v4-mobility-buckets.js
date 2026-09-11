@@ -1,0 +1,17 @@
+const fs=require('fs');
+let source=fs.readFileSync('tools/v4-tune.js','utf8');
+source=source.replace(/function eg\(g,s\)\{return npm\(g,s\)<=10;\}/,"function eg(g,s){return npm(g,s)<=ACTIVE.endgameMaterial;}");
+source=source.replace(/g\.fullmove<=13\?dev\(g,s\):0/g,"g.fullmove<=ACTIVE.developUntil?dev(g,s):0");
+source=source.replace(/g\.fullmove<=10/g,"g.fullmove<=ACTIVE.queenUntil");
+source=source.replace("else if(c==='mobility')z=g.fastMobility(s);","else if(c==='mobility')z=g.fastMobility(s);else if(c.startsWith('mobilityBucket:')){const n=+c.split(':')[1];z=Math.floor(g.fastMobility(s)/n);}");
+source=source.replace("function choose4(g,r,cfg){let a=getStonefishV3BestRawMoves(g).slice();","function choose4(g,r,cfg){ACTIVE=cfg;let a=getStonefishV3BestRawMoves(g).slice();");
+const start=source.indexOf('const base=['),end=source.indexOf('\n`;\nnew Function',start);if(start<0||end<0)throw new Error('tail not found');
+const before=['promotion','castleNow','openingDevelop','hangingMax','queenDiscipline','repetitionAvoid','fiftyReset','endgamePawnProgress','endgameCheck'];
+const after=['pieceSupport','kingFreedom','center','minorCentral','kingProtection','pawnStructure','rookActivity','kingPlacement','boardControl'];
+const tail=String.raw`const C=[];const before=${JSON.stringify(before)},after=${JSON.stringify(after)};for(const n of[1,2,3,4,5,6,8,10,12])C.push({name:'b'+n,bucket:n,order:[...before,(n===1?'mobility':'mobilityBucket:'+n),...after],developUntil:8,queenUntil:14,endgameMaterial:14});
+console.log('MOBILITY BUCKET SCREEN',C.length,'x 24');const s=C.map(c=>({cfg:c,r:test(c,24,136000)})).sort(rank);for(const x of s)console.log(x.cfg.name,x.r);
+console.log('MOBILITY BUCKET CONFIRM top 6 x 60');const c=s.slice(0,6).map(x=>({cfg:x.cfg,r:test(x.cfg,60,140000)})).sort(rank);for(const x of c)console.log(x.cfg.name,x.r);
+console.log('MOBILITY BUCKET FINAL top 4 x 100');const f=c.slice(0,4).map(x=>({cfg:x.cfg,r:test(x.cfg,100,146000)})).sort(rank);for(const x of f)console.log('FINAL',x.cfg.name,x.r);console.log('WINNER',JSON.stringify(f[0].cfg),f[0].r);`;
+source=source.slice(0,start)+tail+source.slice(end);
+source=source.replace("new Function(engine+'\\n'+v3+'\\n'+harness)();","new Function(engine+'\\n'+v3+'\\nlet ACTIVE={developUntil:8,queenUntil:14,endgameMaterial:14};\\n'+harness)();");
+eval(source);
