@@ -3,21 +3,25 @@ importScripts(
   './Stonefish_v1.js',
   './Stonefish_v2.js',
   './Stonefish_v3.js',
-  './Stonefish_v3_testunit1.js',
-  './Stonefish_v3_testunit2.js'
+  './Stonefish_v4.js',
+  './Stonefish_v4_testunit1.js',
+  './Stonefish_v4_testunit2.js',
+  './Stonefish_v4_testunit3.js',
+  './Stonefish_v4_testunit4.js'
 );
 
 const workerModels = {
   v1: getStonefishMove,
   v2: getStonefishV2Move,
   v3: getStonefishV3Move,
-  v3test1: getStonefishV3TestUnit1Move,
-  v3test2: getStonefishV3TestUnit2Move
+  v4: getStonefishV4Move,
+  v4test1: getStonefishV4TestUnit1Move,
+  v4test2: getStonefishV4TestUnit2Move,
+  v4test3: getStonefishV4TestUnit3Move,
+  v4test4: getStonefishV4TestUnit4Move
 };
 
 function commitChosenMove(game, move) {
-  // Bot moves already carry the raw legal move. Commit it directly instead of
-  // regenerating every legal move just to find the same move again.
   if (move && move._raw) {
     game._applyRaw(move._raw, true);
     return;
