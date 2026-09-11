@@ -1,0 +1,12 @@
+const fs=require('fs');
+let source=fs.readFileSync('tools/v4-tune.js','utf8');
+source=source.replace(/function eg\(g,s\)\{return npm\(g,s\)<=10;\}/,"function eg(g,s){return npm(g,s)<=ACTIVE.endgameMaterial;}");
+source=source.replace(/g\.fullmove<=13\?dev\(g,s\):0/g,"g.fullmove<=ACTIVE.developUntil?dev(g,s):0");
+source=source.replace(/g\.fullmove<=10/g,"g.fullmove<=ACTIVE.queenUntil");
+source=source.replace("function choose4(g,r,cfg){let a=getStonefishV3BestRawMoves(g).slice();","function choose4(g,r,cfg){ACTIVE=cfg;let a=getStonefishV3BestRawMoves(g).slice();");
+const start=source.indexOf('const base=['),end=source.indexOf('\n`;\nnew Function',start);if(start<0||end<0)throw new Error('tail not found');
+const base=['promotion','castleNow','openingDevelop','hangingMax','queenDiscipline','repetitionAvoid','fiftyReset','endgamePawnProgress','endgameCheck','mobility','pieceSupport','kingFreedom','center','minorCentral','kingProtection','pawnStructure','rookActivity','kingPlacement','boardControl'];
+const tail=String.raw`const cfg={name:'champion',order:${JSON.stringify(base)},developUntil:8,queenUntil:14,endgameMaterial:14};for(const start of[157000,170000,190000,210000,230000,250000,270000])console.log('CONTROL',start,test(cfg,100,start));`;
+source=source.slice(0,start)+tail+source.slice(end);
+source=source.replace("new Function(engine+'\\n'+v3+'\\n'+harness)();","new Function(engine+'\\n'+v3+'\\nlet ACTIVE={developUntil:8,queenUntil:14,endgameMaterial:14};\\n'+harness)();");
+eval(source);
