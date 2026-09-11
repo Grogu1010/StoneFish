@@ -18,6 +18,7 @@ function stonefishV3Signature(values) {
 }
 
 function stonefishV3PositionKey(game) {
+  if (typeof game.fastPositionKey === 'function') return game.fastPositionKey();
   return game.fen().split(' ').slice(0, 4).join(' ');
 }
 
@@ -31,7 +32,13 @@ function stonefishV3TrimCache(cache) {
 }
 
 function stonefishV3Play(game, move) {
+  if (typeof game.fastApply === 'function') return game.fastApply(move);
   return game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+}
+
+function stonefishV3Undo(game) {
+  if (typeof game.fastUndo === 'function') return game.fastUndo();
+  return game.undo();
 }
 
 function stonefishV3Random(moves) {
@@ -40,27 +47,63 @@ function stonefishV3Random(moves) {
 }
 
 function stonefishV3Compact(move) {
-  return { from: move.from, to: move.to, promotion: move.promotion || null };
+  return {
+    from: move.from,
+    to: move.to,
+    promotion: move.promotion || null,
+    _raw: move._raw || null
+  };
 }
 
-// Move generation is the expensive part of v3. Cache a value-independent summary
-// of every legal move so all v3 variants can reuse the same chess.js work.
+function stonefishV3MoveIsMate(game, move) {
+  if (move.mate !== undefined) return move.mate;
+  if (move.san && move.san.endsWith('#')) return true;
+  if (typeof game.fastIsMateMove === 'function') return game.fastIsMateMove(move);
+  stonefishV3Play(game, move);
+  const mate = game.in_checkmate();
+  stonefishV3Undo(game);
+  return mate;
+}
+
 function stonefishV3LegalSummaries(game) {
   const key = stonefishV3PositionKey(game);
   const cached = STONEFISH_V3_LEGAL_CACHE.get(key);
   if (cached) return cached;
 
-  const summaries = game.moves({ verbose: true }).map(move => ({
+  let summaries;
+  if (typeof game.fastMoves === 'function') {
+    summaries = game.fastMoves().map(raw => ({
+      from: game._alg(raw.from),
+      to: game._alg(raw.to),
+      promotion: raw.promotion || null,
+      captured: raw.captured || null,
+      mate: undefined,
+      _raw: raw
+    }));
+  } else {
+    summaries = game.moves({ verbose: true }).map(move => ({
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion || null,
+      captured: move.captured || null,
+      mate: Boolean(move.san && move.san.endsWith('#'))
+    }));
+  }
+
+  stonefishV3TrimCache(STONEFISH_V3_LEGAL_CACHE);
+  STONEFISH_V3_LEGAL_CACHE.set(key, summaries.map(stonefishV3CompactSummary));
+  return summaries;
+}
+
+function stonefishV3CompactSummary(move) {
+  return {
     from: move.from,
     to: move.to,
     promotion: move.promotion || null,
     captured: move.captured || null,
-    mate: Boolean(move.san && move.san.endsWith('#'))
-  }));
-
-  stonefishV3TrimCache(STONEFISH_V3_LEGAL_CACHE);
-  STONEFISH_V3_LEGAL_CACHE.set(key, summaries);
-  return summaries;
+    mate: move.mate,
+    _raw: move._raw || null
+  };
 }
 
 function stonefishV3BestResponseGain(game, opponentValues) {
@@ -68,9 +111,8 @@ function stonefishV3BestResponseGain(game, opponentValues) {
   let best = 0;
 
   for (const response of responses) {
-    if (response.mate) return STONEFISH_V3_MATE_SCORE;
+    if (stonefishV3MoveIsMate(game, response)) return STONEFISH_V3_MATE_SCORE;
     if (!response.captured) continue;
-
     const gain = opponentValues[response.captured] || 0;
     if (gain > best) best = gain;
   }
@@ -86,7 +128,10 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
   const legalMoves = stonefishV3LegalSummaries(game);
   if (legalMoves.length === 0) return null;
 
-  const matingMoves = legalMoves.filter(move => move.mate);
+  const matingMoves = [];
+  for (const move of legalMoves) {
+    if (stonefishV3MoveIsMate(game, move)) matingMoves.push(move);
+  }
   if (matingMoves.length > 0) {
     const compact = matingMoves.map(stonefishV3Compact);
     stonefishV3TrimCache(STONEFISH_V3_CACHE);
@@ -107,7 +152,7 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
     if (replies.length === 0) worstCaseScore = immediateGain;
 
     for (const reply of replies) {
-      if (reply.mate) {
+      if (stonefishV3MoveIsMate(game, reply)) {
         allowsMateInOne = true;
         worstCaseScore = -STONEFISH_V3_MATE_SCORE;
         continue;
@@ -116,13 +161,13 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
       const opponentGain = reply.captured ? (ownValues[reply.captured] || 0) : 0;
       stonefishV3Play(game, reply);
       const ourBestResponseGain = stonefishV3BestResponseGain(game, opponentValues);
-      game.undo();
+      stonefishV3Undo(game);
 
       const score = immediateGain - opponentGain + ourBestResponseGain;
       if (score < worstCaseScore) worstCaseScore = score;
     }
 
-    game.undo();
+    stonefishV3Undo(game);
     scored.push({ move, allowsMateInOne, score: worstCaseScore });
   }
 
