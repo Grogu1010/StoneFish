@@ -56,6 +56,7 @@ let selectedModel = 'v2';
 let watchTimer = null;
 let watchMode = false;
 let testing = false;
+let testWorker = null;
 
 function renderBoard() {
   boardElement.innerHTML = '';
@@ -287,23 +288,6 @@ function playWatchMove() {
   }
 }
 
-function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
-  const testGame = new Chess();
-  let plies = 0;
-
-  while (!testGame.game_over() && plies < maxPlies) {
-    const modelKey = testGame.turn() === 'w' ? whiteModelKey : blackModelKey;
-    const move = models[modelKey].getMove(testGame);
-    if (!move) break;
-    playMoveOnGame(testGame, move);
-    plies += 1;
-  }
-
-  if (plies >= maxPlies && !testGame.game_over()) return 'draw';
-  if (testGame.in_checkmate()) return testGame.turn() === 'w' ? 'black' : 'white';
-  return 'draw';
-}
-
 function formatWinRate(wins, completedGames) {
   if (completedGames === 0) return '0.0%';
   return `${((wins / completedGames) * 100).toFixed(1)}%`;
@@ -323,6 +307,38 @@ function renderTestProgress(modelAKey, modelBKey, results, completed, total, don
   `;
 }
 
+function setTestControlsDisabled(disabled) {
+  runTestButton.disabled = disabled;
+  modelSelect.disabled = disabled;
+  testModelASelect.disabled = disabled;
+  testModelBSelect.disabled = disabled;
+  testCountInput.disabled = disabled;
+  watchButton.disabled = disabled;
+  newGameButton.disabled = disabled;
+}
+
+function getTestWorker() {
+  if (!testWorker) {
+    testWorker = new Worker('test-worker.js');
+  }
+  return testWorker;
+}
+
+function runWorkerGame(worker, job) {
+  return new Promise((resolve, reject) => {
+    const handler = event => {
+      if (event.data.jobId !== job.jobId) return;
+      worker.removeEventListener('message', handler);
+
+      if (event.data.error) reject(new Error(event.data.error));
+      else resolve(event.data.result);
+    };
+
+    worker.addEventListener('message', handler);
+    worker.postMessage(job);
+  });
+}
+
 async function runHeadToHeadTest() {
   if (testing) return;
 
@@ -334,46 +350,51 @@ async function runHeadToHeadTest() {
   testCountInput.value = totalGames;
 
   testing = true;
-  runTestButton.disabled = true;
-  modelSelect.disabled = true;
-  testModelASelect.disabled = true;
-  testModelBSelect.disabled = true;
-  testCountInput.disabled = true;
-  watchButton.disabled = true;
-  newGameButton.disabled = true;
+  setTestControlsDisabled(true);
 
   const results = { a: 0, b: 0, draw: 0 };
   renderTestProgress(modelAKey, modelBKey, results, 0, totalGames);
 
-  for (let i = 0; i < totalGames; i += 1) {
-    const modelAIsWhite = i % 2 === 0;
-    const whiteKey = modelAIsWhite ? modelAKey : modelBKey;
-    const blackKey = modelAIsWhite ? modelBKey : modelAKey;
-    const result = playTestGame(whiteKey, blackKey);
+  try {
+    const worker = getTestWorker();
 
-    if (result === 'draw') {
-      results.draw += 1;
-    } else {
-      const winnerIsModelA = (result === 'white' && modelAIsWhite) || (result === 'black' && !modelAIsWhite);
-      if (winnerIsModelA) results.a += 1;
-      else results.b += 1;
+    // Deliberately run one background worker at a time. v2 is CPU-heavy and
+    // spawning one worker per core makes laptops much hotter for only a modest
+    // real-world speed gain.
+    for (let i = 0; i < totalGames; i += 1) {
+      const modelAIsWhite = i % 2 === 0;
+      const whiteModelKey = modelAIsWhite ? modelAKey : modelBKey;
+      const blackModelKey = modelAIsWhite ? modelBKey : modelAKey;
+      const result = await runWorkerGame(worker, {
+        jobId: i + 1,
+        whiteModelKey,
+        blackModelKey,
+        maxPlies: 1000
+      });
+
+      if (result === 'draw') {
+        results.draw += 1;
+      } else {
+        const winnerIsModelA = (result === 'white' && modelAIsWhite) || (result === 'black' && !modelAIsWhite);
+        if (winnerIsModelA) results.a += 1;
+        else results.b += 1;
+      }
+
+      renderTestProgress(modelAKey, modelBKey, results, i + 1, totalGames);
     }
 
-    const completed = i + 1;
-    renderTestProgress(modelAKey, modelBKey, results, completed, totalGames);
-    await new Promise(resolve => window.setTimeout(resolve, 0));
+    renderTestProgress(modelAKey, modelBKey, results, totalGames, totalGames, true);
+  } catch (error) {
+    testResults.textContent = `Test stopped: ${error.message}`;
+
+    if (testWorker) {
+      testWorker.terminate();
+      testWorker = null;
+    }
+  } finally {
+    testing = false;
+    setTestControlsDisabled(false);
   }
-
-  renderTestProgress(modelAKey, modelBKey, results, totalGames, totalGames, true);
-
-  testing = false;
-  runTestButton.disabled = false;
-  modelSelect.disabled = false;
-  testModelASelect.disabled = false;
-  testModelBSelect.disabled = false;
-  testCountInput.disabled = false;
-  watchButton.disabled = false;
-  newGameButton.disabled = false;
 }
 
 modelSelect.addEventListener('change', () => {
