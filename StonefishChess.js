@@ -1,6 +1,12 @@
 // StonefishChess — lightweight chess rules engine for StoneFish.
 // Purpose-built for fast make/undo search. Hypothetical moves never generate SAN.
 
+const SF_KNIGHT_DF = [1, 2, 2, 1, -1, -2, -2, -1];
+const SF_KNIGHT_DR = [2, 1, -1, -2, -2, -1, 1, 2];
+const SF_DIAG_DIRS = [1, 1, 1, -1, -1, 1, -1, -1];
+const SF_ORTH_DIRS = [1, 0, -1, 0, 0, 1, 0, -1];
+const SF_ALL_DIRS = [1, 1, 1, -1, -1, 1, -1, -1, 1, 0, -1, 0, 0, 1, 0, -1];
+
 class Chess {
   constructor() {
     this.reset();
@@ -57,7 +63,6 @@ class Chess {
   }
 
   fastPositionKey() {
-    // Fast deterministic key. Search logic only needs board, side, castle, ep.
     let s = this.side === 1 ? 'w|' : 'b|';
     for (let i = 0; i < 64; i += 1) s += String.fromCharCode(this.boardState[i] + 70);
     return `${s}|${this.castling}|${this.ep}`;
@@ -94,23 +99,20 @@ class Chess {
     const file = sq & 7;
     const rank = sq >> 3;
 
-    // Pawns.
     const pawnRank = rank - bySide;
     if (pawnRank >= 0 && pawnRank < 8) {
       if (file > 0 && b[pawnRank * 8 + file - 1] === bySide) return true;
       if (file < 7 && b[pawnRank * 8 + file + 1] === bySide) return true;
     }
 
-    // Knights.
-    const knightSteps = [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]];
-    for (const [df, dr] of knightSteps) {
-      const f = file + df, r = rank + dr;
+    for (let i = 0; i < 8; i += 1) {
+      const f = file + SF_KNIGHT_DF[i];
+      const r = rank + SF_KNIGHT_DR[i];
       if (f >= 0 && f < 8 && r >= 0 && r < 8 && b[r * 8 + f] === bySide * 2) return true;
     }
 
-    // Bishops/queens.
-    const diag = [[1,1],[1,-1],[-1,1],[-1,-1]];
-    for (const [df, dr] of diag) {
+    for (let i = 0; i < SF_DIAG_DIRS.length; i += 2) {
+      const df = SF_DIAG_DIRS[i], dr = SF_DIAG_DIRS[i + 1];
       let f = file + df, r = rank + dr;
       while (f >= 0 && f < 8 && r >= 0 && r < 8) {
         const p = b[r * 8 + f];
@@ -122,9 +124,8 @@ class Chess {
       }
     }
 
-    // Rooks/queens.
-    const orth = [[1,0],[-1,0],[0,1],[0,-1]];
-    for (const [df, dr] of orth) {
+    for (let i = 0; i < SF_ORTH_DIRS.length; i += 2) {
+      const df = SF_ORTH_DIRS[i], dr = SF_ORTH_DIRS[i + 1];
       let f = file + df, r = rank + dr;
       while (f >= 0 && f < 8 && r >= 0 && r < 8) {
         const p = b[r * 8 + f];
@@ -136,13 +137,9 @@ class Chess {
       }
     }
 
-    // King.
-    for (let df = -1; df <= 1; df += 1) {
-      for (let dr = -1; dr <= 1; dr += 1) {
-        if (!df && !dr) continue;
-        const f = file + df, r = rank + dr;
-        if (f >= 0 && f < 8 && r >= 0 && r < 8 && b[r * 8 + f] === bySide * 6) return true;
-      }
+    for (let i = 0; i < SF_ALL_DIRS.length; i += 2) {
+      const f = file + SF_ALL_DIRS[i], r = rank + SF_ALL_DIRS[i + 1];
+      if (f >= 0 && f < 8 && r >= 0 && r < 8 && b[r * 8 + f] === bySide * 6) return true;
     }
     return false;
   }
@@ -154,7 +151,7 @@ class Chess {
   _pushMove(moves, from, to, promotion = 0, flags = 0) {
     const moving = this.boardState[from];
     let captured = this.boardState[to];
-    if (flags & 2) captured = -this.side; // en passant pawn
+    if (flags & 2) captured = -this.side;
     moves.push({
       from,
       to,
@@ -172,7 +169,7 @@ class Chess {
 
     for (let from = 0; from < 64; from += 1) {
       const piece = b[from];
-      if (!piece || Math.sign(piece) !== us) continue;
+      if (!piece || (piece > 0 ? 1 : -1) !== us) continue;
       const type = Math.abs(piece);
       const file = from & 7;
       const rank = from >> 3;
@@ -184,21 +181,28 @@ class Chess {
         const one = from + step;
         if (one >= 0 && one < 64 && !b[one]) {
           if ((one >> 3) === promoRank) {
-            for (const p of [5,4,3,2]) this._pushMove(moves, from, one, p);
+            this._pushMove(moves, from, one, 5);
+            this._pushMove(moves, from, one, 4);
+            this._pushMove(moves, from, one, 3);
+            this._pushMove(moves, from, one, 2);
           } else {
             this._pushMove(moves, from, one);
             const two = from + step * 2;
             if (rank === startRank && !b[two]) this._pushMove(moves, from, two, 0, 1);
           }
         }
-        for (const df of [-1, 1]) {
+        for (let df = -1; df <= 1; df += 2) {
           const f = file + df;
           if (f < 0 || f > 7) continue;
           const to = from + step + df;
           if (to < 0 || to >= 64) continue;
-          if (b[to] && Math.sign(b[to]) === -us) {
+          const target = b[to];
+          if (target && (target > 0 ? 1 : -1) === -us) {
             if ((to >> 3) === promoRank) {
-              for (const p of [5,4,3,2]) this._pushMove(moves, from, to, p);
+              this._pushMove(moves, from, to, 5);
+              this._pushMove(moves, from, to, 4);
+              this._pushMove(moves, from, to, 3);
+              this._pushMove(moves, from, to, 2);
             } else this._pushMove(moves, from, to);
           } else if (to === this.ep) {
             this._pushMove(moves, from, to, 0, 2);
@@ -208,28 +212,24 @@ class Chess {
       }
 
       if (type === 2) {
-        const steps = [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]];
-        for (const [df, dr] of steps) {
-          const f = file + df, r = rank + dr;
+        for (let i = 0; i < 8; i += 1) {
+          const f = file + SF_KNIGHT_DF[i], r = rank + SF_KNIGHT_DR[i];
           if (f < 0 || f > 7 || r < 0 || r > 7) continue;
-          const to = r * 8 + f;
-          if (!b[to] || Math.sign(b[to]) === -us) this._pushMove(moves, from, to);
+          const to = r * 8 + f, target = b[to];
+          if (!target || (target > 0 ? 1 : -1) === -us) this._pushMove(moves, from, to);
         }
         continue;
       }
 
-      const dirs = type === 3 ? [[1,1],[1,-1],[-1,1],[-1,-1]]
-        : type === 4 ? [[1,0],[-1,0],[0,1],[0,-1]]
-        : type === 5 ? [[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]]
-        : [[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
-
-      for (const [df, dr] of dirs) {
+      const dirs = type === 3 ? SF_DIAG_DIRS : type === 4 ? SF_ORTH_DIRS : SF_ALL_DIRS;
+      for (let i = 0; i < dirs.length; i += 2) {
+        const df = dirs[i], dr = dirs[i + 1];
         let f = file + df, r = rank + dr;
         while (f >= 0 && f < 8 && r >= 0 && r < 8) {
-          const to = r * 8 + f;
-          if (!b[to]) this._pushMove(moves, from, to);
+          const to = r * 8 + f, target = b[to];
+          if (!target) this._pushMove(moves, from, to);
           else {
-            if (Math.sign(b[to]) === -us) this._pushMove(moves, from, to);
+            if ((target > 0 ? 1 : -1) === -us) this._pushMove(moves, from, to);
             break;
           }
           if (type === 6) break;
@@ -239,28 +239,110 @@ class Chess {
 
       if (type === 6) {
         if (us === 1 && from === 4) {
-          if ((this.castling & 1) && !b[5] && !b[6] && !this._isAttacked(4,-1) && !this._isAttacked(5,-1) && !this._isAttacked(6,-1)) this._pushMove(moves,4,6,0,4);
-          if ((this.castling & 2) && !b[1] && !b[2] && !b[3] && !this._isAttacked(4,-1) && !this._isAttacked(3,-1) && !this._isAttacked(2,-1)) this._pushMove(moves,4,2,0,8);
+          if ((this.castling & 1) && b[7] === 4 && !b[5] && !b[6] && !this._isAttacked(4,-1) && !this._isAttacked(5,-1) && !this._isAttacked(6,-1)) this._pushMove(moves,4,6,0,4);
+          if ((this.castling & 2) && b[0] === 4 && !b[1] && !b[2] && !b[3] && !this._isAttacked(4,-1) && !this._isAttacked(3,-1) && !this._isAttacked(2,-1)) this._pushMove(moves,4,2,0,8);
         } else if (us === -1 && from === 60) {
-          if ((this.castling & 4) && !b[61] && !b[62] && !this._isAttacked(60,1) && !this._isAttacked(61,1) && !this._isAttacked(62,1)) this._pushMove(moves,60,62,0,4);
-          if ((this.castling & 8) && !b[57] && !b[58] && !b[59] && !this._isAttacked(60,1) && !this._isAttacked(59,1) && !this._isAttacked(58,1)) this._pushMove(moves,60,58,0,8);
+          if ((this.castling & 4) && b[63] === -4 && !b[61] && !b[62] && !this._isAttacked(60,1) && !this._isAttacked(61,1) && !this._isAttacked(62,1)) this._pushMove(moves,60,62,0,4);
+          if ((this.castling & 8) && b[56] === -4 && !b[57] && !b[58] && !b[59] && !this._isAttacked(60,1) && !this._isAttacked(59,1) && !this._isAttacked(58,1)) this._pushMove(moves,60,58,0,8);
         }
       }
     }
     return moves;
   }
 
+  _testLegalRaw(move) {
+    const b = this.boardState;
+    const us = this.side;
+    const moving = b[move.from];
+    const target = b[move.to];
+    let epSq = -1, epPiece = 0;
+    let rookFrom = -1, rookTo = -1, rookPiece = 0;
+
+    b[move.from] = 0;
+    b[move.to] = move.promotion ? us * move.promotion : moving;
+
+    if (move.flags & 2) {
+      epSq = move.to + (us === 1 ? -8 : 8);
+      epPiece = b[epSq];
+      b[epSq] = 0;
+    }
+    if (move.flags & 4) {
+      rookFrom = us === 1 ? 7 : 63;
+      rookTo = us === 1 ? 5 : 61;
+      rookPiece = b[rookFrom];
+      b[rookTo] = rookPiece;
+      b[rookFrom] = 0;
+    } else if (move.flags & 8) {
+      rookFrom = us === 1 ? 0 : 56;
+      rookTo = us === 1 ? 3 : 59;
+      rookPiece = b[rookFrom];
+      b[rookTo] = rookPiece;
+      b[rookFrom] = 0;
+    }
+
+    const kingSquare = Math.abs(moving) === 6 ? move.to : this.kingSq[us];
+    const safe = !this._isAttacked(kingSquare, -us);
+
+    if (rookFrom >= 0) {
+      b[rookFrom] = rookPiece;
+      b[rookTo] = 0;
+    }
+    if (epSq >= 0) b[epSq] = epPiece;
+    b[move.from] = moving;
+    b[move.to] = target;
+    return safe;
+  }
+
   fastMoves() {
     const pseudo = this._pseudoMoves();
     const legal = [];
-    const us = this.side;
-    for (const move of pseudo) {
-      this._applyRaw(move, false);
-      const safe = !this._isAttacked(this.kingSq[us], -us);
-      this._undoRaw();
-      if (safe) legal.push(move);
+    for (let i = 0; i < pseudo.length; i += 1) {
+      const move = pseudo[i];
+      if (this._testLegalRaw(move)) legal.push(move);
     }
     return legal;
+  }
+
+  fastGivesCheck(move) {
+    const raw = move && move._raw ? move._raw : move;
+    const b = this.boardState;
+    const us = this.side;
+    const moving = b[raw.from];
+    const target = b[raw.to];
+    let epSq = -1, epPiece = 0;
+    let rookFrom = -1, rookTo = -1, rookPiece = 0;
+
+    b[raw.from] = 0;
+    b[raw.to] = raw.promotion ? us * raw.promotion : moving;
+    if (raw.flags & 2) {
+      epSq = raw.to + (us === 1 ? -8 : 8);
+      epPiece = b[epSq];
+      b[epSq] = 0;
+    }
+    if (raw.flags & 4) {
+      rookFrom = us === 1 ? 7 : 63;
+      rookTo = us === 1 ? 5 : 61;
+      rookPiece = b[rookFrom];
+      b[rookTo] = rookPiece;
+      b[rookFrom] = 0;
+    } else if (raw.flags & 8) {
+      rookFrom = us === 1 ? 0 : 56;
+      rookTo = us === 1 ? 3 : 59;
+      rookPiece = b[rookFrom];
+      b[rookTo] = rookPiece;
+      b[rookFrom] = 0;
+    }
+
+    const givesCheck = this._isAttacked(this.kingSq[-us], us);
+
+    if (rookFrom >= 0) {
+      b[rookFrom] = rookPiece;
+      b[rookTo] = 0;
+    }
+    if (epSq >= 0) b[epSq] = epPiece;
+    b[raw.from] = moving;
+    b[raw.to] = target;
+    return givesCheck;
   }
 
   _applyRaw(move, trackRepetition) {
@@ -337,7 +419,6 @@ class Chess {
     this.kingSq[-1] = state.kingB;
 
     const b = this.boardState;
-    const moved = b[move.to];
     b[move.from] = this.side * move.piece;
     b[move.to] = state.capturedPiece;
 
@@ -365,10 +446,23 @@ class Chess {
   }
 
   fastIsMateMove(move) {
-    this.fastApply(move);
-    const mate = this.in_check() && this.fastMoves().length === 0;
+    const raw = move && move._raw ? move._raw : move;
+    if (!this.fastGivesCheck(raw)) return false;
+    this.fastApply(raw);
+    const mate = this.fastMoves().length === 0;
     this.fastUndo();
     return mate;
+  }
+
+  fastMobility(side) {
+    const oldSide = this.side;
+    const oldEp = this.ep;
+    this.side = side;
+    this.ep = -1;
+    const count = this.fastMoves().length;
+    this.side = oldSide;
+    this.ep = oldEp;
+    return count;
   }
 
   _publicMove(raw, withMate = false) {
