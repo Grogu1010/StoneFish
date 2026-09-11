@@ -1,7 +1,7 @@
-name: v4-tuning-support-order
+name: v4-kingweights
 on:
   push:
-    branches: ['v4-tuning-support-order']
+    branches: ['v4-kingweights-work']
   workflow_dispatch:
 
 jobs:
@@ -15,4 +15,4 @@ jobs:
           node-version: '22'
       - name: Match browser 1000-ply limit
         run: sed -i 's/max=500/max=1000/g; s/maxPlies = 500/maxPlies = 1000/g' tools/v4-tune.js
-      - run: node tools/v4-support-order.js
+      - run: node tools/v4-kingweights.js
