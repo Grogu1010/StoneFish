@@ -2,15 +2,17 @@ importScripts(
   'https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js',
   './Stonefish_v1.js',
   './Stonefish_v2.js',
-  './Stonefish_v2_testunit1.js',
-  './Stonefish_v2_testunit2.js'
+  './Stonefish_v3.js',
+  './Stonefish_v3_testunit1.js',
+  './Stonefish_v3_testunit2.js'
 );
 
 const workerModels = {
   v1: getStonefishMove,
   v2: getStonefishV2Move,
-  v2test1: getStonefishV2TestUnit1Move,
-  v2test2: getStonefishV2TestUnit2Move
+  v3: getStonefishV3Move,
+  v3test1: getStonefishV3TestUnit1Move,
+  v3test2: getStonefishV3TestUnit2Move
 };
 
 function playMove(game, move) {
@@ -28,6 +30,8 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
   while (!game.game_over() && plies < maxPlies) {
     const modelKey = game.turn() === 'w' ? whiteModelKey : blackModelKey;
     const getMove = workerModels[modelKey];
+    if (!getMove) throw new Error(`Unknown model: ${modelKey}`);
+
     const move = getMove(game);
     if (!move) break;
     playMove(game, move);
