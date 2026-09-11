@@ -26,7 +26,9 @@ body {
   font-family: 'Inter', sans-serif;
 }
 
-button { font: inherit; }
+button,
+select,
+input { font: inherit; }
 
 .page-shell {
   width: min(1180px, calc(100% - 32px));
@@ -166,7 +168,8 @@ button { font: inherit; }
 
 .bot-card,
 .status-card,
-.legend-card {
+.legend-card,
+.lab-card {
   border-radius: 16px;
   padding: 20px;
 }
@@ -176,6 +179,8 @@ button { font: inherit; }
   gap: 14px;
   align-items: center;
 }
+
+.bot-info { min-width: 0; flex: 1; }
 
 .bot-avatar {
   display: grid;
@@ -191,13 +196,35 @@ button { font: inherit; }
   font-weight: 800;
 }
 
-.bot-card h2 {
-  margin: 3px 0 5px;
-  font-size: 1.25rem;
+.model-row { margin: 5px 0 7px; }
+
+.model-select,
+.test-row input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  outline: none;
+}
+
+.model-select {
+  padding: 9px 34px 9px 11px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.model-select:focus,
+.test-row input:focus {
+  border-color: rgba(103, 232, 178, 0.55);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .bot-trait,
-.last-move {
+.last-move,
+.helper-text,
+.test-results {
   margin: 0;
   color: var(--muted);
   font-size: 0.88rem;
@@ -228,6 +255,11 @@ button { font: inherit; }
 
 .legend-card .section-label { margin-bottom: 4px; }
 
+#logic-lines {
+  display: grid;
+  gap: 13px;
+}
+
 .logic-line {
   display: flex;
   gap: 11px;
@@ -253,23 +285,83 @@ button { font: inherit; }
   font-size: 0.9rem;
 }
 
-.new-game-button {
-  width: 100%;
-  padding: 15px 18px;
-  border: 0;
-  border-radius: 14px;
-  background: var(--accent);
-  color: #07110d;
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform 150ms ease, filter 150ms ease;
+.lab-card {
+  display: grid;
+  gap: 12px;
 }
 
+.secondary-button,
+.new-game-button {
+  border: 0;
+  cursor: pointer;
+  font-weight: 800;
+  transition: transform 150ms ease, filter 150ms ease, opacity 150ms ease;
+}
+
+.secondary-button {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(103, 232, 178, 0.28);
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.secondary-button.compact {
+  width: auto;
+  white-space: nowrap;
+}
+
+.secondary-button:hover,
 .new-game-button:hover {
   transform: translateY(-1px);
   filter: brightness(1.04);
 }
 
+.secondary-button:disabled,
+.new-game-button:disabled,
+.model-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+.test-controls {
+  display: grid;
+  gap: 7px;
+  padding-top: 5px;
+}
+
+.test-controls label {
+  color: #d9e0e9;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.test-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.test-row input {
+  min-width: 0;
+  padding: 11px 12px;
+}
+
+.test-results {
+  min-height: 2.6em;
+}
+
+.new-game-button {
+  width: 100%;
+  padding: 15px 18px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #07110d;
+}
+
+.secondary-button:active,
 .new-game-button:active { transform: translateY(0); }
 
 @media (max-width: 900px) {
