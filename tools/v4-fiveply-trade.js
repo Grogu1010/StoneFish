@@ -25,16 +25,14 @@ function fivePlyTradeScore(g,root){
     if(!responses.length&&g.in_check()){g.fastUndo();g.fastUndo();return-M;}
     let bestResponse=-Infinity;
     for(const response of responses){
-      const ourGain=V[response.captured]||0;base=immediate-oppGain+ourGain;g.fastApply(response);const fourths=g.fastMoves();
+      const ourGain=V[response.captured]||0,tradeBase=immediate-oppGain+ourGain;g.fastApply(response);const fourths=g.fastMoves();
       if(!fourths.length&&g.in_check()){g.fastUndo();bestResponse=M;break;}
-      let worstFourth=base;
+      let worstFourth=tradeBase;
       for(const fourth of fourths){
         const fourthGain=V[fourth.captured]||0;
-        // Quiet fourth moves establish a conservative floor at the current trade score.
-        // Extend only captures/checks so a temporary sacrifice can be credited for a fifth-ply recovery.
-        if(!fourthGain&&!g.fastGivesCheck(fourth)){if(base<worstFourth)worstFourth=base;continue;}
+        if(!fourthGain&&!g.fastGivesCheck(fourth)){if(tradeBase<worstFourth)worstFourth=tradeBase;continue;}
         g.fastApply(fourth);const fifthGain=fifthBestGain(g);g.fastUndo();
-        const score=fifthGain<=-M?-M:(fifthGain>=M?M:base-fourthGain+fifthGain);
+        const score=fifthGain<=-M?-M:(fifthGain>=M?M:tradeBase-fourthGain+fifthGain);
         if(score<worstFourth)worstFourth=score;
         if(worstFourth===-M)break;
       }
