@@ -1,7 +1,7 @@
-name: v4-tuning-fourply-gated
+name: v4-tuning-gated-phase-cross
 on:
   push:
-    branches: ['v4-tuning-fourply-gated']
+    branches: ['v4-tuning-gated-phase-cross']
   workflow_dispatch:
 
 jobs:
