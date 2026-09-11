@@ -1,16 +1,16 @@
-name: v4-tuning-fourply-safety
+name: v4-tuning-fiveply-capture
 on:
   push:
-    branches: ['v4-tuning-fourply-safety']
+    branches: ['v4-tuning-fiveply-capture']
   workflow_dispatch:
 
 jobs:
   tune:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-fourply-safety.js
+      - run: node tools/v4-fiveply-capture.js
