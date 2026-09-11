@@ -11,8 +11,8 @@
   <main class="page-shell">
     <section class="hero">
       <p class="eyebrow">STONEFISH CHESS LAB</p>
-      <h1>Play <span id="hero-model">Stonefish_v3</span></h1>
-      <p id="hero-subtitle" class="subtitle">A three-ply material engine: win material now, survive the opponent's best reply, then count the best material response.</p>
+      <h1>Play <span id="hero-model">Stonefish_v4</span></h1>
+      <p id="hero-subtitle" class="subtitle">Stonefish_v3 material logic, then positional tie-breakers for checks, king safety, mobility, and centre control.</p>
     </section>
 
     <section class="game-layout" aria-label="StoneFish chess lab">
@@ -29,19 +29,20 @@
             <p class="bot-label">YOUR OPPONENT</p>
             <div class="model-row">
               <select id="model-select" class="model-select" aria-label="Choose Stonefish model">
-                <option value="v3" selected>Stonefish_v3</option>
+                <option value="v4" selected>Stonefish_v4</option>
+                <option value="v3">Stonefish_v3</option>
                 <option value="v2">Stonefish_v2</option>
                 <option value="v1">Stonefish_v1</option>
               </select>
             </div>
-            <p id="bot-trait" class="bot-trait"><span class="status-dot"></span> Three-ply material engine</p>
+            <p id="bot-trait" class="bot-trait"><span class="status-dot"></span> Positional tie-break engine</p>
           </div>
         </div>
 
         <div class="status-card">
           <p class="section-label">GAME STATUS</p>
           <p id="status" class="status-text">Your move. You are White.</p>
-          <p id="last-move" class="last-move">Stonefish_v3 is waiting.</p>
+          <p id="last-move" class="last-move">Stonefish_v4 is waiting.</p>
         </div>
 
         <div class="legend-card">
@@ -51,7 +52,7 @@
 
         <div class="lab-card">
           <p class="section-label">BOT LAB</p>
-          <button id="watch-game" class="secondary-button" type="button">Watch v2 vs v3</button>
+          <button id="watch-game" class="secondary-button" type="button">Watch v3 vs v4</button>
           <p class="helper-text">Spectator games make one move every 3 seconds.</p>
 
           <details class="developer-menu">
@@ -62,9 +63,12 @@
               <div id="test-models" class="model-checklist">
                 <label><input type="checkbox" name="test-model" value="v1" /> Stonefish_v1</label>
                 <label><input type="checkbox" name="test-model" value="v2" /> Stonefish_v2</label>
-                <label><input type="checkbox" name="test-model" value="v3" checked /> Stonefish_v3</label>
-                <label><input type="checkbox" name="test-model" value="v3test1" checked /> Stonefish_v3(testunit1) — opponent bishop 3.0</label>
-                <label><input type="checkbox" name="test-model" value="v3test2" checked /> Stonefish_v3(testunit2) — opponent knight 3.1, bishop 3.0</label>
+                <label><input type="checkbox" name="test-model" value="v3" /> Stonefish_v3</label>
+                <label><input type="checkbox" name="test-model" value="v4" checked /> Stonefish_v4 — exact proposed order</label>
+                <label><input type="checkbox" name="test-model" value="v4test1" checked /> Stonefish_v4(testunit1) — king protection before king freedom</label>
+                <label><input type="checkbox" name="test-model" value="v4test2" checked /> Stonefish_v4(testunit2) — mobility before king safety</label>
+                <label><input type="checkbox" name="test-model" value="v4test3" checked /> Stonefish_v4(testunit3) — centre control before mobility/king safety</label>
+                <label><input type="checkbox" name="test-model" value="v4test4" checked /> Stonefish_v4(testunit4) — king safety before checks</label>
               </div>
 
               <div class="test-controls">
@@ -89,8 +93,11 @@
   <script src="Stonefish_v1.js"></script>
   <script src="Stonefish_v2.js"></script>
   <script src="Stonefish_v3.js"></script>
-  <script src="Stonefish_v3_testunit1.js"></script>
-  <script src="Stonefish_v3_testunit2.js"></script>
+  <script src="Stonefish_v4.js"></script>
+  <script src="Stonefish_v4_testunit1.js"></script>
+  <script src="Stonefish_v4_testunit2.js"></script>
+  <script src="Stonefish_v4_testunit3.js"></script>
+  <script src="Stonefish_v4_testunit4.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
