@@ -2,8 +2,7 @@
 // Three-ply material engine:
 // 1. Take mate in 1.
 // 2. Avoid allowing mate in 1 whenever possible.
-// 3. For every move, maximise the worst-case material swing across:
-//    our move -> opponent reply -> our best response.
+// 3. Maximise worst-case material swing across our move -> their reply -> our response.
 // Bishops are worth 3.1 by default.
 
 const STONEFISH_V3_OWN_VALUES = { p: 1, n: 3, b: 3.1, r: 5, q: 9, k: 1000 };
@@ -46,12 +45,32 @@ function stonefishV3Random(moves) {
   return moves[Math.floor(Math.random() * moves.length)];
 }
 
-function stonefishV3Compact(move) {
+function stonefishV3Type(game, piece) {
+  if (!piece) return null;
+  return typeof piece === 'number' ? game._typeChar(piece) : piece;
+}
+
+function stonefishV3Value(game, piece, values) {
+  const type = stonefishV3Type(game, piece);
+  return type ? (values[type] || 0) : 0;
+}
+
+function stonefishV3Compact(game, move) {
+  if (typeof move.from === 'string') {
+    return {
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion || null,
+      captured: move.captured || null,
+      _raw: move._raw || null
+    };
+  }
   return {
-    from: move.from,
-    to: move.to,
-    promotion: move.promotion || null,
-    _raw: move._raw || null
+    from: game._alg(move.from),
+    to: game._alg(move.to),
+    promotion: move.promotion ? game._typeChar(move.promotion) : null,
+    captured: move.captured ? game._typeChar(move.captured) : null,
+    _raw: move
   };
 }
 
@@ -75,8 +94,8 @@ function stonefishV3LegalSummaries(game) {
     summaries = game.fastMoves().map(raw => ({
       from: game._alg(raw.from),
       to: game._alg(raw.to),
-      promotion: raw.promotion || null,
-      captured: raw.captured || null,
+      promotion: raw.promotion ? game._typeChar(raw.promotion) : null,
+      captured: raw.captured ? game._typeChar(raw.captured) : null,
       mate: undefined,
       _raw: raw
     }));
@@ -86,37 +105,24 @@ function stonefishV3LegalSummaries(game) {
       to: move.to,
       promotion: move.promotion || null,
       captured: move.captured || null,
-      mate: Boolean(move.san && move.san.endsWith('#'))
+      mate: Boolean(move.san && move.san.endsWith('#')),
+      _raw: null
     }));
   }
 
   stonefishV3TrimCache(STONEFISH_V3_LEGAL_CACHE);
-  STONEFISH_V3_LEGAL_CACHE.set(key, summaries.map(stonefishV3CompactSummary));
+  STONEFISH_V3_LEGAL_CACHE.set(key, summaries);
   return summaries;
-}
-
-function stonefishV3CompactSummary(move) {
-  return {
-    from: move.from,
-    to: move.to,
-    promotion: move.promotion || null,
-    captured: move.captured || null,
-    mate: move.mate,
-    _raw: move._raw || null
-  };
 }
 
 function stonefishV3BestResponseGain(game, opponentValues) {
   const responses = stonefishV3LegalSummaries(game);
   let best = 0;
-
   for (const response of responses) {
     if (stonefishV3MoveIsMate(game, response)) return STONEFISH_V3_MATE_SCORE;
-    if (!response.captured) continue;
-    const gain = opponentValues[response.captured] || 0;
+    const gain = stonefishV3Value(game, response.captured, opponentValues);
     if (gain > best) best = gain;
   }
-
   return best;
 }
 
@@ -132,24 +138,21 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
   for (const move of legalMoves) {
     if (stonefishV3MoveIsMate(game, move)) matingMoves.push(move);
   }
-  if (matingMoves.length > 0) {
-    const compact = matingMoves.map(stonefishV3Compact);
+  if (matingMoves.length) {
+    const compact = matingMoves.map(move => stonefishV3Compact(game, move));
     stonefishV3TrimCache(STONEFISH_V3_CACHE);
     STONEFISH_V3_CACHE.set(cacheKey, compact);
     return stonefishV3Random(compact);
   }
 
   const scored = [];
-
   for (const move of legalMoves) {
-    const immediateGain = move.captured ? (opponentValues[move.captured] || 0) : 0;
+    const immediateGain = stonefishV3Value(game, move.captured, opponentValues);
     stonefishV3Play(game, move);
 
     const replies = stonefishV3LegalSummaries(game);
     let allowsMateInOne = false;
-    let worstCaseScore = Infinity;
-
-    if (replies.length === 0) worstCaseScore = immediateGain;
+    let worstCaseScore = replies.length ? Infinity : immediateGain;
 
     for (const reply of replies) {
       if (stonefishV3MoveIsMate(game, reply)) {
@@ -158,7 +161,7 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
         continue;
       }
 
-      const opponentGain = reply.captured ? (ownValues[reply.captured] || 0) : 0;
+      const opponentGain = stonefishV3Value(game, reply.captured, ownValues);
       stonefishV3Play(game, reply);
       const ourBestResponseGain = stonefishV3BestResponseGain(game, opponentValues);
       stonefishV3Undo(game);
@@ -172,16 +175,13 @@ function getStonefishV3MoveWithValues(game, ownValues, opponentValues) {
   }
 
   const safe = scored.filter(candidate => !candidate.allowsMateInOne);
-  const candidates = safe.length > 0 ? safe : scored;
+  const candidates = safe.length ? safe : scored;
   let bestScore = -Infinity;
-
-  for (const candidate of candidates) {
-    if (candidate.score > bestScore) bestScore = candidate.score;
-  }
+  for (const candidate of candidates) if (candidate.score > bestScore) bestScore = candidate.score;
 
   const bestMoves = candidates
     .filter(candidate => Math.abs(candidate.score - bestScore) < 1e-9)
-    .map(candidate => stonefishV3Compact(candidate.move));
+    .map(candidate => stonefishV3Compact(game, candidate.move));
 
   stonefishV3TrimCache(STONEFISH_V3_CACHE);
   STONEFISH_V3_CACHE.set(cacheKey, bestMoves);
