@@ -1,16 +1,16 @@
-name: v4-tuning-fourply-safety
+name: v4-tuning-fourply-threshold-cross
 on:
   push:
-    branches: ['v4-tuning-fourply-safety']
+    branches: ['v4-tuning-fourply-threshold-cross']
   workflow_dispatch:
 
 jobs:
   tune:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-fourply-safety.js
+      - run: node tools/v4-fourply-threshold-cross.js
