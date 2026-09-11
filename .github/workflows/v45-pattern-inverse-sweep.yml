@@ -1,0 +1,16 @@
+name: v45-pattern-inverse-sweep
+on:
+  push:
+    branches: [v45-safety-rebuild]
+    paths:
+      - 'tools/v45-pattern-inverse-sweep.js'
+      - '.github/workflows/v45-pattern-inverse-sweep.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/v45-pattern-inverse-sweep.js
