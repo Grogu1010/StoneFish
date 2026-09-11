@@ -6,6 +6,7 @@ importScripts(
   './Stonefish_v4.js',
   './Stonefish_v4_5.js',
   './Stonefish_v4_5_opening_overrides.js',
+  './Stonefish_v4_5_safety_patch.js',
   './Stonefish_v4_5_testunit1.js',
   './Stonefish_v4_5_testunit2.js',
   './Stonefish_v4_5_testunit3.js',
