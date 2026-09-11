@@ -1,7 +1,7 @@
-name: v4-tuning-thresholds
+name: v4-tuning-samedepth-phase-grid
 on:
   push:
-    branches: ['v4-tuning-risk-prune']
+    branches: ['v4-tuning-samedepth-phase-grid']
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-thresholds.js
+      - run: node tools/v4-samedepth-phase-grid.js
