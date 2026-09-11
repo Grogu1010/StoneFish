@@ -22,62 +22,45 @@ function playStonefishCandidate(game, move) {
   });
 }
 
-function opponentHasMateInOne(game) {
+// Analyse all opponent replies in one pass. This avoids generating the same
+// legal-move list twice for every candidate move during large test runs.
+function analyseOpponentReplies(game, pieceValues) {
   const replies = game.moves({ verbose: true });
+  let allowsMateInOne = false;
+  let maxCaptureValue = 0;
 
   for (const reply of replies) {
-    playStonefishCandidate(game, reply);
-    const isMate = game.in_checkmate();
-    game.undo();
+    if (reply.captured) {
+      const captureValue = pieceValues[reply.captured] || 0;
+      if (captureValue > maxCaptureValue) maxCaptureValue = captureValue;
+    }
 
-    if (isMate) {
-      return true;
+    // Once mate-in-1 is found we still continue scanning captures, because the
+    // capture-risk score is needed if every legal candidate allows mate.
+    if (!allowsMateInOne) {
+      playStonefishCandidate(game, reply);
+      allowsMateInOne = game.in_checkmate();
+      game.undo();
     }
   }
 
-  return false;
-}
-
-function highestOpponentCaptureValue(game, pieceValues) {
-  const replies = game.moves({ verbose: true });
-  let highestValue = 0;
-
-  // chess.js already tells us which piece a legal move captures, so this
-  // calculation needs no extra board simulation.
-  for (const reply of replies) {
-    if (!reply.captured) continue;
-
-    const captureValue = pieceValues[reply.captured] || 0;
-    if (captureValue > highestValue) {
-      highestValue = captureValue;
-    }
-  }
-
-  return highestValue;
+  return { allowsMateInOne, maxCaptureValue };
 }
 
 function getStonefishV2MoveWithValues(game, pieceValues) {
   const legalMoves = game.moves({ verbose: true });
+  if (legalMoves.length === 0) return null;
 
-  if (legalMoves.length === 0) {
-    return null;
-  }
-
-  // Analyse on one temporary board instead of repeatedly creating new Chess
-  // objects from FEN. This preserves the same logic but is much faster in tests.
+  // Reuse one analysis board instead of constructing a new Chess object for
+  // every branch.
   const analysisGame = new Chess(game.fen());
-
-  // Mate in 1 outranks every other concern.
   const matingMoves = [];
 
   for (const move of legalMoves) {
     playStonefishCandidate(analysisGame, move);
     const isMate = analysisGame.in_checkmate();
     analysisGame.undo();
-
-    if (isMate) {
-      matingMoves.push(move);
-    }
+    if (isMate) matingMoves.push(move);
   }
 
   if (matingMoves.length > 0) {
@@ -85,34 +68,33 @@ function getStonefishV2MoveWithValues(game, pieceValues) {
   }
 
   const scoredMoves = [];
+  let hasSafeMove = false;
 
   for (const move of legalMoves) {
     playStonefishCandidate(analysisGame, move);
-
-    scoredMoves.push({
-      move,
-      allowsMateInOne: opponentHasMateInOne(analysisGame),
-      maxCaptureValue: highestOpponentCaptureValue(analysisGame, pieceValues)
-    });
-
+    const replyAnalysis = analyseOpponentReplies(analysisGame, pieceValues);
     analysisGame.undo();
+
+    if (!replyAnalysis.allowsMateInOne) hasSafeMove = true;
+    scoredMoves.push({ move, ...replyAnalysis });
   }
 
-  // If avoiding mate in 1 is possible, unsafe moves are never considered.
-  const safeMoves = scoredMoves.filter(candidate => !candidate.allowsMateInOne);
-  const candidates = safeMoves.length > 0 ? safeMoves : scoredMoves;
-
   let lowestMaxCapture = Infinity;
-  for (const candidate of candidates) {
+  const bestMoves = [];
+
+  for (const candidate of scoredMoves) {
+    if (hasSafeMove && candidate.allowsMateInOne) continue;
+
     if (candidate.maxCaptureValue < lowestMaxCapture) {
       lowestMaxCapture = candidate.maxCaptureValue;
+      bestMoves.length = 0;
+      bestMoves.push(candidate.move);
+    } else if (candidate.maxCaptureValue === lowestMaxCapture) {
+      bestMoves.push(candidate.move);
     }
   }
 
-  const bestMoves = candidates.filter(candidate => candidate.maxCaptureValue === lowestMaxCapture);
-  const choice = bestMoves[Math.floor(Math.random() * bestMoves.length)];
-
-  return choice.move;
+  return bestMoves[Math.floor(Math.random() * bestMoves.length)];
 }
 
 function getStonefishV2Move(game) {
