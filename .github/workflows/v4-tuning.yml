@@ -1,11 +1,11 @@
-name: v4-tuning-gated-phase-cross
+name: v4-tuning-lead2-loss-trace
 on:
   push:
-    branches: ['v4-tuning-gated-phase-cross']
+    branches: ['v4-tuning-lead2-loss-trace']
   workflow_dispatch:
 
 jobs:
-  tune:
+  trace:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node tools/v4-fourply-gated.js
+      - run: node tools/v4-lead2-loss-trace.js
