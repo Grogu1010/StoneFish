@@ -1,9 +1,9 @@
-name: Stonefish v5 Pro confidence-blend smoke
+name: Stonefish v5 Pro confidence-blend extended smoke
 
 on:
   push:
     branches:
-      - chatgpt/v5-pro-confidence-blend
+      - chatgpt/v5-pro-confidence-extended
     paths:
       - 'Stonefish_v5_pro.js'
       - 'Stonefish_v5_pro_speed_patch.js'
@@ -18,7 +18,7 @@ on:
       - '.github/workflows/stonefish-v5-pro-geometry-smoke.yml'
 
 concurrency:
-  group: stonefish-v5-pro-confidence-blend-${{ github.ref }}
+  group: stonefish-v5-pro-confidence-extended-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,13 +27,13 @@ jobs:
     timeout-minutes: 30
     env:
       GAMES: '4'
-      START_INDEX: '0'
+      START_INDEX: '4'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Require confidence-blend Pro lossless and no slower than v5
+      - name: Require confidence-blend Pro lossless and no slower than v5 on games 5-8
         run: node benchmark_v5_pro.js
 
   old-pro-smoke:
@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 30
     env:
       H2H_GAMES: '2'
-      START_INDEX: '0'
+      START_INDEX: '2'
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
@@ -53,5 +53,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Play confidence-blend candidate vs released Pro
+      - name: Play confidence-blend candidate vs released Pro on games 3-4
         run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_v5_pro_head_to_head.js
