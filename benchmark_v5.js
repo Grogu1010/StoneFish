@@ -36,7 +36,17 @@ function playPublicMove(game, move) {
   return game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
 }
 
-function simulateGame(v5IsWhite, seed, maxPlies = 600) {
+function debugBoard(game) {
+  const rows = [];
+  for (let r = 7; r >= 0; r -= 1) {
+    const row = [];
+    for (let f = 0; f < 8; f += 1) row.push(String(game.boardState[r * 8 + f]).padStart(2, ' '));
+    rows.push(row.join(','));
+  }
+  return rows.join('/');
+}
+
+function simulateGame(v5IsWhite, seed, maxPlies = 600, debug = false) {
   const game = new Chess();
   const originalRandom = Math.random;
   Math.random = seededRandom(seed);
@@ -48,7 +58,21 @@ function simulateGame(v5IsWhite, seed, maxPlies = 600) {
   try {
     while (!game.game_over() && plies < maxPlies) {
       const v5Turn = (game.side === 1) === v5IsWhite;
-      const move = v5Turn ? getStonefishV5Move(game) : getStonefishV45Move(game);
+      let move;
+
+      if (v5Turn && debug && plies >= 128) {
+        const scored = stonefishV5ScoreAllMoves(game);
+        move = scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
+        const top = scored.slice(0, 10).map(entry => {
+          const uci = stonefishV45RawUci(game, entry.raw);
+          return `${uci}{total=${entry.score.toFixed(1)},tac=${entry.tactical.toFixed(1)},know=${entry.knowledge.toFixed(1)}}`;
+        }).join(' ');
+        console.log(`DEBUG ply=${plies} side=${game.turn()} half=${game.halfmove} keyCount=${game.positionCounts.get(game.fastPositionKey()) || 0} top=${top}`);
+        console.log(`BOARD ${debugBoard(game)}`);
+      } else {
+        move = v5Turn ? getStonefishV5Move(game) : getStonefishV45Move(game);
+      }
+
       const tag = v5Turn ? 'v5' : 'v45';
       if (move) trace.push(`${tag}:${move.from}${move.to}${move.promotion || ''}`);
       const played = playPublicMove(game, move);
@@ -81,17 +105,16 @@ function runMatch(games = 100) {
   const totals = { win: 0, loss: 0, draw: 0 };
   const reasons = {};
   let totalPlies = 0;
+  const debugGame = Number.parseInt(process.env.DEBUG_GAME || '0', 10) || 0;
 
   for (let i = 0; i < games; i += 1) {
     const v5IsWhite = i % 2 === 0;
-    const result = simulateGame(v5IsWhite, 0x51F15EED + i * 977);
+    const result = simulateGame(v5IsWhite, 0x51F15EED + i * 977, 600, i + 1 === debugGame);
     totals[result.result] += 1;
     reasons[result.reason] = (reasons[result.reason] || 0) + 1;
     totalPlies += result.plies;
     console.log(`${String(i + 1).padStart(3, '0')}/${games} v5=${v5IsWhite ? 'W' : 'B'} ${result.result.toUpperCase()} ${result.reason} ${result.plies} plies`);
-    if (result.result !== 'win') {
-      console.log(`TRACE game ${i + 1}: ${result.trace.slice(-48).join(' ')}`);
-    }
+    if (result.result !== 'win') console.log(`TRACE game ${i + 1}: ${result.trace.slice(-48).join(' ')}`);
   }
 
   const summary = {
