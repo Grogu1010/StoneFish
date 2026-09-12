@@ -37,14 +37,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        start: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+        start: [0, 20, 40, 60, 80]
     env:
-      GAMES: '10'
+      GAMES: '20'
       START_INDEX: ${{ matrix.start }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run v5 Pro vs v5 100-game release shard
+      - name: Run v5 Pro vs v5 100-game release-gate shard
         run: node benchmark_v5_pro.js
