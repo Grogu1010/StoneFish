@@ -9,6 +9,17 @@ const STONEFISH_V45_FULL_KNOWLEDGE_RATE = 0.60;
 const STONEFISH_V45_RESTRAINED_BOOK_RATE = 0.40;
 const STONEFISH_V45_CONFIDENCE_STATE = new WeakMap();
 
+// Keep the v4.5 knowledge-mode roll separate from Math.random so choosing
+// a full/restrained knowledge mode does not perturb ordinary move tie-breaking.
+let STONEFISH_V45_MODE_RANDOM = function() {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+    const value = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(value);
+    return value[0] / 4294967296;
+  }
+  return Math.random();
+};
+
 function stonefishV45FilterByV4Order(game, candidates, order) {
   let kept = candidates.slice();
   for (let i = 0; i < order.length && kept.length > 1; i += 1) {
@@ -26,7 +37,7 @@ function stonefishV45KnowledgeMode(game, profileIndex = 0) {
   const key = profileIndex + ':' + game.turn();
   let mode = state.get(key);
   if (!mode) {
-    mode = Math.random() < STONEFISH_V45_FULL_KNOWLEDGE_RATE ? 'full' : 'restrained';
+    mode = STONEFISH_V45_MODE_RANDOM() < STONEFISH_V45_FULL_KNOWLEDGE_RATE ? 'full' : 'restrained';
     state.set(key, mode);
   }
   return mode;
@@ -150,16 +161,12 @@ getStonefishV45MoveWithProfile = function(game, profileIndex = 0) {
     const criterion = STONEFISH_V4_ORDER[i];
 
     if (criterion === 'mobility') {
-      // Full mode always follows a compatible weighted line; restrained mode
-      // follows it 40% of the time. Both remain inside the same opening feature.
       const useBook = mode === 'full' || Math.random() < STONEFISH_V45_RESTRAINED_BOOK_RATE;
       if (useBook) {
         const book = stonefishV45BookMove(game, profileIndex, candidates);
         if (book) return stonefishV3PublicMove(game, book);
       }
 
-      // INVERSE KNOWLEDGE: both modes suppress opponent checks. Full mode also
-      // minimises opponent mobility before v4 maximises our own mobility.
       candidates = stonefishV45BestByInverse(game, candidates, 'oppCheckRisk');
       if (mode === 'full' && candidates.length > 1) {
         candidates = stonefishV45BestByInverse(game, candidates, 'oppMobility');
