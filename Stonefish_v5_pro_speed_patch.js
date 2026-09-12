@@ -6,9 +6,36 @@ stonefishV5ProLeaf = function(game, perspective) {
 
   let score = stonefishV5Material(game, perspective) - stonefishV5Material(game, -perspective);
   score += (game.fastMobility(perspective) - game.fastMobility(-perspective)) * 2;
-  score += (stonefishV5PassedPawns(game, perspective) - stonefishV5PassedPawns(game, -perspective)) * 16;
-  score += stonefishV5PasserStatus(game, perspective, perspective) * 0.08;
-  score += stonefishV5PasserStatus(game, -perspective, perspective) * 0.08;
+  score += (stonefishV5PassedPawns(game, perspective) - stonefishV5PassedPawns(game, -perspective)) * 18;
+  // Passed-pawn danger must remain loud at the cheap search leaf. This is what
+  // lets the five-ply tree understand a quiet h6-h7 push before h8=Q appears.
+  score += stonefishV5PasserStatus(game, perspective, perspective) * 0.50;
+  score += stonefishV5PasserStatus(game, -perspective, perspective) * 0.50;
+  return score;
+};
+
+stonefishV5ProMoveOrder = function(game, move) {
+  const us = game.side;
+  let score = (STONEFISH_V5_PIECE[move.captured] || 0) * 16 - (STONEFISH_V5_PIECE[move.piece] || 0);
+  if (move.promotion) score += (STONEFISH_V5_PIECE[move.promotion] || 0) * 12;
+  if (game.fastGivesCheck(move)) score += 1800;
+  if (move.flags & (4 | 8)) score += 80;
+
+  if (move.piece === 1) {
+    const rank = move.to >> 3;
+    const progress = us === 1 ? rank : 7 - rank;
+    if (progress >= 5) score += (progress - 4) * 1000;
+  }
+
+  // Keep quiet blockade/capture moves in the selective tree when an enemy passer
+  // is close. Without this, ordinary capture/check ordering can prune the only
+  // move that stops a pawn race even though the search still reaches five plies.
+  for (const passer of stonefishV5PassedPawnInfo(game, -us)) {
+    if (move.to === passer.sq) score += 2800;
+    const nextSq = passer.sq + (-us) * 8;
+    if (move.to === nextSq) score += passer.distance <= 2 ? 2400 : 900;
+    if (passer.distance <= 2 && (move.to & 7) === passer.file) score += 450;
+  }
   return score;
 };
 
@@ -65,7 +92,7 @@ stonefishV5ProScoreAllMoves = function(game) {
   }
 
   scored.sort((a, b) => b.preliminary - a.preliminary || stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw)));
-  const candidateCount = Math.min(6, scored.length);
+  const candidateCount = Math.min(8, scored.length);
 
   for (let i = 0; i < candidateCount; i += 1) {
     const entry = scored[i];
