@@ -4,7 +4,7 @@
 // 2) forced-mate pattern knowledge,
 // 3) inverse positional tie-breakers.
 //
-// v3/v4 search depth and all v4 criteria remain unchanged.
+// v3/v4 search depth and every v4 criterion remain unchanged.
 
 function stonefishV45FilterByV4Order(game, candidates, order) {
   let kept = candidates.slice();
@@ -14,9 +14,10 @@ function stonefishV45FilterByV4Order(game, candidates, order) {
   return kept;
 }
 
-// Opening knowledge is allowed to select only among moves that survive the
-// COMPLETE v4 chain. This preserves v4's proven safety while still letting the
-// weighted 50-line repertoire decide genuine v4 ties.
+// OPENING KNOWLEDGE
+// The book may choose only from the candidate set supplied by v3/v4.5.
+// Production calls this after v4's first five filters, so book knowledge can
+// genuinely influence the opening without bypassing tactical/material safety.
 stonefishV45BookMove = function(game, profileIndex, allowedCandidates) {
   const side = game.turn();
   const history = stonefishV45HistoryUci(game);
@@ -29,7 +30,7 @@ stonefishV45BookMove = function(game, profileIndex, allowedCandidates) {
 
   const safe = allowedCandidates && allowedCandidates.length
     ? allowedCandidates
-    : stonefishV45FilterByV4Order(game, getStonefishV3BestRawMoves(game).slice(), STONEFISH_V4_ORDER);
+    : getStonefishV3BestRawMoves(game).slice();
   if (!safe.length) return null;
 
   const safeByUci = new Map();
@@ -60,40 +61,76 @@ stonefishV45BookMove = function(game, profileIndex, allowedCandidates) {
   return safeByUci.get(selected.moves[history.length]) || null;
 };
 
-function stonefishV45PatternTieBreak(game, candidates) {
+// FORCED-MATE PATTERN KNOWLEDGE
+// Only named mating geometries contribute here. Generic checking / king-space
+// bonuses are intentionally excluded so this layer does not hijack ordinary play.
+function stonefishV45StrictPatternScore(game, raw) {
+  if (game.fastIsMateMove(raw)) return 1000000;
+
+  game.fastApply(raw);
+  const ownSide = -game.side;
+  const enemySide = game.side;
+  let score = 0;
+
+  score += stonefishV45LadderScore(game, ownSide, enemySide);
+  score += stonefishV45TriangleScore(game, ownSide, enemySide);
+  score += stonefishV45BackRankScore(game, ownSide, enemySide);
+  score += stonefishV45SmotheredScore(game, ownSide, enemySide, raw);
+  score += stonefishV45ArabianScore(game, ownSide, enemySide);
+  score += stonefishV45BodenScore(game, ownSide, enemySide);
+
+  // Queen + rook kill-box geometry.
+  const freedom = stonefishV4KingFreedom(game, enemySide);
+  if (
+    game.in_check() &&
+    freedom === 0 &&
+    stonefishV45Pieces(game, ownSide, 5).length &&
+    stonefishV45Pieces(game, ownSide, 4).length
+  ) {
+    score += 24;
+  }
+
+  game.fastUndo();
+  return score;
+}
+
+function stonefishV45StrictPatternTieBreak(game, candidates) {
   if (candidates.length <= 1) return candidates;
-  let best = -Infinity;
+  let best = 0;
   const scores = new Array(candidates.length);
+
   for (let i = 0; i < candidates.length; i += 1) {
-    const score = stonefishV45MatePatternScore(game, candidates[i]);
+    const score = stonefishV45StrictPatternScore(game, candidates[i]);
     scores[i] = score;
     if (score > best) best = score;
   }
+
   if (best <= 0) return candidates;
   return candidates.filter((_, i) => scores[i] === best);
 }
 
+// Build the non-book v4.5 candidate set. Inverse pressure enters immediately
+// before v4's own mobility criterion; named mate patterns enter after pieceSupport.
 function stonefishV45RefinedCandidates(game) {
   let candidates = getStonefishV3BestRawMoves(game).slice();
   if (!candidates.length) return candidates;
 
   for (let i = 0; i < STONEFISH_V4_ORDER.length && candidates.length > 1; i += 1) {
     const criterion = STONEFISH_V4_ORDER[i];
-    candidates = stonefishV4BestByCriterion(game, candidates, criterion);
 
-    // INVERSES: the only two inverse questions that improved the ablation tests.
-    // They sit beside v4's own mobility rule and remain hard lexicographic filters.
-    if (criterion === 'mobility' && candidates.length > 1) {
+    // INVERSE KNOWLEDGE: first avoid allowing opponent checks, then minimise
+    // opponent legal mobility. Only these two inverses survived tuning.
+    if (criterion === 'mobility') {
       candidates = stonefishV45BestByInverse(game, candidates, 'oppCheckRisk');
       if (candidates.length > 1) {
         candidates = stonefishV45BestByInverse(game, candidates, 'oppMobility');
       }
     }
 
-    // FORCED-MATE PATTERNS: mate-net geometry enters only after piece support,
-    // where it performed best without destabilising ordinary play.
+    candidates = stonefishV4BestByCriterion(game, candidates, criterion);
+
     if (criterion === 'pieceSupport' && candidates.length > 1) {
-      candidates = stonefishV45PatternTieBreak(game, candidates);
+      candidates = stonefishV45StrictPatternTieBreak(game, candidates);
     }
   }
 
@@ -105,12 +142,32 @@ stonefishV45BestRawMoves = function(game) {
 };
 
 getStonefishV45MoveWithProfile = function(game, profileIndex = 0) {
-  let candidates = stonefishV45RefinedCandidates(game);
+  let candidates = getStonefishV3BestRawMoves(game).slice();
   if (!candidates.length) return null;
 
-  // Opening weights only resolve genuine final v4.5 ties.
-  const book = stonefishV45BookMove(game, profileIndex, candidates);
-  if (book) return stonefishV3PublicMove(game, book);
+  for (let i = 0; i < STONEFISH_V4_ORDER.length && candidates.length > 1; i += 1) {
+    const criterion = STONEFISH_V4_ORDER[i];
+
+    // OPENING KNOWLEDGE: after the five proven early safety/development filters,
+    // allow a compatible weighted book line to choose among the surviving moves.
+    if (criterion === 'mobility') {
+      const book = stonefishV45BookMove(game, profileIndex, candidates);
+      if (book) return stonefishV3PublicMove(game, book);
+
+      // INVERSE KNOWLEDGE enters before our own mobility preference.
+      candidates = stonefishV45BestByInverse(game, candidates, 'oppCheckRisk');
+      if (candidates.length > 1) {
+        candidates = stonefishV45BestByInverse(game, candidates, 'oppMobility');
+      }
+    }
+
+    candidates = stonefishV4BestByCriterion(game, candidates, criterion);
+
+    // FORCED-MATE PATTERN KNOWLEDGE enters after piece support.
+    if (criterion === 'pieceSupport' && candidates.length > 1) {
+      candidates = stonefishV45StrictPatternTieBreak(game, candidates);
+    }
+  }
 
   const raw = stonefishV3RandomRaw(candidates);
   return raw ? stonefishV3PublicMove(game, raw) : null;
