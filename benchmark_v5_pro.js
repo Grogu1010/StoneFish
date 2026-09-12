@@ -125,8 +125,8 @@ function runMatch(games = 100, startIndex = 0) {
 const games = Math.max(2, Number.parseInt(process.env.GAMES || '100', 10) || 100);
 const startIndex = Math.max(0, Number.parseInt(process.env.START_INDEX || '0', 10) || 0);
 const summary = runMatch(games, startIndex);
-const minWins = Math.ceil(games * 0.90);
-const maxDraws = Math.floor(games * 0.10);
+const minWins = Math.ceil(games * 0.95);
+const maxDraws = Math.floor(games * 0.05);
 if (summary.proLosses !== 0 || summary.proWins < minWins || summary.draws > maxDraws) {
   console.error(`Pro target band not reached: ${summary.proWins}W/${summary.proLosses}L/${summary.draws}D; target is approximately 95/0/5 with zero losses.`);
   process.exitCode = 1;
