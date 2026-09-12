@@ -44,8 +44,7 @@ const models = {
   v2: { name: 'Stonefish_v2', trait: 'One-ply defensive engine', subtitle: 'Takes mate in one, avoids giving mate in one, then minimises the biggest capture available to the opponent next move.', logic: ['Take mate in 1', 'Avoid allowing mate in 1', 'Minimise the opponent’s biggest next capture'], getMove: getStonefishV2Move },
   v3: { name: 'Stonefish_v3', trait: 'Three-ply material engine', subtitle: 'Scores material across its move, the opponent’s best reply, and its own best response. Bishops are worth 3.1.', logic: ['Take mate in 1', 'Avoid opponent mate in 1 whenever possible', 'Maximise the worst three-ply material trade'], getMove: getStonefishV3Move },
   v4: { name: 'Stonefish_v4', trait: 'Same-depth positional engine', subtitle: 'Stonefish_v3 material logic plus the tested same-depth v4 development, safety, mobility, repetition, and positional filters.', logic: v4Logic, getMove: getStonefishV4Move },
-  v45: { name: 'Stonefish_v4.5', trait: 'Knowledge-layer engine', subtitle: 'Stonefish_v4 plus weighted openings, forced-mate patterns, and inverse opponent-restriction filters.', logic: v45Logic, getMove: getStonefishV45Move },
-  v5t1: { name: 'Stonefish_v5 (testunit1)', trait: 'Frozen strong v4.5 snapshot', subtitle: 'A preserved snapshot of the strong pre-balance Stonefish_v4.5 architecture for future v5 development.', logic: v45Logic, getMove: getStonefishV5Testunit1Move }
+  v45: { name: 'Stonefish_v4.5', trait: 'Knowledge-layer engine', subtitle: 'Stonefish_v4 plus weighted openings, forced-mate patterns, and inverse opponent-restriction filters.', logic: v45Logic, getMove: getStonefishV45Move }
 };
 
 let selectedSquare = null;
