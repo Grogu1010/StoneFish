@@ -1,7 +1,8 @@
 // Exact v5 Pro search optimizations.
-// Hoists node-invariant passed-pawn analysis out of per-move ordering and
-// reuses the already-computed position key at leaves. Search width, depth,
-// ordering scores, alpha-beta logic, TT semantics and leaf scores are unchanged.
+// Hoists node-invariant passed-pawn analysis out of per-move ordering, reuses
+// exact attack-count maps inside Pro evaluation, and reuses position keys at
+// leaves. Search width, depth, ordering scores, alpha-beta logic, TT semantics
+// and evaluation formulas are unchanged.
 
 (function stonefishInstallExactProSearchSpeed() {
   if (
@@ -9,6 +10,144 @@
     typeof STONEFISH_V5_PRO_SPEED_BRANCH === 'undefined' ||
     typeof STONEFISH_V5_PRO_POSITION_CACHE === 'undefined'
   ) return;
+
+  // Pro repeatedly asks for attack COUNTS, not just attacked/not-attacked. Build
+  // the exact count map once for each side at a stable board state instead of
+  // retracing rays separately for every queried square.
+  const sfProBaseReset = Chess.prototype.reset;
+  const sfProBaseApplyRaw = Chess.prototype._applyRaw;
+  const sfProBaseUndoRaw = Chess.prototype._undoRaw;
+
+  Chess.prototype.reset = function() {
+    const result = sfProBaseReset.call(this);
+    this._sfProAttackCache = null;
+    return result;
+  };
+
+  Chess.prototype._applyRaw = function(move, trackRepetition) {
+    const result = sfProBaseApplyRaw.call(this, move, trackRepetition);
+    this._sfProAttackCache = null;
+    return result;
+  };
+
+  Chess.prototype._undoRaw = function() {
+    const result = sfProBaseUndoRaw.call(this);
+    if (result) this._sfProAttackCache = null;
+    return result;
+  };
+
+  Chess.prototype.fastProAttackCounts = function(side) {
+    let cache = this._sfProAttackCache;
+    if (!cache) {
+      cache = Object.create(null);
+      this._sfProAttackCache = cache;
+    }
+    if (cache[side]) return cache[side];
+
+    const counts = new Uint8Array(64);
+    const b = this.boardState;
+
+    function markStep(from, df, dr) {
+      const f = (from & 7) + df;
+      const r = (from >> 3) + dr;
+      if (f >= 0 && f < 8 && r >= 0 && r < 8) counts[r * 8 + f] += 1;
+    }
+
+    function markRay(from, df, dr) {
+      let f = (from & 7) + df;
+      let r = (from >> 3) + dr;
+      while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+        const sq = r * 8 + f;
+        counts[sq] += 1;
+        if (b[sq]) break;
+        f += df;
+        r += dr;
+      }
+    }
+
+    for (let from = 0; from < 64; from += 1) {
+      const p = b[from];
+      if (!p || (p > 0 ? 1 : -1) !== side) continue;
+      const type = Math.abs(p);
+
+      if (type === 1) {
+        markStep(from, -1, side);
+        markStep(from, 1, side);
+      } else if (type === 2) {
+        for (let i = 0; i < 8; i += 1) {
+          markStep(from, SF_KNIGHT_DF[i], SF_KNIGHT_DR[i]);
+        }
+      } else if (type === 3) {
+        for (let i = 0; i < SF_DIAG_DIRS.length; i += 2) {
+          markRay(from, SF_DIAG_DIRS[i], SF_DIAG_DIRS[i + 1]);
+        }
+      } else if (type === 4) {
+        for (let i = 0; i < SF_ORTH_DIRS.length; i += 2) {
+          markRay(from, SF_ORTH_DIRS[i], SF_ORTH_DIRS[i + 1]);
+        }
+      } else if (type === 5) {
+        for (let i = 0; i < SF_ALL_DIRS.length; i += 2) {
+          markRay(from, SF_ALL_DIRS[i], SF_ALL_DIRS[i + 1]);
+        }
+      } else if (type === 6) {
+        for (let i = 0; i < SF_ALL_DIRS.length; i += 2) {
+          markStep(from, SF_ALL_DIRS[i], SF_ALL_DIRS[i + 1]);
+        }
+      }
+    }
+
+    cache[side] = counts;
+    return counts;
+  };
+
+  stonefishV5ProAttackCount = function(game, sq, side) {
+    return game.fastProAttackCounts(side)[sq];
+  };
+
+  stonefishV5ProKingZonePressure = function(game, attacker) {
+    const counts = game.fastProAttackCounts(attacker);
+    const kingSq = game.kingSq[-attacker];
+    const kf = kingSq & 7;
+    const kr = kingSq >> 3;
+    let pressure = 0;
+
+    for (let df = -1; df <= 1; df += 1) {
+      for (let dr = -1; dr <= 1; dr += 1) {
+        const f = kf + df;
+        const r = kr + dr;
+        if (f < 0 || f > 7 || r < 0 || r > 7) continue;
+        pressure += counts[r * 8 + f];
+      }
+    }
+    return pressure;
+  };
+
+  stonefishV5ProLooseAndCoordination = function(game, perspective) {
+    const white = game.fastProAttackCounts(1);
+    const black = game.fastProAttackCounts(-1);
+    let score = 0;
+
+    for (let sq = 0; sq < 64; sq += 1) {
+      const p = game.boardState[sq];
+      if (!p || Math.abs(p) === 6) continue;
+      const side = p > 0 ? 1 : -1;
+      const value = STONEFISH_V5_PIECE[Math.abs(p)] || 0;
+      const attackers = (side === 1 ? black : white)[sq];
+      const defenders = (side === 1 ? white : black)[sq];
+      let pieceScore = defenders > 0 ? Math.min(40, 8 + defenders * 6) : 0;
+
+      if (attackers > 0) {
+        if (defenders === 0) pieceScore -= value * 0.22;
+        else if (attackers > defenders) {
+          pieceScore -= value * 0.11 * Math.min(2, attackers - defenders);
+        } else {
+          pieceScore -= value * 0.025;
+        }
+      }
+      score += side === perspective ? pieceScore : -pieceScore;
+    }
+    return score;
+  };
 
   function sfProThreatFromPassers(passers) {
     let max = 0;
