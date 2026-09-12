@@ -19,9 +19,12 @@ const engineFiles = [
   'Stonefish_v5_pro_speed_patch.js'
 ];
 
-function makeEngine(dir) {
+function makeEngine(dir, includeGeometry = false) {
   const ctx = vm.createContext({ console });
-  const source = engineFiles.map(file => fs.readFileSync(path.join(dir, file), 'utf8')).join('\n\n');
+  const files = engineFiles.slice();
+  const geometry = path.join(dir, 'Stonefish_v5_pro_geometry_patch.js');
+  if (includeGeometry && fs.existsSync(geometry)) files.push('Stonefish_v5_pro_geometry_patch.js');
+  const source = files.map(file => fs.readFileSync(path.join(dir, file), 'utf8')).join('\n\n');
   vm.runInContext(source + `\n
     this.__Chess = Chess;
     this.__getPro = getStonefishV5ProMove;
@@ -102,8 +105,8 @@ const currentDir = process.cwd();
 const referenceDir = process.env.REFERENCE_DIR;
 if (!referenceDir) throw new Error('REFERENCE_DIR is required');
 
-const currentEngine = makeEngine(currentDir);
-const referenceEngine = makeEngine(referenceDir);
+const currentEngine = makeEngine(currentDir, true);
+const referenceEngine = makeEngine(referenceDir, false);
 const games = Math.max(2, Number.parseInt(process.env.H2H_GAMES || '100', 10) || 100);
 const startIndex = Math.max(0, Number.parseInt(process.env.START_INDEX || '0', 10) || 0);
 const totals = { win: 0, loss: 0, draw: 0 };
