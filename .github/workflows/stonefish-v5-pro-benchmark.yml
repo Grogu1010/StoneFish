@@ -1,0 +1,42 @@
+name: Stonefish v5 Pro benchmark
+
+on:
+  push:
+    branches:
+      - chatgpt/stonefish-v5-pro
+    paths:
+      - 'Stonefish_v5_pro.js'
+      - 'Stonefish_v5.js'
+      - 'Stonefish_v4_5*.js'
+      - 'Stonefish_v4.js'
+      - 'Stonefish_v3.js'
+      - 'StonefishChess.js'
+      - 'benchmark_v5_pro.js'
+      - '.github/workflows/stonefish-v5-pro-benchmark.yml'
+  pull_request:
+    paths:
+      - 'Stonefish_v5_pro.js'
+      - 'Stonefish_v5.js'
+      - 'Stonefish_v4_5*.js'
+      - 'Stonefish_v4.js'
+      - 'Stonefish_v3.js'
+      - 'StonefishChess.js'
+      - 'benchmark_v5_pro.js'
+
+concurrency:
+  group: stonefish-v5-pro-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GAMES: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run v5 Pro vs v5 smoke benchmark
+        run: node benchmark_v5_pro.js
