@@ -20,6 +20,9 @@ const engineFiles = [
 if (fs.existsSync('Stonefish_v5_pro_geometry_patch.js')) {
   engineFiles.push('Stonefish_v5_pro_geometry_patch.js');
 }
+if (fs.existsSync('Stonefish_runtime_speed_patch.js')) {
+  engineFiles.push('Stonefish_runtime_speed_patch.js');
+}
 
 const source = engineFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n');
 vm.runInThisContext(source, { filename: 'stonefish-v5-pro-benchmark-bundle.js' });
