@@ -44,16 +44,19 @@ function simulateGame(v5IsWhite, seed, maxPlies = 600) {
   let plies = 0;
   let result = 'draw';
   let reason = 'max-plies';
+  const trace = [];
 
   try {
     while (!game.game_over() && plies < maxPlies) {
       const v5Turn = (game.side === 1) === v5IsWhite;
       const move = v5Turn ? getStonefishV5Move(game) : getStonefishV45Move(game);
+      const tag = v5Turn ? 'v5' : 'v45';
+      if (move) trace.push(`${tag}:${move.from}${move.to}${move.promotion || ''}`);
       const played = playPublicMove(game, move);
       if (!played) {
         result = v5Turn ? 'loss' : 'win';
         reason = v5Turn ? 'v5-invalid-move' : 'v45-invalid-move';
-        return { result, reason, plies };
+        return { result, reason, plies, trace };
       }
       plies += 1;
     }
@@ -69,7 +72,7 @@ function simulateGame(v5IsWhite, seed, maxPlies = 600) {
         (game.positionCounts.get(game.fastPositionKey()) || 0) >= 3 ? 'threefold' : 'stalemate';
     }
 
-    return { result, reason, plies };
+    return { result, reason, plies, trace };
   } finally {
     Math.random = originalRandom;
   }
@@ -87,6 +90,9 @@ function runMatch(games = 100) {
     reasons[result.reason] = (reasons[result.reason] || 0) + 1;
     totalPlies += result.plies;
     console.log(`${String(i + 1).padStart(3, '0')}/${games} v5=${v5IsWhite ? 'W' : 'B'} ${result.result.toUpperCase()} ${result.reason} ${result.plies} plies`);
+    if (result.result !== 'win') {
+      console.log(`TRACE game ${i + 1}: ${result.trace.slice(-48).join(' ')}`);
+    }
   }
 
   const summary = {
