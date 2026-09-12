@@ -136,5 +136,6 @@ const summary = {
 };
 console.log('\nSTONEFISH_V5_PRO_HEAD_TO_HEAD ' + JSON.stringify(summary));
 
-// For a complete 100-game run, the release requirement is at least 51 outright wins.
-// Sharded CI validates each block honestly and the aggregate job checks the final 100-game total.
+if (process.env.H2H_RESULT_FILE) {
+  fs.writeFileSync(process.env.H2H_RESULT_FILE, JSON.stringify(summary));
+}
