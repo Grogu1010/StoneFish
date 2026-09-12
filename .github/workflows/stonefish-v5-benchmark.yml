@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - chatgpt/stonefish-v5
-      - chatgpt/stonefish-speed-pass
-      - chatgpt/stonefish-speed-pass-2
+      - 'chatgpt/stonefish-speed-pass*'
   pull_request:
     paths:
       - 'Stonefish_v5.js'
@@ -17,6 +16,7 @@ on:
       - 'Stonefish_ui_speed_patch.js'
       - 'index.html'
       - 'benchmark_v5.js'
+      - 'benchmark_ui_move_apply.js'
       - '.github/workflows/stonefish-v5-benchmark.yml'
 
 concurrency:
