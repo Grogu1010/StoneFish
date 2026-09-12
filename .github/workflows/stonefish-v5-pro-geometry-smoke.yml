@@ -1,9 +1,9 @@
-name: Stonefish v5 Pro geometry smoke
+name: Stonefish v5 Pro root-prepass smoke
 
 on:
   push:
     branches:
-      - chatgpt/v5-pro-geometry
+      - chatgpt/v5-pro-pro-root-prepass
     paths:
       - 'Stonefish_v5_pro.js'
       - 'Stonefish_v5_pro_speed_patch.js'
@@ -18,7 +18,7 @@ on:
       - '.github/workflows/stonefish-v5-pro-geometry-smoke.yml'
 
 concurrency:
-  group: stonefish-v5-pro-geometry-${{ github.ref }}
+  group: stonefish-v5-pro-pro-root-prepass-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Require geometry Pro lossless and no slower than v5
+      - name: Require Pro-root prepass lossless and no slower than v5
         run: node benchmark_v5_pro.js
 
   old-pro-smoke:
@@ -53,5 +53,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Play geometry candidate vs released Pro
+      - name: Play Pro-root prepass candidate vs released Pro
         run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_v5_pro_head_to_head.js
