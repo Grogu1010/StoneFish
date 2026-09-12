@@ -231,7 +231,17 @@ if (typeof stonefishV5PassedPawnInfo === 'function') {
   };
 }
 if (typeof stonefishV5PasserStatus === 'function') {
-  stonefishV5PasserStatus = stonefishRuntimeMemoPositionSide('v5PasserStatus', stonefishV5PasserStatus);
+  const stonefishRuntimeBasePasserStatus = stonefishV5PasserStatus;
+  stonefishV5PasserStatus = function(game, pawnSide, perspective) {
+    const key = 'v5PasserStatus|' + pawnSide + '|' + perspective + '|' + game.fastPositionKey();
+    const cached = STONEFISH_RUNTIME_FEATURE_CACHE.get(key);
+    if (cached !== undefined) return cached;
+    return stonefishRuntimeCacheSet(
+      STONEFISH_RUNTIME_FEATURE_CACHE,
+      key,
+      stonefishRuntimeBasePasserStatus(game, pawnSide, perspective)
+    );
+  };
 }
 if (typeof stonefishV5EnemyPasserThreat === 'function') {
   stonefishV5EnemyPasserThreat = stonefishRuntimeMemoPositionPerspective('v5EnemyPasserThreat', stonefishV5EnemyPasserThreat);
