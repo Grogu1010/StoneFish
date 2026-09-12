@@ -13,12 +13,16 @@ on:
       - 'StonefishChess.js'
       - 'benchmark_v5.js'
 
+concurrency:
+  group: stonefish-v5-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '8'
+      GAMES: '4'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
