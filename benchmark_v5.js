@@ -57,10 +57,8 @@ function simulateGame(v5IsWhite, seed, maxPlies = 600) {
     }
 
     if (game.in_checkmate()) {
-      // side to move is the checkmated side.
       const winnerIsWhite = game.side === -1;
-      const v5Won = winnerIsWhite === v5IsWhite;
-      result = v5Won ? 'win' : 'loss';
+      result = winnerIsWhite === v5IsWhite ? 'win' : 'loss';
       reason = 'checkmate';
     } else if (game.in_draw()) {
       result = 'draw';
@@ -79,7 +77,6 @@ function runMatch(games = 100) {
   const totals = { win: 0, loss: 0, draw: 0 };
   const reasons = {};
   let totalPlies = 0;
-  const details = [];
 
   for (let i = 0; i < games; i += 1) {
     const v5IsWhite = i % 2 === 0;
@@ -87,8 +84,7 @@ function runMatch(games = 100) {
     totals[result.result] += 1;
     reasons[result.reason] = (reasons[result.reason] || 0) + 1;
     totalPlies += result.plies;
-    details.push({ game: i + 1, v5: v5IsWhite ? 'white' : 'black', ...result });
-    console.log(`${String(i + 1).padStart(3, '0')}/100 v5=${v5IsWhite ? 'W' : 'B'} ${result.result.toUpperCase()} ${result.reason} ${result.plies} plies`);
+    console.log(`${String(i + 1).padStart(3, '0')}/${games} v5=${v5IsWhite ? 'W' : 'B'} ${result.result.toUpperCase()} ${result.reason} ${result.plies} plies`);
   }
 
   const summary = {
@@ -101,11 +97,12 @@ function runMatch(games = 100) {
     reasons
   };
   console.log('\nSTONEFISH_V5_BENCHMARK ' + JSON.stringify(summary));
-  return { summary, details };
+  return summary;
 }
 
-const { summary } = runMatch(100);
-if (summary.v5Wins !== 100 || summary.v5Losses !== 0 || summary.draws !== 0) {
+const games = Math.max(2, Number.parseInt(process.env.GAMES || '100', 10) || 100);
+const summary = runMatch(games);
+if (summary.v5Wins !== games || summary.v5Losses !== 0 || summary.draws !== 0) {
   console.error(`Target not reached: ${summary.v5Wins}W/${summary.v5Losses}L/${summary.draws}D`);
   process.exitCode = 1;
 }
