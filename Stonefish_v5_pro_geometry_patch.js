@@ -116,3 +116,156 @@ stonefishV5ProScoreAllMoves = function(game) {
   });
   return scored;
 };
+
+// Deep search only keeps a tiny beam (normally 2-6 moves), so allocating a
+// wrapper for every legal move and fully sorting the whole list does extra work.
+// This stable top-K selector uses the exact same ordering score and tie rule as
+// the previous map/sort/slice pipeline, while retaining at most K wrappers.
+function stonefishV5ProSelectOrdered(game, legal, width) {
+  const limit = Math.min(width, legal.length);
+  if (limit <= 0) return [];
+  const ordered = [];
+
+  for (let index = 0; index < legal.length; index += 1) {
+    const move = legal[index];
+    const order = stonefishV5ProSpeedMoveOrder(game, move);
+
+    if (ordered.length === limit) {
+      const last = ordered[limit - 1];
+      const versusLast = (last.order - order) || (index - last.index);
+      if (versusLast >= 0) continue;
+    }
+
+    let position = ordered.length;
+    while (position > 0) {
+      const previous = ordered[position - 1];
+      const versusPrevious = (previous.order - order) || (index - previous.index);
+      if (versusPrevious >= 0) break;
+      position -= 1;
+    }
+
+    if (ordered.length < limit) ordered.length += 1;
+    for (let shift = ordered.length - 1; shift > position; shift -= 1) {
+      ordered[shift] = ordered[shift - 1];
+    }
+    ordered[position] = { move, index, order };
+  }
+
+  return ordered;
+}
+
+stonefishV5ProCheckedLeaf = function(game, perspective, alpha, beta, legal, plyFromRoot) {
+  const maximizing = game.side === perspective;
+  const ordered = stonefishV5ProSelectOrdered(game, legal, Math.min(6, legal.length));
+  let best = maximizing ? -Infinity : Infinity;
+
+  for (const entry of ordered) {
+    game.fastApply(entry.move);
+    let value;
+    if (!game.fastHasLegalMove()) {
+      value = game.in_check()
+        ? (game.side === perspective ? -STONEFISH_V5_PRO_MATE + plyFromRoot + 1 : STONEFISH_V5_PRO_MATE - plyFromRoot - 1)
+        : 0;
+    } else {
+      value = stonefishV5ProLeaf(game, perspective);
+    }
+    game.fastUndo();
+
+    if (maximizing) {
+      if (value > best) best = value;
+      if (best > alpha) alpha = best;
+    } else {
+      if (value < best) best = value;
+      if (best < beta) beta = best;
+    }
+    if (beta <= alpha) break;
+  }
+  return best;
+};
+
+stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromRoot) {
+  const tt = STONEFISH_V5_PRO_ACTIVE_TT;
+  const key = tt ? stonefishV5ProTTKey(game, depth, perspective, plyFromRoot) : null;
+  if (tt) {
+    const hit = tt.get(key);
+    if (hit !== undefined) {
+      if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.ttHits += 1;
+      return hit;
+    }
+  }
+  if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.nodes += 1;
+
+  if (depth <= 0) {
+    if (game.in_check()) {
+      const legal = game.fastMoves();
+      if (!legal.length) {
+        const terminal = game.side === perspective
+          ? -STONEFISH_V5_PRO_MATE + plyFromRoot
+          : STONEFISH_V5_PRO_MATE - plyFromRoot;
+        if (tt) tt.set(key, terminal);
+        return terminal;
+      }
+      const extended = stonefishV5ProCheckedLeaf(game, perspective, alpha, beta, legal, plyFromRoot);
+      if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.leaves += 1;
+      return extended;
+    }
+    if (!game.fastHasLegalMove()) {
+      if (tt) tt.set(key, 0);
+      return 0;
+    }
+    if (game.halfmove >= 100 || game._insufficientMaterial()) {
+      if (tt) tt.set(key, 0);
+      return 0;
+    }
+    const leaf = stonefishV5ProLeaf(game, perspective);
+    if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.leaves += 1;
+    if (tt) tt.set(key, leaf);
+    return leaf;
+  }
+
+  const legal = game.fastMoves();
+  if (!legal.length) {
+    const terminal = !game.in_check()
+      ? 0
+      : (game.side === perspective ? -STONEFISH_V5_PRO_MATE + plyFromRoot : STONEFISH_V5_PRO_MATE - plyFromRoot);
+    if (tt) tt.set(key, terminal);
+    return terminal;
+  }
+  if (game.halfmove >= 100 || game._insufficientMaterial()) {
+    if (tt) tt.set(key, 0);
+    return 0;
+  }
+
+  let width = STONEFISH_V5_PRO_SPEED_BRANCH[depth] || 2;
+  const danger = stonefishV5EnemyPasserThreat(game, game.side);
+  if (game.in_check()) width = Math.max(width, 6);
+  else if (danger >= 2200) width += 2;
+  else if (danger >= 900) width += 1;
+  width = Math.min(width, legal.length);
+
+  const ordered = stonefishV5ProSelectOrdered(game, legal, width);
+  const maximizing = game.side === perspective;
+  let best = maximizing ? -Infinity : Infinity;
+  let cutoff = false;
+
+  for (const entry of ordered) {
+    game.fastApply(entry.move);
+    const value = stonefishV5ProMinimax(game, depth - 1, perspective, alpha, beta, plyFromRoot + 1);
+    game.fastUndo();
+
+    if (maximizing) {
+      if (value > best) best = value;
+      if (best > alpha) alpha = best;
+    } else {
+      if (value < best) best = value;
+      if (best < beta) beta = best;
+    }
+    if (beta <= alpha) {
+      cutoff = true;
+      break;
+    }
+  }
+
+  if (tt && !cutoff) tt.set(key, best);
+  return best;
+};
