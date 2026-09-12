@@ -30,36 +30,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  fast-pro:
-    name: fast Pro diagnostic
+  benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '2'
+      GAMES: '4'
       START_INDEX: '0'
-      DEBUG_GAME: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run fast Pro line
-        run: node benchmark_v5_pro.js
-
-  reference-pro:
-    name: released 100-0 Pro reference
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      GAMES: '2'
-      START_INDEX: '0'
-      DEBUG_GAME: '1'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Run released Pro line
+      - name: Run v5 Pro strength and speed smoke gate
         run: node benchmark_v5_pro.js
