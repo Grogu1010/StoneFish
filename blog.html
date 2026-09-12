@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Stonefish model release notes and launch stories." />
+  <title>StoneFish — Blog</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="page-shell blog-shell">
+    <nav class="site-nav" aria-label="Primary navigation">
+      <a class="brand-link" href="index.html">StoneFish</a>
+      <div class="nav-links">
+        <a href="index.html">Lab</a>
+        <a class="active" href="blog.html">Blog</a>
+      </div>
+    </nav>
+
+    <header class="blog-hero">
+      <p class="eyebrow">STONEFISH BLOG</p>
+      <h1>Building a different kind of chess engine.</h1>
+      <p class="subtitle">Launch notes, ideas, and the thinking behind each major Stonefish model.</p>
+    </header>
+
+    <section class="blog-index" aria-label="Blog posts">
+      <a class="blog-card" href="#stonefish-v1">
+        <span class="blog-card-kicker">MODEL RELEASE</span>
+        <h2>Introducing Stonefish v1</h2>
+        <p>A chess engine built around a radical idea: keep every legal possibility alive until the move is made.</p>
+        <span class="blog-card-link">Read the launch story →</span>
+      </a>
+    </section>
+
+    <article id="stonefish-v1" class="blog-article">
+      <p class="eyebrow">MODEL RELEASE · STONEFISH V1</p>
+      <h1>Introducing Stonefish v1</h1>
+      <p class="blog-lead">Stonefish v1 is a new kind of chess engine built around a simple idea: stop being predictable.</p>
+
+      <p>Traditional chess programs are obsessed with finding <em>the</em> move. Stonefish v1 takes a radically different approach. It looks at the full set of legal possibilities in a position and makes its choice from that entire move space.</p>
+      <p>The result is an engine that refuses to be boxed in by conventional expectations.</p>
+
+      <h2>Every legal move is part of the plan</h2>
+      <p>At the heart of Stonefish v1 is a clean, uncompromising decision process: read the position, generate every legal move, select from the complete legal move set, and play immediately.</p>
+      <p>Stonefish v1 does not spend its time imitating standard lines or repeatedly converging on the same familiar continuation. Every legal option remains alive until the moment a move is chosen.</p>
+      <p><strong>It’s lightweight. It’s fast. And most importantly, it’s unpredictable.</strong></p>
+
+      <h2>Unpredictability as a feature</h2>
+      <p>Chess is often treated purely as a search problem. But against a human opponent, predictability is information. Stonefish v1 attacks that assumption directly.</p>
+      <p>Because its decisions are drawn from the legal move space rather than a fixed preferred line, preparing for it is fundamentally different. You cannot simply memorize what Stonefish “likes” to play and expect the same position to unfold the same way twice.</p>
+      <p>One game might begin quietly. Another might take an immediate turn into something completely unexpected. Stonefish v1 embraces the enormous possibility space of chess instead of compressing it into one approved answer.</p>
+
+      <h2>Built to move</h2>
+      <p>Stonefish v1 is intentionally compact. There is no heavyweight evaluation stack standing between the position and the move. Once legal moves are available, Stonefish can make a decision with minimal overhead.</p>
+      <p>That gives v1 a straightforward strength: responsiveness. Stonefish stays focused on the essential job — identify what can legally be played and make a move.</p>
+
+      <h2>A different kind of chess engine</h2>
+      <p>Stonefish v1 is not trying to play chess the way every other engine does. It is an experiment in freedom, variation, and machine unpredictability.</p>
+      <blockquote>What happens when every legal move gets a chance?</blockquote>
+      <p>That experiment begins with Stonefish v1.</p>
+    </article>
+  </main>
+</body>
+</html>
