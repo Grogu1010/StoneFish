@@ -13,6 +13,7 @@ on:
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
       - 'benchmark_v5_pro.js'
+      - 'benchmark_v5_pro_regression.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
   pull_request:
     paths:
@@ -24,40 +25,44 @@ on:
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
       - 'benchmark_v5_pro.js'
+      - 'benchmark_v5_pro_regression.js'
 
 concurrency:
   group: stonefish-v5-pro-benchmark-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  fast-pro-black:
+  released-parity:
+    name: exact released-Pro move parity
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '2'
-      START_INDEX: '0'
-      DEBUG_GAME: '2'
+      PARITY_GAMES: '2'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Trace fast Pro Black line
-        run: node benchmark_v5_pro.js
-
-  reference-pro-black:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      GAMES: '2'
-      START_INDEX: '0'
-      DEBUG_GAME: '2'
-    steps:
-      - uses: actions/checkout@v4
+      - name: Checkout optimized branch
+        uses: actions/checkout@v4
+      - name: Checkout released main reference
+        uses: actions/checkout@v4
         with:
           ref: main
+          path: reference
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Trace released 100-0 Pro Black line
+      - name: Require exact move-for-move parity with released Pro
+        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_v5_pro_regression.js
+
+  speed-strength-smoke:
+    name: v5-speed and strength smoke gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GAMES: '4'
+      START_INDEX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require Pro no slower than v5 and no strength regression
         run: node benchmark_v5_pro.js
