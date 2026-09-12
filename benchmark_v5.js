@@ -13,7 +13,8 @@ const engineFiles = [
   'Stonefish_v4_5_opening_overrides.js',
   'Stonefish_v4_5_safety_patch.js',
   'Stonefish_v4_5_balance_patch.js',
-  'Stonefish_v5.js'
+  'Stonefish_v5.js',
+  'Stonefish_v5_opening_inheritance_patch.js'
 ];
 
 const source = engineFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n');
