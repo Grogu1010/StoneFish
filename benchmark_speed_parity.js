@@ -109,19 +109,23 @@ function assertSameTrace(label, reference, optimized) {
 
 const reference = makeEngine(false);
 const optimized = makeEngine(true);
-const models = ['v3', 'v4', 'v45', 'v5', 'v5pro'];
+const allModels = ['v3', 'v4', 'v45', 'v5', 'v5pro'];
+const requestedModel = process.env.MODEL || '';
+if (requestedModel && !allModels.includes(requestedModel)) throw new Error(`Unknown MODEL=${requestedModel}`);
+const models = requestedModel ? [requestedModel] : allModels;
 const gamesPerModel = Math.max(1, Number.parseInt(process.env.PARITY_GAMES || '2', 10) || 2);
 const maxPlies = Math.max(40, Number.parseInt(process.env.MAX_PLIES || '180', 10) || 180);
 const summary = {};
 
 for (let m = 0; m < models.length; m += 1) {
   const model = models[m];
+  const modelSeedIndex = allModels.indexOf(model);
   let refMs = 0;
   let optMs = 0;
 
   for (let gameIndex = 0; gameIndex < gamesPerModel; gameIndex += 1) {
     const modelIsWhite = gameIndex % 2 === 0;
-    const seed = 0x51F15EED + m * 100003 + gameIndex * 977;
+    const seed = 0x51F15EED + modelSeedIndex * 100003 + gameIndex * 977;
     const a = play(reference, model, modelIsWhite, seed, maxPlies);
     const b = play(optimized, model, modelIsWhite, seed, maxPlies);
     assertSameTrace(`${model} game ${gameIndex + 1}`, a, b);
