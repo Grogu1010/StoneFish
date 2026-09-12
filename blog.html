@@ -24,6 +24,12 @@
     </header>
 
     <section class="blog-index" aria-label="Blog posts">
+      <a class="blog-card" href="#stonefish-v4">
+        <span class="blog-card-kicker">MODEL RELEASE</span>
+        <h2>Introducing Stonefish v4</h2>
+        <p>Stonefish learns positional intelligence: development, king safety, mobility, structure, repetition control, and a 610–170 win record against v3.</p>
+        <span class="blog-card-link">Read the launch story →</span>
+      </a>
       <a class="blog-card" href="#stonefish-v3">
         <span class="blog-card-kicker">MODEL RELEASE</span>
         <h2>Introducing Stonefish v3</h2>
@@ -44,6 +50,88 @@
       </a>
     </section>
 
+    <article id="stonefish-v4" class="blog-article">
+      <p class="eyebrow">MODEL RELEASE · STONEFISH V4</p>
+      <h1>Introducing Stonefish v4</h1>
+      <p class="blog-lead">Stonefish v4 is the next major step in the Stonefish revolution: the tactical calculation of v3, now paired with a full positional decision layer.</p>
+
+      <p>Stonefish v3 learned to calculate through a three-ply sequence and optimize the worst-case material outcome. Stonefish v4 keeps that foundation intact. It does not throw away v3’s tactical discipline and it does not simply search one move deeper.</p>
+      <p>Instead, v4 asks a new question after v3 has already found the tactically best candidates: <strong>when several moves are materially equal, which one actually gives Stonefish the better position?</strong></p>
+
+      <h2>Tactical strength first. Positional intelligence second.</h2>
+      <p>Stonefish v4 is built directly on top of the v3 engine. Mate safety, three-ply material calculation, and worst-case evaluation decide which moves survive first. Only moves tied by that tactical engine reach the new v4 decision layer.</p>
+      <p>That means v4 does not trade tactical strength for positional style. Position is used to separate moves that v3 already considers equally strong.</p>
+      <blockquote>Stonefish v4 keeps the calculation — then chooses the position.</blockquote>
+
+      <h2>Development becomes a decision</h2>
+      <p>In the opening, v4 actively prefers developing minor pieces when the tactical result is tied. Knights and bishops are rewarded for leaving their home squares. Early queen movement is treated with discipline while development is still underway. Castling is preferred immediately when the tactical layer says it is safe and materially equal.</p>
+      <p>This gives Stonefish something previous versions did not have: a sense of how to build a position.</p>
+
+      <h2>It stops leaving valuable pieces hanging</h2>
+      <p>Stonefish v4 explicitly checks whether its own pieces are attacked and undefended. Among tactically equal moves, it prefers positions that do not leave high-value material exposed for free.</p>
+      <p>A move can survive a short material search and still create a strategically fragile position. v4 adds a second line of defense by asking whether an important piece has simply been left loose.</p>
+
+      <h2>Mobility matters</h2>
+      <p>Stonefish v4 measures how many legal options remain available after a move and, all else being equal, prefers positions where its pieces have more room to operate.</p>
+      <p>This is a major philosophical expansion. Stonefish is no longer valuing only immediate captures and short tactical sequences. It is beginning to value useful future choice.</p>
+
+      <h2>It understands repetition differently</h2>
+      <p>When Stonefish is ahead by at least 2.5 points of material, v4 penalizes moves that revisit an already-seen position. When the engine has earned an advantage, it is less willing to drift back into a cycle and throw away conversion chances.</p>
+      <p>It also prefers less-repeated positions more generally and can favor pawn moves or captures when resetting the fifty-move clock becomes useful.</p>
+
+      <h2>A full positional stack</h2>
+      <p>The positional layer goes far beyond one or two heuristics. Among tactically tied moves, Stonefish v4 can compare promotion strength, immediate castling, development, hanging-piece safety, repetition control, mobility, queen discipline, endgame pawn progress, checks, piece support, king freedom, center control, minor-piece centralization, king protection, pawn structure, rook activity, king placement, and total board control.</p>
+      <p>These criteria do not override v3’s tactical judgment. They break ties between moves that are already tactically equivalent. That distinction is the core of Stonefish v4.</p>
+
+      <h2>The test: 2,000 direct games</h2>
+      <p>For the v4 benchmark, we only count games where Stonefish v4 itself played: 1,000 against Stonefish v2 and 1,000 against Stonefish v3.</p>
+      <p><strong>Across those 2,000 direct games, v4 delivered a decisive result.</strong></p>
+
+      <div class="blog-stats" role="group" aria-label="Stonefish v4 direct test results">
+        <div class="blog-stat"><span>1,587</span><p>Wins</p></div>
+        <div class="blog-stat"><span>171</span><p>Losses</p></div>
+        <div class="blog-stat"><span>242</span><p>Draws</p></div>
+        <div class="blog-stat"><span>79.3%</span><p>Win rate</p></div>
+      </div>
+
+      <h2>v4 vs v2: 977–1</h2>
+      <div class="blog-stats" role="group" aria-label="Stonefish v4 versus v2 test results">
+        <div class="blog-stat"><span>977</span><p>v4 wins</p></div>
+        <div class="blog-stat"><span>1</span><p>v4 loss</p></div>
+        <div class="blog-stat"><span>22</span><p>Draws</p></div>
+        <div class="blog-stat"><span>97.7%</span><p>v4 win rate</p></div>
+      </div>
+      <p>Across 1,000 games against Stonefish v2, v4 won 977, lost once, and drew 22. The result is almost total domination.</p>
+
+      <h2>v4 vs v3: 610–170</h2>
+      <p>This is the more important comparison because v4 and v3 share the same three-ply tactical core.</p>
+      <div class="blog-stats" role="group" aria-label="Stonefish v4 versus v3 test results">
+        <div class="blog-stat"><span>610</span><p>v4 wins</p></div>
+        <div class="blog-stat"><span>170</span><p>v4 losses</p></div>
+        <div class="blog-stat"><span>220</span><p>Draws</p></div>
+        <div class="blog-stat"><span>61.0%</span><p>v4 win rate</p></div>
+      </div>
+      <p>Across 1,000 direct games, Stonefish v4 won 610, lost 170, and drew 220. Stonefish v3 managed a 17.0% win rate; v4 reached 61.0%.</p>
+      <blockquote>Positional tie-breaking is not cosmetic. It changes outcomes at scale.</blockquote>
+
+      <h2>Why v4 is better</h2>
+      <p><strong>It keeps v3’s tactical core.</strong> Immediate mate, mate safety, and three-ply worst-case material reasoning still come first.</p>
+      <p><strong>It develops deliberately.</strong> Equal tactical moves are separated by whether they improve minor pieces and prepare the position.</p>
+      <p><strong>It values king safety.</strong> Castling, king protection, king freedom, and sensible king placement become part of decision-making.</p>
+      <p><strong>It protects loose material.</strong> High-value hanging pieces are explicitly penalized.</p>
+      <p><strong>It values activity.</strong> Mobility, center control, minor-piece centralization, rook activity, and board control distinguish positions that look equal tactically but are not equal strategically.</p>
+      <p><strong>It tries to convert advantages.</strong> Repetition control discourages drifting back into already-seen positions when Stonefish is materially ahead.</p>
+      <p><strong>It adapts to the phase of the game.</strong> Endgame pawn progress, checking chances, rook activity, and king placement become relevant when material comes off the board.</p>
+
+      <h2>The revolution gets structure</h2>
+      <p>Stonefish v1 was unpredictable.</p>
+      <p>Stonefish v2 became aware.</p>
+      <p>Stonefish v3 learned to calculate.</p>
+      <p><strong>Stonefish v4 learns to build.</strong></p>
+      <p>The engine no longer thinks only in terms of tactical survival and material sequences. It now develops pieces, protects its king, values activity, manages repetition, improves structure, and chooses positions with a future.</p>
+      <blockquote>Stonefish is no longer only finding good moves. It is learning how to create good positions.</blockquote>
+    </article>
+
     <article id="stonefish-v3" class="blog-article">
       <p class="eyebrow">MODEL RELEASE · STONEFISH V3</p>
       <h1>Introducing Stonefish v3</h1>
@@ -55,7 +143,6 @@
       <p>At the heart of Stonefish v3 is a new worst-case material engine.</p>
       <p>For every candidate move, Stonefish examines the opponent’s possible replies. For each of those replies, it then looks at its own best response. The sequence is scored from the material Stonefish gains immediately, minus the material the opponent can win back, plus the material Stonefish can recover on the third ply.</p>
       <p>Then Stonefish chooses the move with the strongest worst-case result.</p>
-      <p>This is a profound change. Stonefish v2 could avoid obvious one-move disasters. Stonefish v3 can recognize that a move which looks dangerous immediately may still be strong if it forces a favorable continuation — and that a move which looks safe at first glance may collapse one move later.</p>
 
       <h2>It plans through the opponent</h2>
       <p>The defining idea in v3 is simple: <strong>the opponent gets a vote.</strong></p>
@@ -71,8 +158,6 @@
 
       <h2>The test: 2,000 direct games</h2>
       <p>For this release, the benchmark is deliberately focused on Stonefish v3 itself: 1,000 games against Stonefish v1 and 1,000 games against Stonefish v2. The older v1-v2 matchup is not part of the v3 result.</p>
-      <p><strong>Across those 2,000 direct games, v3 was overwhelming.</strong></p>
-
       <div class="blog-stats" role="group" aria-label="Stonefish v3 direct test results">
         <div class="blog-stat"><span>1,940</span><p>Wins</p></div>
         <div class="blog-stat"><span>5</span><p>Losses</p></div>
@@ -81,15 +166,13 @@
       </div>
 
       <h2>v3 vs v2: 948–5</h2>
-      <p>The most important comparison is the direct matchup against Stonefish v2.</p>
       <div class="blog-stats" role="group" aria-label="Stonefish v3 versus v2 test results">
         <div class="blog-stat"><span>948</span><p>v3 wins</p></div>
         <div class="blog-stat"><span>5</span><p>v3 losses</p></div>
         <div class="blog-stat"><span>47</span><p>Draws</p></div>
         <div class="blog-stat"><span>94.8%</span><p>v3 win rate</p></div>
       </div>
-      <p>Across 1,000 games, Stonefish v3 won 948, lost only 5, and drew 47. Stonefish v2 managed a 0.5% win rate. Stonefish v3 reached 94.8%.</p>
-      <blockquote>That is not a tuning improvement. It is a new level of capability.</blockquote>
+      <p>Across 1,000 games, Stonefish v3 won 948, lost only 5, and drew 47.</p>
 
       <h2>v3 vs v1: 992 wins, zero losses</h2>
       <div class="blog-stats" role="group" aria-label="Stonefish v3 versus v1 test results">
@@ -98,20 +181,11 @@
         <div class="blog-stat"><span>8</span><p>Draws</p></div>
         <div class="blog-stat"><span>99.2%</span><p>v3 win rate</p></div>
       </div>
-      <p>Against Stonefish v1, v3 won 992 of 1,000 games, drew 8, and did not lose once.</p>
-
-      <h2>Why v3 is so much stronger</h2>
-      <p><strong>It looks beyond the immediate reply.</strong> v2 could see danger one move ahead. v3 can evaluate whether the position remains favorable after Stonefish answers back.</p>
-      <p><strong>It understands recovery.</strong> A temporary material loss is no longer automatically bad if Stonefish can win more material back on the third ply.</p>
-      <p><strong>It sees hidden danger.</strong> Moves that appear safe after one reply can be rejected when the next layer reveals a losing sequence.</p>
-      <p><strong>It assumes resistance.</strong> Stonefish v3 optimizes the worst-case continuation rather than hoping the opponent chooses a weak reply.</p>
-      <p><strong>It preserves tactical priorities.</strong> Immediate mate and mate avoidance still override ordinary material considerations.</p>
 
       <h2>From awareness to calculation</h2>
       <p>Stonefish v1 was unpredictable.</p>
       <p>Stonefish v2 became aware.</p>
       <p><strong>Stonefish v3 calculates.</strong></p>
-      <p>The Stonefish revolution now reasons across sequences, anticipates resistance, and chooses moves that remain strong after the opponent fights back.</p>
       <blockquote>Stonefish is no longer just reacting to the board. It is starting to look through it.</blockquote>
     </article>
 
@@ -124,30 +198,13 @@
       <h2>From possibility to consequence</h2>
       <p>Stonefish v2 no longer treats every legal move as equal. First, if Stonefish has checkmate in one, it takes it. Second, it checks whether a candidate move would allow the opponent to deliver checkmate in one. If safer alternatives exist, those losing moves are rejected. Third, among the remaining candidates, Stonefish asks how much material the opponent could take immediately.</p>
 
-      <h2>Mate awareness changes everything</h2>
-      <p>The most important breakthrough in Stonefish v2 is simple: it understands immediate checkmate. Stonefish v1 knew what could be played. Stonefish v2 begins to understand what must not be played.</p>
-
-      <h2>Defensive foresight</h2>
-      <p>When no immediate mate is involved, Stonefish v2 measures the strongest capture available to the opponent after each candidate move and minimizes the opponent’s best immediate gain.</p>
-
       <h2>The test: 1,000 games</h2>
-      <p>We tested Stonefish v2 directly against Stonefish v1 across 1,000 games.</p>
       <div class="blog-stats" role="group" aria-label="Stonefish v2 test results">
         <div class="blog-stat"><span>946</span><p>Wins</p></div>
         <div class="blog-stat"><span>0</span><p>Losses</p></div>
         <div class="blog-stat"><span>54</span><p>Draws</p></div>
         <div class="blog-stat"><span>94.6%</span><p>Win rate</p></div>
       </div>
-      <p>Stonefish v2 completed all 1,000 games without a single loss.</p>
-      <blockquote>That is not a marginal improvement. It is a fundamental change in capability.</blockquote>
-
-      <h2>Why v2 wins</h2>
-      <p><strong>It converts immediate wins.</strong> If checkmate is available in one move, Stonefish v2 recognizes it and plays it.</p>
-      <p><strong>It refuses immediate tactical defeat.</strong> Moves that allow mate in one are filtered out whenever safer options exist.</p>
-      <p><strong>It reduces free material losses.</strong> Stonefish actively prefers positions where less material is exposed.</p>
-
-      <h2>The Stonefish revolution moves forward</h2>
-      <p>Stonefish v1 opened the door. Stonefish v2 steps through it with tactical awareness, survival, and immediate material discipline.</p>
       <blockquote>Stonefish is no longer only unpredictable. Now it is aware.</blockquote>
     </article>
 
@@ -156,20 +213,12 @@
       <h1>Introducing Stonefish v1</h1>
       <p class="blog-lead">Stonefish v1 is a new kind of chess engine built around a simple idea: stop being predictable.</p>
       <p>Traditional chess programs are obsessed with finding <em>the</em> move. Stonefish v1 takes a radically different approach. It looks at the full set of legal possibilities in a position and makes its choice from that entire move space.</p>
-      <p>The result is an engine that refuses to be boxed in by conventional expectations.</p>
 
       <h2>Every legal move is part of the plan</h2>
       <p>At the heart of Stonefish v1 is a clean, uncompromising decision process: read the position, generate every legal move, select from the complete legal move set, and play immediately.</p>
       <p><strong>It’s lightweight. It’s fast. And most importantly, it’s unpredictable.</strong></p>
 
-      <h2>Unpredictability as a feature</h2>
-      <p>Because its decisions are drawn from the legal move space rather than a fixed preferred line, preparing for it is fundamentally different. Every legal option remains alive until the moment a move is chosen.</p>
-
-      <h2>Built to move</h2>
-      <p>Stonefish v1 is intentionally compact. There is no heavyweight evaluation stack standing between the position and the move. Once legal moves are available, Stonefish can make a decision with minimal overhead.</p>
-
       <h2>A different kind of chess engine</h2>
-      <p>Stonefish v1 is an experiment in freedom, variation, and machine unpredictability.</p>
       <blockquote>What happens when every legal move gets a chance?</blockquote>
       <p>That experiment begins with Stonefish v1.</p>
     </article>
