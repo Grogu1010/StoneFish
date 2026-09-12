@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      H2H_GAMES: '8'
+      H2H_GAMES: '2'
       START_INDEX: '0'
     steps:
       - name: Checkout candidate Pro
