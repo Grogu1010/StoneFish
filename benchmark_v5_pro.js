@@ -65,7 +65,10 @@ function simulateGame(proIsWhite, seed, maxPlies = 600, debug = false) {
           const top = scored.slice(0, 8).map(entry => {
             const uci = stonefishV45RawUci(game, entry.raw);
             const deep = entry.deep === null ? 'na' : entry.deep.toFixed(1);
-            return `${uci}{total=${entry.score.toFixed(1)},deep=${deep},pre=${entry.preliminary.toFixed(1)}}`;
+            const tactical = entry.tactical === null || entry.tactical === undefined ? 'na' : entry.tactical.toFixed(1);
+            const scout = entry.scout === undefined ? 'na' : entry.scout.toFixed(1);
+            const heritage = entry.heritageMatch ? 'H' : '-';
+            return `${uci}{total=${entry.score.toFixed(1)},deep=${deep},tac=${tactical},scout=${scout},heritage=${heritage},pre=${entry.preliminary.toFixed(1)}}`;
           }).join(' ');
           console.log(`DEBUG ply=${plies} side=${game.turn()} top=${top}`);
           return scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
