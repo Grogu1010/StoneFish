@@ -1,12 +1,61 @@
-// Experimental Pro-aware root prepass with released-Pro leaf evaluation.
-// Keep the narrow fast tree and root prepass, but use the exact released Pro
-// adaptive evaluator at search leaves instead of the cheaper v5 static leaf.
+// Pro-aware root prepass with released-Pro adaptive leaves, optimized without
+// changing the evaluation formula. The fast path reuses one position key across
+// adaptive/context/base-position caches so unique leaves do less duplicate work.
 
 const STONEFISH_V5_PRO_ROOT_PREPASS = 10;
 
+function stonefishV5ProAdaptivePositionFast(game, perspective) {
+  const positionKey = game.fastPositionKey();
+  const adaptiveKey = perspective + '|' + game.fullmove + '|' + positionKey;
+  const cachedAdaptive = STONEFISH_V5_PRO_ADAPTIVE_CACHE.get(adaptiveKey);
+  if (cachedAdaptive !== undefined) return cachedAdaptive;
+
+  let c = STONEFISH_V5_PRO_CONTEXT_CACHE.get(adaptiveKey);
+  if (c === undefined) {
+    c = stonefishV5ProSpeedBaseContexts(game, perspective);
+    stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_CONTEXT_CACHE, adaptiveKey, c);
+  }
+
+  const positionScoreKey = perspective + '|' + positionKey;
+  let score = STONEFISH_V5_PRO_POSITION_CACHE.get(positionScoreKey);
+  if (score === undefined) {
+    score = stonefishV5PositionScore(game, perspective);
+    stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_POSITION_CACHE, positionScoreKey, score);
+  }
+
+  const mobility = game.fastMobility(perspective) - game.fastMobility(-perspective);
+  const development = stonefishV4Development(game, perspective) - stonefishV4Development(game, -perspective);
+  const kingProtection = stonefishV4KingProtection(game, perspective) - stonefishV4KingProtection(game, -perspective);
+  const kingFreedom = stonefishV4KingFreedom(game, perspective) - stonefishV4KingFreedom(game, -perspective);
+  const kingPlacement = stonefishV4KingPlacement(game, perspective) - stonefishV4KingPlacement(game, -perspective);
+  const boardControl = stonefishV4BoardControl(game, perspective) - stonefishV4BoardControl(game, -perspective);
+  const passers = stonefishV5PassedPawns(game, perspective) - stonefishV5PassedPawns(game, -perspective);
+
+  score += mobility * (2 + c.attack * 2.5 + c.defence * 1.5);
+  score += development * (9 * c.opening);
+  score += kingProtection * (5 + 18 * c.defence + 8 * c.attack);
+  score += kingFreedom * (3 + 10 * c.endgame);
+  score += kingPlacement * (5 + 17 * c.endgame);
+  score += boardControl * (1.5 + 4 * c.attack);
+  score += passers * (18 + 45 * c.endgame + 65 * c.pawnRace);
+  score += stonefishV5ProLooseAndCoordination(game, perspective) * (1.0 + 0.35 * c.defence);
+  score += stonefishV5ProRayTactics(game, perspective) * (1.0 + 0.55 * c.attack);
+  score += (c.attackPressure - c.defencePressure) * (24 + 22 * c.attack + 18 * c.defence);
+
+  if (c.conversion > 0) {
+    const enemyMobility = game.fastMobility(-perspective);
+    score -= enemyMobility * 2.5 * c.conversion;
+    score += (stonefishV5Material(game, perspective) - stonefishV5Material(game, -perspective)) * 0.18 * c.conversion;
+  }
+
+  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_ADAPTIVE_CACHE, adaptiveKey, score);
+}
+
+stonefishV5ProAdaptivePosition = stonefishV5ProAdaptivePositionFast;
+
 stonefishV5ProLeaf = function(game, perspective) {
   if (game.halfmove >= 100 || game._insufficientMaterial()) return 0;
-  return stonefishV5ProAdaptivePosition(game, perspective);
+  return stonefishV5ProAdaptivePositionFast(game, perspective);
 };
 
 stonefishV5ProScoreAllMoves = function(game) {
