@@ -18,6 +18,8 @@
 
 const STONEFISH_V5_PRO_RECOVERY_ROOT_CANDIDATES = 4;
 const STONEFISH_V5_PRO_RECOVERY_ADAPTIVE_CACHE = new Map();
+const stonefishV5ProRecoveryReferenceAdaptive = stonefishV5ProAdaptivePosition;
+const stonefishV5ProRecoveryReferenceTactical = stonefishV5TacticalScore;
 
 function stonefishV5ProRecoveryCacheSet(cache, key, value) {
   if (cache.size >= STONEFISH_V5_PRO_SPEED_CACHE_LIMIT) {
