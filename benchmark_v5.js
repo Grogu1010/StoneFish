@@ -15,6 +15,9 @@ const engineFiles = [
   'Stonefish_v4_5_balance_patch.js',
   'Stonefish_v5.js'
 ];
+if (fs.existsSync('Stonefish_runtime_speed_patch.js')) {
+  engineFiles.push('Stonefish_runtime_speed_patch.js');
+}
 
 const source = engineFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n');
 vm.runInThisContext(source, { filename: 'stonefish-benchmark-bundle.js' });
@@ -100,24 +103,33 @@ function simulateGame(v5IsWhite, seed, maxPlies = 600, debug = false) {
   }
 }
 
-function runMatch(games = 100) {
+function runMatch(games = 100, startIndex = 0) {
   const totals = { win: 0, loss: 0, draw: 0 };
   const reasons = {};
   let totalPlies = 0;
   const debugGame = Number.parseInt(process.env.DEBUG_GAME || '0', 10) || 0;
 
   for (let i = 0; i < games; i += 1) {
-    const v5IsWhite = i % 2 === 0;
-    const result = simulateGame(v5IsWhite, 0x51F15EED + i * 977, 600, i + 1 === debugGame);
+    const globalIndex = startIndex + i;
+    const gameNumber = globalIndex + 1;
+    const v5IsWhite = globalIndex % 2 === 0;
+    const result = simulateGame(
+      v5IsWhite,
+      0x51F15EED + globalIndex * 977,
+      600,
+      gameNumber === debugGame
+    );
     totals[result.result] += 1;
     reasons[result.reason] = (reasons[result.reason] || 0) + 1;
     totalPlies += result.plies;
-    console.log(`${String(i + 1).padStart(3, '0')}/${games} v5=${v5IsWhite ? 'W' : 'B'} ${result.result.toUpperCase()} ${result.reason} ${result.plies} plies`);
-    if (result.result !== 'win') console.log(`TRACE game ${i + 1}: ${result.trace.slice(-48).join(' ')}`);
+    console.log(`${String(gameNumber).padStart(3, '0')} v5=${v5IsWhite ? 'W' : 'B'} ${result.result.toUpperCase()} ${result.reason} ${result.plies} plies`);
+    if (result.result !== 'win') console.log(`TRACE game ${gameNumber}: ${result.trace.slice(-48).join(' ')}`);
   }
 
   const summary = {
     games,
+    startIndex,
+    endIndex: startIndex + games - 1,
     v5Wins: totals.win,
     v5Losses: totals.loss,
     draws: totals.draw,
@@ -130,7 +142,8 @@ function runMatch(games = 100) {
 }
 
 const games = Math.max(2, Number.parseInt(process.env.GAMES || '100', 10) || 100);
-const summary = runMatch(games);
+const startIndex = Math.max(0, Number.parseInt(process.env.START_INDEX || '0', 10) || 0);
+const summary = runMatch(games, startIndex);
 if (summary.v5Wins !== games || summary.v5Losses !== 0 || summary.draws !== 0) {
   console.error(`Target not reached: ${summary.v5Wins}W/${summary.v5Losses}L/${summary.draws}D`);
   process.exitCode = 1;

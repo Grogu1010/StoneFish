@@ -20,7 +20,11 @@ const engineFiles = [
 
 function makeEngine(dir) {
   const ctx = vm.createContext({ console });
-  const source = engineFiles
+  const files = engineFiles.slice();
+  for (const optional of ['Stonefish_v5_pro_geometry_patch.js', 'Stonefish_runtime_speed_patch.js']) {
+    if (fs.existsSync(path.join(dir, optional))) files.push(optional);
+  }
+  const source = files
     .map(file => fs.readFileSync(path.join(dir, file), 'utf8'))
     .join('\n\n');
   vm.runInContext(source + `\n

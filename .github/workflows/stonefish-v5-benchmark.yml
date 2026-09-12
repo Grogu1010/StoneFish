@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - chatgpt/stonefish-v5
+      - chatgpt/stonefish-speed-pass
   pull_request:
     paths:
       - 'Stonefish_v5.js'
@@ -11,7 +12,9 @@ on:
       - 'Stonefish_v4.js'
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
+      - 'Stonefish_runtime_speed_patch.js'
       - 'benchmark_v5.js'
+      - '.github/workflows/stonefish-v5-benchmark.yml'
 
 concurrency:
   group: stonefish-v5-benchmark-${{ github.ref }}
@@ -19,14 +22,37 @@ concurrency:
 
 jobs:
   benchmark:
+    name: games ${{ matrix.start }}-${{ matrix.end }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - start: 0
+            end: 19
+          - start: 20
+            end: 39
+          - start: 40
+            end: 59
+          - start: 60
+            end: 79
+          - start: 80
+            end: 99
     env:
-      GAMES: '100'
+      GAMES: '20'
+      START_INDEX: ${{ matrix.start }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run 100-game v5 vs v4.5 release gate
+      - name: Run v5 vs v4.5 release-gate shard
         run: node benchmark_v5.js
+
+  release-gate:
+    needs: benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm all 100 games passed
+        run: echo "Stonefish v5 release gate passed all five parallel 20-game shards."
