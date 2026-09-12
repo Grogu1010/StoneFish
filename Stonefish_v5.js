@@ -44,7 +44,8 @@ const STONEFISH_V5_WEIGHTS = {
   oppMobility: 3,
   repetition: 150,
   repetitionAhead: 420,
-  fiftyReset: 45
+  fiftyReset: 45,
+  fullPosition: 0.40
 };
 
 function stonefishV5TrimEvalCache() {
@@ -95,14 +96,16 @@ function stonefishV5PassedPawnScore(game, side) {
   return score;
 }
 
-function stonefishV5StaticEval(game, perspective) {
-  const key = perspective + '|' + game.fastPositionKey();
+// Full scorecard evaluation. This is deliberately rich and is applied to every
+// legal ROOT move. Search leaves use a cheaper tactical evaluator so v5 can look
+// deeper without repeatedly recalculating every positional feature.
+function stonefishV5FullEval(game, perspective) {
+  const key = 'F|' + perspective + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_EVAL_CACHE.get(key);
   if (cached !== undefined) return cached;
 
   const enemy = -perspective;
   let score = 0;
-
   score += (stonefishV5Material(game, perspective) - stonefishV5Material(game, enemy)) * STONEFISH_V5_WEIGHTS.material;
   score += (game.fastMobility(perspective) - game.fastMobility(enemy)) * STONEFISH_V5_WEIGHTS.mobility;
   score += (stonefishV4Development(game, perspective) - stonefishV4Development(game, enemy)) * STONEFISH_V5_WEIGHTS.development;
@@ -114,14 +117,45 @@ function stonefishV5StaticEval(game, perspective) {
   score += (stonefishV4RookActivity(game, perspective) - stonefishV4RookActivity(game, enemy)) * STONEFISH_V5_WEIGHTS.rookActivity;
   score += (stonefishV4KingPlacement(game, perspective) - stonefishV4KingPlacement(game, enemy)) * STONEFISH_V5_WEIGHTS.kingPlacement;
   score += (stonefishV4BoardControl(game, perspective) - stonefishV4BoardControl(game, enemy)) * STONEFISH_V5_WEIGHTS.boardControl;
-
-  // stonefishV4HangingMax is negative: a more negative value means the side has
-  // a more valuable undefended attacked piece. Compare both sides directly.
   score += (stonefishV4HangingMax(game, perspective) - stonefishV4HangingMax(game, enemy)) * STONEFISH_V5_WEIGHTS.hanging;
   score += (stonefishV5BishopPair(game, perspective) - stonefishV5BishopPair(game, enemy)) * STONEFISH_V5_WEIGHTS.bishopPair;
   score += (stonefishV5PassedPawnScore(game, perspective) - stonefishV5PassedPawnScore(game, enemy)) * STONEFISH_V5_WEIGHTS.passedPawn;
-  if (game.side === perspective) score += STONEFISH_V5_WEIGHTS.tempo;
-  else score -= STONEFISH_V5_WEIGHTS.tempo;
+  score += (game.side === perspective ? 1 : -1) * STONEFISH_V5_WEIGHTS.tempo;
+
+  stonefishV5TrimEvalCache();
+  STONEFISH_V5_EVAL_CACHE.set(key, score);
+  return score;
+}
+
+function stonefishV5SearchEval(game, perspective) {
+  const key = 'S|' + perspective + '|' + game.fastPositionKey();
+  const cached = STONEFISH_V5_EVAL_CACHE.get(key);
+  if (cached !== undefined) return cached;
+
+  const enemy = -perspective;
+  let score = stonefishV5Material(game, perspective) - stonefishV5Material(game, enemy);
+
+  // Cheap piece-square activity. Search is mainly tactical, but these terms keep
+  // equal-material branches from drifting into obviously passive positions.
+  for (let sq = 0; sq < 64; sq += 1) {
+    const p = game.boardState[sq];
+    if (!p) continue;
+    const side = p > 0 ? 1 : -1;
+    const sign = side === perspective ? 1 : -1;
+    const type = Math.abs(p);
+    const file = sq & 7;
+    const rank = sq >> 3;
+    const centerDistance = Math.abs(file - 3.5) + Math.abs(rank - 3.5);
+    if (type === 2 || type === 3) score += sign * (7 - centerDistance) * 3;
+    if (type === 1) {
+      const progress = side === 1 ? rank - 1 : 6 - rank;
+      score += sign * Math.max(0, progress) * 4;
+    }
+  }
+
+  score += (stonefishV4CenterControl(game, perspective) - stonefishV4CenterControl(game, enemy)) * 4;
+  score += (stonefishV4KingProtection(game, perspective) - stonefishV4KingProtection(game, enemy)) * 6;
+  score += (stonefishV4HangingMax(game, perspective) - stonefishV4HangingMax(game, enemy)) * 34;
 
   stonefishV5TrimEvalCache();
   STONEFISH_V5_EVAL_CACHE.set(key, score);
@@ -134,7 +168,7 @@ function stonefishV5TerminalScore(game, perspective, plyFromRoot) {
     if (game.in_check()) return game.side === perspective ? -STONEFISH_V5_MATE + plyFromRoot : STONEFISH_V5_MATE - plyFromRoot;
     return 0;
   }
-  if (game.halfmove >= 100 || game._insufficientMaterial()) return 0;
+  if (game.halfmove >= 100) return 0;
   return null;
 }
 
@@ -151,11 +185,15 @@ function stonefishV5OrderedMoves(game, moves) {
 }
 
 function stonefishV5Quiescence(game, alpha, beta, perspective, depth, plyFromRoot) {
-  const terminal = stonefishV5TerminalScore(game, perspective, plyFromRoot);
-  if (terminal !== null) return terminal;
+  const legal = game.fastMoves();
+  if (!legal.length) {
+    if (game.in_check()) return game.side === perspective ? -STONEFISH_V5_MATE + plyFromRoot : STONEFISH_V5_MATE - plyFromRoot;
+    return 0;
+  }
+  if (game.halfmove >= 100) return 0;
 
   const maximizing = game.side === perspective;
-  const stand = stonefishV5StaticEval(game, perspective);
+  const stand = stonefishV5SearchEval(game, perspective);
   if (depth <= 0) return stand;
 
   if (maximizing) {
@@ -167,22 +205,20 @@ function stonefishV5Quiescence(game, alpha, beta, perspective, depth, plyFromRoo
   }
 
   const inCheck = game.in_check();
-  let tactical = game.fastMoves();
-  if (!inCheck) tactical = tactical.filter(m => m.captured || m.promotion || game.fastGivesCheck(m));
-  tactical = stonefishV5OrderedMoves(game, tactical).slice(0, inCheck ? 12 : 8);
+  let tactical = inCheck ? legal : legal.filter(m => m.captured || m.promotion || game.fastGivesCheck(m));
+  tactical = stonefishV5OrderedMoves(game, tactical).slice(0, inCheck ? 10 : 6);
   if (!tactical.length) return stand;
 
   let best = maximizing ? -Infinity : Infinity;
   for (let i = 0; i < tactical.length; i += 1) {
     game.fastApply(tactical[i]);
-    const score = stonefishV5Quiescence(game, alpha, beta, perspective, depth - 1, plyFromRoot + 1);
+    const value = stonefishV5Quiescence(game, alpha, beta, perspective, depth - 1, plyFromRoot + 1);
     game.fastUndo();
-
     if (maximizing) {
-      if (score > best) best = score;
+      if (value > best) best = value;
       if (best > alpha) alpha = best;
     } else {
-      if (score < best) best = score;
+      if (value < best) best = value;
       if (best < beta) beta = best;
     }
     if (beta <= alpha) break;
@@ -191,24 +227,27 @@ function stonefishV5Quiescence(game, alpha, beta, perspective, depth, plyFromRoo
 }
 
 function stonefishV5Search(game, depth, alpha, beta, perspective, plyFromRoot) {
-  const terminal = stonefishV5TerminalScore(game, perspective, plyFromRoot);
-  if (terminal !== null) return terminal;
+  const legal = game.fastMoves();
+  if (!legal.length) {
+    if (game.in_check()) return game.side === perspective ? -STONEFISH_V5_MATE + plyFromRoot : STONEFISH_V5_MATE - plyFromRoot;
+    return 0;
+  }
+  if (game.halfmove >= 100) return 0;
   if (depth <= 0) return stonefishV5Quiescence(game, alpha, beta, perspective, 1, plyFromRoot);
 
   const maximizing = game.side === perspective;
-  const moves = stonefishV5OrderedMoves(game, game.fastMoves());
+  const moves = stonefishV5OrderedMoves(game, legal);
   let best = maximizing ? -Infinity : Infinity;
 
   for (let i = 0; i < moves.length; i += 1) {
     game.fastApply(moves[i]);
-    const score = stonefishV5Search(game, depth - 1, alpha, beta, perspective, plyFromRoot + 1);
+    const value = stonefishV5Search(game, depth - 1, alpha, beta, perspective, plyFromRoot + 1);
     game.fastUndo();
-
     if (maximizing) {
-      if (score > best) best = score;
+      if (value > best) best = value;
       if (best > alpha) alpha = best;
     } else {
-      if (score < best) best = score;
+      if (value < best) best = value;
       if (best < beta) beta = best;
     }
     if (beta <= alpha) break;
@@ -218,16 +257,15 @@ function stonefishV5Search(game, depth, alpha, beta, perspective, plyFromRoot) {
 
 function stonefishV5SearchDepth(game, legalCount) {
   const totalMaterial = stonefishV5Material(game, 1) + stonefishV5Material(game, -1);
-  // depth is counted after the root move. This is therefore 3-ply total in a
-  // crowded opening, 4-ply in normal play, and up to 5-ply in reduced endgames.
-  if (totalMaterial <= 1800 && legalCount <= 18) return 4;
-  if (game.fullmove >= 10 && legalCount <= 30) return 3;
+  // depth is counted after the root move: 3-ply in crowded positions, 4-ply
+  // once the tree thins, and 5-ply in reduced endgames.
+  if (totalMaterial <= 1800 && legalCount <= 16) return 4;
+  if (game.fullmove >= 12 && legalCount <= 26) return 3;
   return 2;
 }
 
 function stonefishV5RootKnowledgePoints(game, raw, bookMove, v3BestSet, perspective) {
   let points = 0;
-
   const uci = stonefishV45RawUci(game, raw);
   if (v3BestSet.has(uci)) points += STONEFISH_V5_WEIGHTS.v3SafetyBand;
   if (bookMove && stonefishV5SameMove(raw, bookMove)) points += STONEFISH_V5_WEIGHTS.book;
@@ -235,8 +273,8 @@ function stonefishV5RootKnowledgePoints(game, raw, bookMove, v3BestSet, perspect
   if (raw.promotion) points += (STONEFISH_V5_PIECE[raw.promotion] || 0) * 0.15 + STONEFISH_V5_WEIGHTS.promotion;
   if (game.fastGivesCheck(raw)) points += STONEFISH_V5_WEIGHTS.check;
 
-  // Preserve the strongest v5(testunit1) idea continuously: immediately reduce
-  // the opponent's checks and movement rather than waiting until move 24.
+  // The most useful testunit1 inheritance: suppress opponent checks and mobility
+  // immediately, but as points rather than hard elimination filters.
   points += stonefishV45InverseScore(game, raw, 'oppCheckRisk') * STONEFISH_V5_WEIGHTS.oppCheckRisk;
   points += stonefishV45InverseScore(game, raw, 'oppMobility') * STONEFISH_V5_WEIGHTS.oppMobility;
   points += stonefishV45StrictPatternScore(game, raw) * STONEFISH_V5_WEIGHTS.matePattern;
@@ -244,6 +282,8 @@ function stonefishV5RootKnowledgePoints(game, raw, bookMove, v3BestSet, perspect
   game.fastApply(raw);
   const ownSide = -game.side;
   const enemySide = game.side;
+  points += stonefishV5FullEval(game, perspective) * STONEFISH_V5_WEIGHTS.fullPosition;
+
   const visits = game.positionCounts.get(game.fastPositionKey()) || 0;
   const lead = stonefishV5Material(game, ownSide) - stonefishV5Material(game, enemySide);
   if (visits > 0) {
@@ -252,7 +292,6 @@ function stonefishV5RootKnowledgePoints(game, raw, bookMove, v3BestSet, perspect
   }
   if (game.halfmove >= 60 && (raw.piece === 1 || raw.captured)) points += STONEFISH_V5_WEIGHTS.fiftyReset;
   game.fastUndo();
-
   return points;
 }
 
@@ -273,14 +312,10 @@ function stonefishV5ScoreAllMoves(game) {
   for (let i = 0; i < legal.length; i += 1) {
     const raw = legal[i];
     const knowledge = stonefishV5RootKnowledgePoints(game, raw, bookMove, v3BestSet, perspective);
-
     game.fastApply(raw);
     const terminal = stonefishV5TerminalScore(game, perspective, 1);
-    const search = terminal !== null
-      ? terminal
-      : stonefishV5Search(game, depth, -Infinity, Infinity, perspective, 1);
+    const search = terminal !== null ? terminal : stonefishV5Search(game, depth, -Infinity, Infinity, perspective, 1);
     game.fastUndo();
-
     scored.push({ raw, score: search + knowledge, search, knowledge });
   }
 
