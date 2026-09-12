@@ -3,10 +3,10 @@
 // think time at or below normal Stonefish v5.
 
 const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 40000;
-const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 2;
-// depth index -> maximum moves searched. Root move is ply 1, so depth 4
-// reaches plies 2-5. Every deep candidate still reaches the full five-ply horizon.
-const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 3, 5];
+const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 3;
+// Root move is ply 1. depth 4 therefore reaches plies 2-5.
+// Branching is deliberately selective, but every finalist reaches ply 5.
+const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 2, 4];
 const STONEFISH_V5_PRO_MOBILITY_CACHE = new Map();
 const STONEFISH_V5_PRO_PASSER_INFO_CACHE = new Map();
 const STONEFISH_V5_PRO_PASSER_STATUS_CACHE = new Map();
@@ -145,24 +145,54 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
   return best;
 };
 
-// v5 is the root scout: it already evaluates every legal move with the proven
-// three-ply tactical/points system. Pro only spends its expensive +2 plies on
-// the two moves v5 judges most serious, then applies Pro's adaptive knowledge.
+function stonefishV5ProFastScoutScore(game, raw, bookMove, perspective) {
+  let score = 0;
+  const capture = STONEFISH_V5_PIECE[raw.captured] || 0;
+  score += capture * 14;
+  if (raw.promotion) score += ((STONEFISH_V5_PIECE[raw.promotion] || 0) - 100) * 16 + 1800;
+  if (raw.flags & (4 | 8)) score += 260;
+  if (bookMove && stonefishV5SameMove(raw, bookMove)) score += 3200;
+
+  const givesCheck = game.fastGivesCheck(raw);
+  if (givesCheck) {
+    score += 720;
+    if (game.fastIsMateMove(raw)) return STONEFISH_V5_PRO_MATE * 4;
+  }
+
+  game.fastApply(raw);
+  // One static position evaluation is much cheaper than v5's full three-ply
+  // tactical pass over every legal root move, and the five-ply finalists below
+  // are responsible for tactical verification.
+  score += stonefishV5PositionScore(game, perspective) * 0.72;
+  const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
+  if (enemyThreat >= 300) score -= enemyThreat * 8;
+  else if (enemyThreat >= 120) score -= enemyThreat * 3;
+  const visits = game.positionCounts.get(game.fastPositionKey()) || 0;
+  if (visits > 0) score -= visits * 180000;
+  game.fastUndo();
+
+  return score;
+}
+
 stonefishV5ProScoreAllMoves = function(game) {
-  const v5Scored = stonefishV5ScoreAllMoves(game);
-  if (!v5Scored.length) return [];
+  const legal = game.fastMoves();
+  if (!legal.length) return [];
   const perspective = game.side;
-  const legal = v5Scored.map(entry => entry.raw);
-  const heritageMove = stonefishV5HeritageMove(game);
   const bookMove = stonefishV45BookMove(game, 1, legal);
-  const scored = v5Scored.map(entry => ({
-    raw: entry.raw,
-    tactical: entry.tactical,
-    knowledge: entry.knowledge,
-    preliminary: entry.score,
+
+  const scored = legal.map(raw => ({
+    raw,
+    tactical: 0,
+    knowledge: 0,
+    preliminary: stonefishV5ProFastScoutScore(game, raw, bookMove, perspective),
     deep: null,
     score: -Infinity
   }));
+  scored.sort((a, b) => {
+    if (Math.abs(b.preliminary - a.preliminary) > 1e-9) return b.preliminary - a.preliminary;
+    const au = stonefishV45RawUci(game, a.raw), bu = stonefishV45RawUci(game, b.raw);
+    return au < bu ? -1 : au > bu ? 1 : 0;
+  });
 
   STONEFISH_V5_PRO_ACTIVE_TT = new Map();
   STONEFISH_V5_PRO_LAST_SEARCH_STATS = { nodes: 0, leaves: 0, ttHits: 0 };
@@ -170,9 +200,10 @@ stonefishV5ProScoreAllMoves = function(game) {
     const count = Math.min(STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES, scored.length);
     for (let i = 0; i < count; i += 1) {
       const entry = scored[i];
+      entry.tactical = stonefishV5TacticalScore(game, entry.raw);
       const proKnowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
         ? 0
-        : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
+        : stonefishV5ProRootKnowledge(game, entry.raw, null, bookMove, perspective, entry.tactical);
       entry.knowledge = proKnowledge;
       entry.preliminary = entry.tactical + proKnowledge;
       entry.deep = stonefishV5ProFivePlyScore(game, entry.raw, perspective);
