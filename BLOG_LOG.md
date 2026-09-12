@@ -10,3 +10,4 @@ The release story of Stonefish, one major model at a time.
 | Stonefish v2 | [Introducing Stonefish v2](blog/v2.md) |
 | Stonefish v3 | [Introducing Stonefish v3](blog/v3.md) |
 | Stonefish v4 | [Introducing Stonefish v4](blog/v4.md) |
+| Stonefish v4.5 | [Introducing Stonefish v4.5](blog/v4_5.md) |
