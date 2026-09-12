@@ -30,17 +30,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  benchmark:
+  fast-pro-black:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       GAMES: '2'
       START_INDEX: '0'
-      DEBUG_GAME: '1'
+      DEBUG_GAME: '2'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Trace fast Pro against v5
+      - name: Trace fast Pro Black line
+        run: node benchmark_v5_pro.js
+
+  reference-pro-black:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GAMES: '2'
+      START_INDEX: '0'
+      DEBUG_GAME: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Trace released 100-0 Pro Black line
         run: node benchmark_v5_pro.js
