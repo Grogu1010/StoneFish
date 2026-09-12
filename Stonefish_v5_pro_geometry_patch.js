@@ -24,3 +24,10 @@ stonefishV5ProLeaf = function(game, perspective) {
 
   return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_GEOMETRY_CACHE, key, score);
 };
+
+// Geometry-aware leaves are more trustworthy than the cheap baseline, so spend
+// a little more search budget without jumping to the failed aggressive width.
+STONEFISH_V5_PRO_SPEED_BRANCH[1] = 3;
+STONEFISH_V5_PRO_SPEED_BRANCH[2] = 3;
+STONEFISH_V5_PRO_SPEED_BRANCH[3] = 4;
+STONEFISH_V5_PRO_SPEED_BRANCH[4] = 6;
