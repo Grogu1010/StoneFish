@@ -60,7 +60,7 @@ function simulateGame(v5IsWhite, seed, maxPlies = 600, debug = false) {
       const v5Turn = (game.side === 1) === v5IsWhite;
       let move;
 
-      if (v5Turn && debug && plies >= 128) {
+      if (v5Turn && debug && plies >= 90) {
         const scored = stonefishV5ScoreAllMoves(game);
         move = scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
         const top = scored.slice(0, 10).map(entry => {
