@@ -2,26 +2,25 @@
 //
 // Release goals:
 // - keep a genuine five-ply horizon (root move + four searched plies),
+// - add a selective forcing extension beyond ply five,
 // - think no slower than normal Stonefish v5,
 // - retain a perfect release match against v5,
 // - outperform the previously released v5 Pro head-to-head.
 //
-// This revision spends measured speed headroom on the full Pro adaptive leaf
-// evaluator. Expensive geometry is memoized so we recover Pro-level tactical
-// context without returning to the released engine's brute-force cost.
+// The released Pro spent most of its time evaluating huge quiet trees. This
+// version spends the same budget more intelligently: wider five-ply search,
+// Pro root knowledge, passer-aware static evaluation, and one extra forcing ply
+// for checks, captures and promotions.
 
-const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 70000;
-const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 10;
-const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 5;
-// Index is remaining depth. Root is ply 1; depth 4 searches plies 2-5.
-const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 3, 4];
-const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.65;
+const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 60000;
+const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 12;
+const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 4;
+const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 3, 4, 5];
+const STONEFISH_V5_PRO_Q_WIDTH = 3;
+const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.50;
 const STONEFISH_V5_PRO_POSITION_CACHE = new Map();
 const STONEFISH_V5_PRO_CONTEXT_CACHE = new Map();
 const STONEFISH_V5_PRO_ADAPTIVE_CACHE = new Map();
-const STONEFISH_V5_PRO_ATTACK_CACHE = new Map();
-const STONEFISH_V5_PRO_PASSER_INFO_CACHE = new Map();
-const STONEFISH_V5_PRO_PASSER_STATUS_CACHE = new Map();
 
 function stonefishV5ProSpeedCacheSet(cache, key, value) {
   if (cache.size >= STONEFISH_V5_PRO_SPEED_CACHE_LIMIT) {
@@ -52,44 +51,6 @@ if (!Chess.prototype.fastHasLegalMove) {
   };
 }
 
-// These three helpers dominate adaptive evaluation in tactical positions.
-// They are pure for a position, so memoizing them changes no chess logic.
-const stonefishV5ProSpeedBaseAttackCount = stonefishV5ProAttackCount;
-stonefishV5ProAttackCount = function(game, sq, side) {
-  const key = side + '|' + sq + '|' + game.fastPositionKey();
-  const hit = STONEFISH_V5_PRO_ATTACK_CACHE.get(key);
-  if (hit !== undefined) return hit;
-  return stonefishV5ProSpeedCacheSet(
-    STONEFISH_V5_PRO_ATTACK_CACHE,
-    key,
-    stonefishV5ProSpeedBaseAttackCount(game, sq, side)
-  );
-};
-
-const stonefishV5ProSpeedBasePassedPawnInfo = stonefishV5PassedPawnInfo;
-stonefishV5PassedPawnInfo = function(game, side) {
-  const key = side + '|' + game.fastPositionKey();
-  const hit = STONEFISH_V5_PRO_PASSER_INFO_CACHE.get(key);
-  if (hit !== undefined) return hit;
-  return stonefishV5ProSpeedCacheSet(
-    STONEFISH_V5_PRO_PASSER_INFO_CACHE,
-    key,
-    stonefishV5ProSpeedBasePassedPawnInfo(game, side)
-  );
-};
-
-const stonefishV5ProSpeedBasePasserStatus = stonefishV5PasserStatus;
-stonefishV5PasserStatus = function(game, pawnSide, perspective) {
-  const key = pawnSide + '|' + perspective + '|' + game.fastPositionKey();
-  const hit = STONEFISH_V5_PRO_PASSER_STATUS_CACHE.get(key);
-  if (hit !== undefined) return hit;
-  return stonefishV5ProSpeedCacheSet(
-    STONEFISH_V5_PRO_PASSER_STATUS_CACHE,
-    key,
-    stonefishV5ProSpeedBasePasserStatus(game, pawnSide, perspective)
-  );
-};
-
 const stonefishV5ProSpeedBaseContexts = stonefishV5ProContexts;
 stonefishV5ProContexts = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
@@ -114,16 +75,66 @@ stonefishV5ProAdaptivePosition = function(game, perspective) {
   );
 };
 
-// Restore the released Pro's full adaptive leaf intelligence. The extra passer
-// urgency makes imminent promotion races dominate quiet positional niceties.
-stonefishV5ProLeaf = function(game, perspective) {
-  let score = stonefishV5ProAdaptivePosition(game, perspective);
+function stonefishV5ProFastStatic(game, perspective) {
+  let score = stonefishV5ProCachedPositionScore(game, perspective);
   const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
   const ourThreat = stonefishV5EnemyPasserThreat(game, -perspective);
-  if (enemyThreat >= 900) score -= enemyThreat * 0.55;
-  if (ourThreat >= 900) score += ourThreat * 0.28;
+  if (enemyThreat >= 2200) score -= enemyThreat * 0.90;
+  else if (enemyThreat >= 900) score -= enemyThreat * 0.45;
+  if (ourThreat >= 2200) score += ourThreat * 0.48;
+  else if (ourThreat >= 900) score += ourThreat * 0.24;
   return score;
+}
+
+stonefishV5ProLeaf = function(game, perspective) {
+  return stonefishV5ProFastStatic(game, perspective);
 };
+
+function stonefishV5ProForcingOrder(game, move) {
+  let score = (STONEFISH_V5_PIECE[move.captured] || 0) * 22 - (STONEFISH_V5_PIECE[move.piece] || 0);
+  if (move.promotion) score += (STONEFISH_V5_PIECE[move.promotion] || 0) * 14 + 2400;
+  if (game.fastGivesCheck(move)) score += 2100;
+  return score;
+}
+
+// One extra forcing ply after the normal five-ply horizon. Quiet positions stop
+// immediately; only checks/captures/promotions are extended.
+function stonefishV5ProQuiescenceOne(game, perspective, alpha, beta, legal) {
+  const stand = stonefishV5ProFastStatic(game, perspective);
+  const maximizing = game.side === perspective;
+  let best = stand;
+  const forcing = [];
+
+  for (let i = 0; i < legal.length; i += 1) {
+    const move = legal[i];
+    let check = false;
+    if (!move.captured && !move.promotion) check = game.fastGivesCheck(move);
+    if (!move.captured && !move.promotion && !check) continue;
+    const order = stonefishV5ProForcingOrder(game, move) + (check ? 1 : 0);
+    forcing.push({ move, order, index: i });
+  }
+
+  forcing.sort((a, b) => (b.order - a.order) || (a.index - b.index));
+  const moves = forcing.slice(0, STONEFISH_V5_PRO_Q_WIDTH);
+
+  for (const entry of moves) {
+    if (game.fastIsMateMove(entry.move)) {
+      const mate = game.side === perspective ? STONEFISH_V5_PRO_MATE - 6 : -STONEFISH_V5_PRO_MATE + 6;
+      if (maximizing) best = Math.max(best, mate); else best = Math.min(best, mate);
+    } else {
+      game.fastApply(entry.move);
+      const value = stonefishV5ProFastStatic(game, perspective);
+      game.fastUndo();
+      if (maximizing) best = Math.max(best, value); else best = Math.min(best, value);
+    }
+
+    if (maximizing) {
+      if (best > alpha) alpha = best;
+    } else if (best < beta) beta = best;
+    if (beta <= alpha) break;
+  }
+  return best;
+}
 
 let STONEFISH_V5_PRO_ACTIVE_TT = null;
 let STONEFISH_V5_PRO_LAST_SEARCH_STATS = null;
@@ -144,24 +155,6 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
   }
   if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.nodes += 1;
 
-  if (depth <= 0) {
-    if (!game.fastHasLegalMove()) {
-      const terminal = game.in_check()
-        ? (game.side === perspective ? -STONEFISH_V5_PRO_MATE + plyFromRoot : STONEFISH_V5_PRO_MATE - plyFromRoot)
-        : 0;
-      if (tt) tt.set(key, terminal);
-      return terminal;
-    }
-    if (game.halfmove >= 100 || game._insufficientMaterial()) {
-      if (tt) tt.set(key, 0);
-      return 0;
-    }
-    const leaf = stonefishV5ProLeaf(game, perspective);
-    if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.leaves += 1;
-    if (tt) tt.set(key, leaf);
-    return leaf;
-  }
-
   const legal = game.fastMoves();
   if (!legal.length) {
     const terminal = !game.in_check()
@@ -173,6 +166,13 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
   if (game.halfmove >= 100 || game._insufficientMaterial()) {
     if (tt) tt.set(key, 0);
     return 0;
+  }
+
+  if (depth <= 0) {
+    const leaf = stonefishV5ProQuiescenceOne(game, perspective, alpha, beta, legal);
+    if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.leaves += 1;
+    if (tt) tt.set(key, leaf);
+    return leaf;
   }
 
   const width = STONEFISH_V5_PRO_SPEED_BRANCH[depth] || 2;
@@ -225,7 +225,7 @@ function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspec
   if (raw.promotion) score += ((STONEFISH_V5_PIECE[raw.promotion] || 0) - 100) * 18 + 2400;
   if (raw.flags & (4 | 8)) score += 260;
   if (bookMove && stonefishV5SameMove(raw, bookMove)) score += 3600;
-  if (heritageMove && stonefishV5SameMove(raw, heritageMove)) score += 3000;
+  if (heritageMove && stonefishV5SameMove(raw, heritageMove)) score += 2500;
   score += stonefishV5ProConversionUrgency(game, raw, perspective);
 
   if (game.fastGivesCheck(raw)) {
@@ -234,10 +234,11 @@ function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspec
   }
 
   game.fastApply(raw);
-  score += stonefishV5ProCachedPositionScore(game, perspective) * 0.28;
+  score += stonefishV5ProCachedPositionScore(game, perspective) * 0.30;
   const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
-  if (enemyThreat >= 300) score -= enemyThreat * 9;
-  else if (enemyThreat >= 120) score -= enemyThreat * 3;
+  if (enemyThreat >= 2200) score -= enemyThreat * 10;
+  else if (enemyThreat >= 900) score -= enemyThreat * 5;
+  else if (enemyThreat >= 300) score -= enemyThreat * 2;
   const visits = game.positionCounts.get(game.fastPositionKey()) || 0;
   if (visits > 0) score -= visits * 240000;
   game.fastUndo();
@@ -299,7 +300,7 @@ stonefishV5ProScoreAllMoves = function(game) {
       if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
         entry.score = entry.deep;
       } else {
-        const selective = entry.deep * 1.35 + entry.preliminary * 0.38;
+        const selective = entry.deep * 1.38 + entry.preliminary * 0.34;
         const heritageFloor = entry.heritageMatch
           ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
           : -Infinity;
