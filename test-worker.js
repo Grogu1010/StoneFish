@@ -10,7 +10,9 @@ importScripts(
   './Stonefish_v4_5_balance_patch.js',
   './Stonefish_v5.js',
   './Stonefish_v5_pro.js',
-  './Stonefish_v5_pro_speed_patch.js'
+  './Stonefish_v5_pro_speed_patch.js',
+  './Stonefish_v5_pro_geometry_patch.js',
+  './Stonefish_speed_core.js'
 );
 
 const workerModels = {
