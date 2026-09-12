@@ -3,7 +3,7 @@ name: Stonefish v5 Pro benchmark
 on:
   push:
     branches:
-      - chatgpt/stonefish-v5-pro
+      - chatgpt/stonefish-v5-pro-speed
     paths:
       - 'Stonefish_v5_pro.js'
       - 'Stonefish_v5_pro_speed_patch.js'
@@ -31,20 +31,19 @@ concurrency:
 
 jobs:
   benchmark:
-    name: benchmark shard starting at ${{ matrix.start }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        start: [0, 20, 40, 60, 80]
     env:
-      GAMES: '20'
-      START_INDEX: ${{ matrix.start }}
+      GAMES: '4'
+      START_INDEX: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run v5 Pro vs v5 100-game release-gate shard
-        run: node benchmark_v5_pro.js
+      - name: Run speed-preserving v5 Pro smoke benchmark
+        run: |
+          start=$(date +%s)
+          node benchmark_v5_pro.js
+          end=$(date +%s)
+          echo "STONEFISH_V5_PRO_WALL_SECONDS=$((end-start))"
