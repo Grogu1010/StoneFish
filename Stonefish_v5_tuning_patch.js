@@ -1,33 +1,46 @@
-// Stonefish_v5 tuning pass 3.
+// Stonefish_v5 tuning pass 4.
 // Keep the proven v5(testunit1) choice as a strong prior while the new all-move
 // scorecard is tuned. Repetition is treated as a near-terminal conversion error.
 STONEFISH_V5_WEIGHTS.heritage = 1500;
 STONEFISH_V5_WEIGHTS.repetition = 200000;
 STONEFISH_V5_WEIGHTS.repetitionAhead = 300000;
 
-// The previous pass showed a remaining draw where v4.5 completed the threefold
-// on its own reply. Penalise a v5 move if ANY immediate opponent reply can enter
-// a position that has already occurred twice. This looks one ply ahead for the
-// draw mechanism rather than waiting until v5 itself is the repeating side.
-const stonefishV5TacticalScoreBeforeRepeatGuard = stonefishV5TacticalScore;
+// Preserve the untuned three-ply tactical evaluator so this patch can add
+// conversion rules without changing its material logic.
+const stonefishV5TacticalScoreBase = stonefishV5TacticalScore;
+
 stonefishV5TacticalScore = function(game, raw) {
-  let score = stonefishV5TacticalScoreBeforeRepeatGuard(game, raw);
-  if (Math.abs(score) >= STONEFISH_V5_MATE) return score;
+  // Mate now must beat every "mate next move" setup. The old evaluator returned
+  // the same mate constant for both, which allowed endless renewal of a mating
+  // threat instead of delivering checkmate.
+  if (game.fastIsMateMove(raw)) return STONEFISH_V5_MATE * 2;
+
+  let score = stonefishV5TacticalScoreBase(game, raw);
+
+  // A non-terminal move that creates a forced mate threat stays just below the
+  // terminal band so positional/conversion points (especially repetition) still
+  // participate in the final root score.
+  if (score >= STONEFISH_V5_MATE) score = STONEFISH_V5_MATE - 1000;
+  if (score <= -STONEFISH_V5_MATE) return score;
 
   game.fastApply(raw);
+
+  // Penalise v5's own return to any previously visited position.
+  const rootVisits = game.positionCounts.get(game.fastPositionKey()) || 0;
+  if (rootVisits > 0) score -= rootVisits * 1000000;
+
+  // Also avoid giving v4.5 an immediate reply that completes a threefold.
   const replies = game.fastMoves();
-  let opponentCanClaimThreefold = false;
   for (let i = 0; i < replies.length; i += 1) {
     game.fastApply(replies[i]);
     const priorVisits = game.positionCounts.get(game.fastPositionKey()) || 0;
     game.fastUndo();
     if (priorVisits >= 2) {
-      opponentCanClaimThreefold = true;
+      score -= 1000000;
       break;
     }
   }
-  game.fastUndo();
 
-  if (opponentCanClaimThreefold) score -= 1000000;
+  game.fastUndo();
   return score;
 };
