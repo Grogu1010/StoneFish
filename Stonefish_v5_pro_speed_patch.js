@@ -1,16 +1,14 @@
 // Stonefish v5 Pro speed layer.
 // Goal: retain a genuine five-ply selective search while keeping wall-clock
 // think time at or below normal Stonefish v5.
+// IMPORTANT: all memoization here is Pro-local. Normal v5 is left untouched.
 
 const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 40000;
 const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 8;
 const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 4;
 // Root move is ply 1. depth 4 therefore reaches plies 2-5.
-// Branching is deliberately selective, but every finalist reaches ply 5.
 const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 2, 4];
-const STONEFISH_V5_PRO_MOBILITY_CACHE = new Map();
-const STONEFISH_V5_PRO_PASSER_INFO_CACHE = new Map();
-const STONEFISH_V5_PRO_PASSER_STATUS_CACHE = new Map();
+const STONEFISH_V5_PRO_POSITION_CACHE = new Map();
 const STONEFISH_V5_PRO_CONTEXT_CACHE = new Map();
 const STONEFISH_V5_PRO_ADAPTIVE_CACHE = new Map();
 
@@ -20,14 +18,19 @@ function stonefishV5ProSpeedCacheSet(cache, key, value) {
   return value;
 }
 
-const stonefishV5ProBaseFastMobility = Chess.prototype.fastMobility;
-Chess.prototype.fastMobility = function(side) {
-  const key = side + '|' + this.fastPositionKey();
-  const cached = STONEFISH_V5_PRO_MOBILITY_CACHE.get(key);
+function stonefishV5ProCachedPositionScore(game, perspective) {
+  const key = perspective + '|' + game.fastPositionKey();
+  const cached = STONEFISH_V5_PRO_POSITION_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_MOBILITY_CACHE, key, stonefishV5ProBaseFastMobility.call(this, side));
-};
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_POSITION_CACHE,
+    key,
+    stonefishV5PositionScore(game, perspective)
+  );
+}
 
+// Leaves only need an existence test for legal moves. This helper does not
+// replace any method used by v5.
 if (!Chess.prototype.fastHasLegalMove) {
   Chess.prototype.fastHasLegalMove = function() {
     const pseudo = this._pseudoMoves();
@@ -36,28 +39,16 @@ if (!Chess.prototype.fastHasLegalMove) {
   };
 }
 
-const stonefishV5ProBasePassedPawnInfo = stonefishV5PassedPawnInfo;
-stonefishV5PassedPawnInfo = function(game, side) {
-  const key = side + '|' + game.fastPositionKey();
-  const cached = STONEFISH_V5_PRO_PASSER_INFO_CACHE.get(key);
-  if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_PASSER_INFO_CACHE, key, stonefishV5ProBasePassedPawnInfo(game, side));
-};
-
-const stonefishV5ProBasePasserStatus = stonefishV5PasserStatus;
-stonefishV5PasserStatus = function(game, pawnSide, perspective) {
-  const key = pawnSide + '|' + perspective + '|' + game.fastPositionKey();
-  const cached = STONEFISH_V5_PRO_PASSER_STATUS_CACHE.get(key);
-  if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_PASSER_STATUS_CACHE, key, stonefishV5ProBasePasserStatus(game, pawnSide, perspective));
-};
-
 const stonefishV5ProBaseContexts = stonefishV5ProContexts;
 stonefishV5ProContexts = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_PRO_CONTEXT_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_CONTEXT_CACHE, key, stonefishV5ProBaseContexts(game, perspective));
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_CONTEXT_CACHE,
+    key,
+    stonefishV5ProBaseContexts(game, perspective)
+  );
 };
 
 const stonefishV5ProBaseAdaptivePosition = stonefishV5ProAdaptivePosition;
@@ -65,7 +56,11 @@ stonefishV5ProAdaptivePosition = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_PRO_ADAPTIVE_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_ADAPTIVE_CACHE, key, stonefishV5ProBaseAdaptivePosition(game, perspective));
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_ADAPTIVE_CACHE,
+    key,
+    stonefishV5ProBaseAdaptivePosition(game, perspective)
+  );
 };
 
 stonefishV5ProLeaf = function(game, perspective) {
@@ -95,7 +90,9 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
 
   if (depth <= 0) {
     if (!game.fastHasLegalMove()) {
-      const terminal = game.in_check() ? (game.side === perspective ? -STONEFISH_V5_PRO_MATE + plyFromRoot : STONEFISH_V5_PRO_MATE - plyFromRoot) : 0;
+      const terminal = game.in_check()
+        ? (game.side === perspective ? -STONEFISH_V5_PRO_MATE + plyFromRoot : STONEFISH_V5_PRO_MATE - plyFromRoot)
+        : 0;
       if (tt) tt.set(ttKey, terminal);
       return terminal;
     }
@@ -111,7 +108,9 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
 
   const legal = game.fastMoves();
   if (!legal.length) {
-    const terminal = !game.in_check() ? 0 : (game.side === perspective ? -STONEFISH_V5_PRO_MATE + plyFromRoot : STONEFISH_V5_PRO_MATE - plyFromRoot);
+    const terminal = !game.in_check()
+      ? 0
+      : (game.side === perspective ? -STONEFISH_V5_PRO_MATE + plyFromRoot : STONEFISH_V5_PRO_MATE - plyFromRoot);
     if (tt) tt.set(ttKey, terminal);
     return terminal;
   }
@@ -162,14 +161,13 @@ function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspec
   }
 
   game.fastApply(raw);
-  score += stonefishV5PositionScore(game, perspective) * 0.72;
+  score += stonefishV5ProCachedPositionScore(game, perspective) * 0.72;
   const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
   if (enemyThreat >= 300) score -= enemyThreat * 8;
   else if (enemyThreat >= 120) score -= enemyThreat * 3;
   const visits = game.positionCounts.get(game.fastPositionKey()) || 0;
   if (visits > 0) score -= visits * 180000;
   game.fastUndo();
-
   return score;
 }
 
@@ -178,8 +176,6 @@ stonefishV5ProScoreAllMoves = function(game) {
   if (!legal.length) return [];
   const perspective = game.side;
   const bookMove = stonefishV45BookMove(game, 1, legal);
-  // This was part of the 100-0 Pro release. Restore the exact signal once per
-  // root rather than approximating it across candidates.
   const heritageMove = stonefishV5HeritageMove(game);
 
   const scored = legal.map(raw => ({
