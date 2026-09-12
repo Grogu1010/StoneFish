@@ -1,6 +1,6 @@
 // Exact-behaviour speed benchmark for StoneFish v3 through v5 Pro.
-// Compares the current engine bundle against the same bundle plus
-// Stonefish_speed_core.js. Any move-trace difference is a hard failure.
+// Compares the current engine bundle against the same bundle plus the exact
+// speed layers. Any move-trace difference is a hard failure.
 
 const fs = require('fs');
 const vm = require('vm');
@@ -23,7 +23,9 @@ const engineFiles = [
 
 function makeEngine(optimized) {
   const ctx = vm.createContext({ console });
-  const files = optimized ? engineFiles.concat('Stonefish_speed_core.js') : engineFiles;
+  const files = optimized
+    ? engineFiles.concat('Stonefish_speed_core.js', 'Stonefish_v5_pro_exact_search.js')
+    : engineFiles;
   const source = files.map(file => fs.readFileSync(file, 'utf8')).join('\n\n');
 
   vm.runInContext(source + `\n
