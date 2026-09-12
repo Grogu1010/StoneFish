@@ -86,6 +86,22 @@ Chess.prototype.fastIsMateMove = function(move) {
   return mate;
 };
 
+// v3 sorts only by captured-piece value. There are just seven possible capture
+// types, so a stable fixed-order scan avoids Array.sort/comparator overhead while
+// producing exactly the same order (king, queen, rook, bishop, knight, pawn, none).
+if (typeof stonefishV3OrderByCapture === 'function') {
+  stonefishV3OrderByCapture = function(moves) {
+    const ordered = new Array(moves.length);
+    let out = 0;
+    for (let captured = 6; captured >= 0; captured -= 1) {
+      for (let i = 0; i < moves.length; i += 1) {
+        if ((moves[i].captured || 0) === captured) ordered[out++] = moves[i];
+      }
+    }
+    return ordered;
+  };
+}
+
 // v3's third-ply mate test used to generate every legal response after a check.
 // It needs only an existence test, so keep the identical score with less work.
 if (typeof stonefishV3BestThirdPlyGain === 'function') {
