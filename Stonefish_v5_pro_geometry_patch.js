@@ -4,14 +4,16 @@
 // they reached deep search. Instead, rank EVERY legal move with Pro root
 // knowledge first (without the expensive three-ply tactical calculation), then
 // spend tactical work on only the best root candidates. The final deep blend
-// matches released Pro in ordinary positions and uses a bounded confidence
-// adjustment when strong root evidence sharply contradicts a negative narrow
-// deep score. This adds no search nodes.
+// matches released Pro in ordinary positions and uses bounded confidence
+// adjustments when strong root evidence sharply contradicts a negative narrow
+// deep score. These adjustments add no search nodes.
 
 const STONEFISH_V5_PRO_ROOT_PREPASS = 10;
 const STONEFISH_V5_PRO_CONFIDENCE_ROOT = 900;
 const STONEFISH_V5_PRO_CONFIDENCE_DEEP = -250;
 const STONEFISH_V5_PRO_CONFIDENCE_DEEP_WEIGHT = 1.20;
+const STONEFISH_V5_PRO_HERITAGE_CONFIDENCE_ROOT = 1000;
+const STONEFISH_V5_PRO_HERITAGE_CONFIDENCE_BONUS = 30;
 
 function stonefishV5ProConfidenceDeepWeight(entry) {
   if (entry.preliminary >= STONEFISH_V5_PRO_CONFIDENCE_ROOT
@@ -19,6 +21,15 @@ function stonefishV5ProConfidenceDeepWeight(entry) {
     return STONEFISH_V5_PRO_CONFIDENCE_DEEP_WEIGHT;
   }
   return 1.35;
+}
+
+function stonefishV5ProHeritageConfidenceBonus(entry) {
+  if (entry.heritageMatch
+      && entry.preliminary >= STONEFISH_V5_PRO_HERITAGE_CONFIDENCE_ROOT
+      && entry.deep <= STONEFISH_V5_PRO_CONFIDENCE_DEEP) {
+    return STONEFISH_V5_PRO_HERITAGE_CONFIDENCE_BONUS;
+  }
+  return 0;
 }
 
 stonefishV5ProScoreAllMoves = function(game) {
@@ -86,7 +97,8 @@ stonefishV5ProScoreAllMoves = function(game) {
         entry.score = entry.deep;
       } else {
         const deepWeight = stonefishV5ProConfidenceDeepWeight(entry);
-        entry.score = entry.deep * deepWeight + entry.preliminary * 0.38;
+        entry.score = entry.deep * deepWeight + entry.preliminary * 0.38
+          + stonefishV5ProHeritageConfidenceBonus(entry);
       }
     }
   } finally {
