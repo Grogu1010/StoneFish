@@ -1,4 +1,4 @@
-// Honest Stonefish v5 Pro vs v5 benchmark with a hard speed gate.
+// Honest Stonefish v5 Pro vs v5 benchmark with hard strength and speed gates.
 // Normal legal play only: no forced result, adjudicated winner, target pairing,
 // material-result shortcut, or result rewriting.
 
@@ -160,10 +160,8 @@ function runMatch(games = 100, startIndex = 0) {
 const games = Math.max(2, Number.parseInt(process.env.GAMES || '100', 10) || 100);
 const startIndex = Math.max(0, Number.parseInt(process.env.START_INDEX || '0', 10) || 0);
 const summary = runMatch(games, startIndex);
-const minWins = Math.ceil(games * 0.95);
-const maxDraws = Math.floor(games * 0.05);
-if (summary.proLosses !== 0 || summary.proWins < minWins || summary.draws > maxDraws) {
-  console.error(`Pro strength target not reached: ${summary.proWins}W/${summary.proLosses}L/${summary.draws}D.`);
+if (summary.proWins !== games || summary.proLosses !== 0 || summary.draws !== 0) {
+  console.error(`Pro 100% strength target not reached: ${summary.proWins}W/${summary.proLosses}L/${summary.draws}D.`);
   process.exitCode = 1;
 }
 if (!(summary.proAvgMs <= summary.v5AvgMs)) {
