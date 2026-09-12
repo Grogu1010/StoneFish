@@ -7,7 +7,10 @@ const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 40000;
 const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 8;
 const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 4;
 const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 2, 4];
-const STONEFISH_V5_PRO_HERITAGE_CONFIDENCE = 320;
+// Selective five-ply search is intentionally narrow. When it produces a noisy
+// non-mating evaluation for the same move selected by v5's proven heritage
+// system, do not let that noise erase the heritage signal completely.
+const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.72;
 const STONEFISH_V5_PRO_POSITION_CACHE = new Map();
 const STONEFISH_V5_PRO_CONTEXT_CACHE = new Map();
 const STONEFISH_V5_PRO_ADAPTIVE_CACHE = new Map();
@@ -208,9 +211,20 @@ stonefishV5ProScoreAllMoves = function(game) {
       entry.knowledge = proKnowledge;
       entry.preliminary = entry.tactical + proKnowledge;
       entry.deep = stonefishV5ProFivePlyScore(game, entry.raw, perspective);
-      entry.score = Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9
-        ? entry.deep
-        : entry.deep * 1.35 + entry.preliminary * 0.38 + (entry.heritageMatch ? STONEFISH_V5_PRO_HERITAGE_CONFIDENCE : 0);
+      if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
+        // A genuine forced mate/loss always overrides heritage confidence.
+        entry.score = entry.deep;
+      } else {
+        const selective = entry.deep * 1.35 + entry.preliminary * 0.38;
+        // Full-width 100-0 Pro showed that narrow branches can be pessimistic by
+        // hundreds of points on its own proven heritage move. Keep the actual
+        // five-ply score, but floor only that move's final confidence unless the
+        // search found a mating result above.
+        const heritageFloor = entry.heritageMatch
+          ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
+          : -Infinity;
+        entry.score = Math.max(selective, heritageFloor);
+      }
     }
   } finally {
     STONEFISH_V5_PRO_ACTIVE_TT = null;
