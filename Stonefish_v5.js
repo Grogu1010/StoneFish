@@ -7,8 +7,7 @@
 // - three-ply tactical safety for EVERY legal move (not a v3 candidate gate),
 // - a weighted positional scorecard,
 // - v4.5 opening and mating-pattern knowledge as points,
-// - the key v5(testunit1) discovery: opponent checks + mobility are restricted
-//   from move one rather than being delayed until move 24,
+// - immediate opponent-check and opponent-mobility restriction from move one,
 // - conversion pressure against repetition and the 50-move rule.
 
 const STONEFISH_V5_MATE = 10000000;
@@ -170,6 +169,34 @@ function stonefishV5TacticalScore(game, raw) {
   return worst;
 }
 
+// Internal v5 heritage signal. This preserves the strongest pre-v5 decision
+// pattern without shipping a separate test model. It is only ONE weighted vote;
+// unlike v4/v4.5 it never eliminates other root moves from consideration.
+function stonefishV5HeritageMove(game) {
+  let candidates = getStonefishV3BestRawMoves(game).slice();
+  if (!candidates.length) return null;
+
+  for (let i = 0; i < STONEFISH_V4_ORDER.length && candidates.length > 1; i += 1) {
+    const criterion = STONEFISH_V4_ORDER[i];
+
+    if (criterion === 'mobility') {
+      const book = stonefishV45BookMove(game, 0, candidates);
+      if (book) return stonefishV3PublicMove(game, book);
+
+      candidates = stonefishV45BestByInverse(game, candidates, 'oppCheckRisk');
+      if (candidates.length > 1) candidates = stonefishV45BestByInverse(game, candidates, 'oppMobility');
+    }
+
+    candidates = stonefishV4BestByCriterion(game, candidates, criterion);
+    if (criterion === 'pieceSupport' && candidates.length > 1) {
+      candidates = stonefishV45StrictPatternTieBreak(game, candidates);
+    }
+  }
+
+  const raw = stonefishV3RandomRaw(candidates);
+  return raw ? stonefishV3PublicMove(game, raw) : null;
+}
+
 function stonefishV5RootKnowledge(game, raw, heritageMove, bookMove, perspective) {
   let points = 0;
   if (heritageMove && stonefishV5SameMove(raw, heritageMove)) points += STONEFISH_V5_WEIGHTS.heritage;
@@ -178,7 +205,8 @@ function stonefishV5RootKnowledge(game, raw, heritageMove, bookMove, perspective
   if (raw.promotion) points += STONEFISH_V5_WEIGHTS.promotion;
   if (game.fastGivesCheck(raw)) points += STONEFISH_V5_WEIGHTS.check;
 
-  // testunit1's key strength is retained as continuous points from move one.
+  // Immediate inverse-pressure knowledge: restrict opponent checks and mobility
+  // from move one as continuous points rather than hard filter stages.
   points += stonefishV45InverseScore(game, raw, 'oppCheckRisk') * STONEFISH_V5_WEIGHTS.oppCheckRisk;
   points += stonefishV45InverseScore(game, raw, 'oppMobility') * STONEFISH_V5_WEIGHTS.oppMobility;
   points += stonefishV45StrictPatternScore(game, raw) * STONEFISH_V5_WEIGHTS.matePattern;
@@ -204,9 +232,9 @@ function stonefishV5ScoreAllMoves(game) {
   if (!legal.length) return [];
   const perspective = game.side;
 
-  // Preserve the proven strong pre-balance architecture as one weighted signal,
-  // not as a gate. Every other legal move remains eligible to beat it on points.
-  const heritageMove = getStonefishV5Testunit1Move(game);
+  // The old strong decision pattern is retained only as a weighted signal.
+  // Every legal root move remains eligible to beat it on the unified score.
+  const heritageMove = stonefishV5HeritageMove(game);
   const bookMove = stonefishV45BookMove(game, 1, legal);
   const scored = new Array(legal.length);
 
