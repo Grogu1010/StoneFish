@@ -1,9 +1,9 @@
-name: Stonefish v5 Pro opening divergence diagnostics
+name: Stonefish v5 Pro fast vs full-search diagnostics
 
 on:
   push:
     branches:
-      - chatgpt/v5-pro-opening-diagnose
+      - chatgpt/v5-pro-full-search-diagnose
     paths:
       - 'diagnose_v5_pro_opening_divergence.js'
       - 'Stonefish_v5_pro.js'
@@ -18,7 +18,7 @@ jobs:
       matrix:
         opening: [1, 2]
         color: [white, black]
-    name: opening ${{ matrix.opening }} ${{ matrix.color }}
+    name: full-search opening ${{ matrix.opening }} ${{ matrix.color }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -35,5 +35,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Find first post-opening policy divergence
+      - name: Compare fast and released full-search scores at first divergence
         run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node diagnose_v5_pro_opening_divergence.js
