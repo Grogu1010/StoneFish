@@ -147,4 +147,88 @@
       return score;
     };
   }
+
+  // The geometry layer calls Pro root knowledge once with tactical=0 to rank
+  // every move, then calls the same expensive function again for semifinalists
+  // after their real tactical score is known. Only the final confidence term
+  // depends on tactical. Capture the adaptive score from the first pass and
+  // reuse the static part for subsequent calls on the exact same raw move.
+  if (
+    typeof stonefishV5ProRootKnowledge === 'function' &&
+    typeof stonefishV5ProAdaptivePosition === 'function'
+  ) {
+    const sfProKnowledgeCache = new WeakMap();
+    const sfProAdaptiveBase = stonefishV5ProAdaptivePosition;
+    const sfProKnowledgeBase = stonefishV5ProRootKnowledge;
+    let sfProAdaptiveCapture = null;
+
+    function sfProDynamicConfidence(tactical, adaptive, heritageMatch, forcing) {
+      let agreement = 0;
+      if (tactical > 25) agreement += 1;
+      if (adaptive > 80) agreement += 1;
+      if (heritageMatch) agreement += 1;
+      if (forcing) agreement += 1;
+      if (agreement >= 3) return 120 + agreement * 25;
+      if (tactical < -120 && adaptive > 120) return -160;
+      return 0;
+    }
+
+    stonefishV5ProAdaptivePosition = function(game, perspective) {
+      const score = sfProAdaptiveBase(game, perspective);
+      if (
+        sfProAdaptiveCapture &&
+        sfProAdaptiveCapture.perspective === perspective &&
+        sfProAdaptiveCapture.adaptive === undefined
+      ) {
+        sfProAdaptiveCapture.adaptive = score;
+      }
+      return score;
+    };
+
+    stonefishV5ProRootKnowledge = function(game, raw, heritageMove, bookMove, perspective, tactical) {
+      const move = raw && raw._raw ? raw._raw : raw;
+      const cached = sfProKnowledgeCache.get(move);
+      const heritageMatch = !!heritageMove && stonefishV5SameMove(move, heritageMove);
+      const forcing = !!(move.captured || move.promotion || game.fastGivesCheck(move));
+
+      if (
+        cached &&
+        cached.heritageMove === heritageMove &&
+        cached.bookMove === bookMove &&
+        cached.perspective === perspective
+      ) {
+        return cached.staticPoints + sfProDynamicConfidence(
+          tactical,
+          cached.adaptive,
+          cached.heritageMatch,
+          cached.forcing
+        );
+      }
+
+      const previousCapture = sfProAdaptiveCapture;
+      const capture = { perspective, adaptive: undefined };
+      sfProAdaptiveCapture = capture;
+      let value;
+      try {
+        value = sfProKnowledgeBase(game, move, heritageMove, bookMove, perspective, tactical);
+      } finally {
+        sfProAdaptiveCapture = previousCapture;
+      }
+
+      if (capture.adaptive !== undefined) {
+        const dynamic = sfProDynamicConfidence(tactical, capture.adaptive, heritageMatch, forcing);
+        sfProKnowledgeCache.set(move, {
+          heritageMove,
+          bookMove,
+          perspective,
+          adaptive: capture.adaptive,
+          heritageMatch,
+          forcing,
+          staticPoints: value - dynamic
+        });
+      }
+
+      return value;
+    };
+  }
 })();
