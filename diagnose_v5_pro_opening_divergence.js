@@ -1,4 +1,5 @@
-// Find the first policy divergence from released v5 Pro after a legal opening prefix.
+// Find the first policy divergence after a legal opening and compare the
+// candidate's selective scores with released Pro's full search on the same board.
 // Diagnostic only; no result manipulation or forced moves after the opening.
 
 const fs = require('fs');
@@ -47,6 +48,16 @@ const key = move => move ? `${move.from}${move.to}${move.promotion || ''}` : 'nu
 const decode = uci => ({ from: uci.slice(0,2), to: uci.slice(2,4), promotion: uci.slice(4) || 'q' });
 function apply(game, move) { return move && game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' }); }
 function seedOpening(game, opening) { for (const uci of opening.moves) if (!game.move(decode(uci))) throw new Error(`Illegal ${uci}`); }
+function pack(entry) {
+  return entry ? {
+    total: Number.isFinite(entry.score) ? entry.score : null,
+    deep: entry.deep,
+    preliminary: Number.isFinite(entry.preliminary) ? entry.preliminary : null,
+    tactical: entry.tactical,
+    knowledge: entry.knowledge,
+    heritage: !!entry.heritageMatch
+  } : null;
+}
 
 const referenceDir = process.env.REFERENCE_DIR;
 if (!referenceDir) throw new Error('REFERENCE_DIR is required');
@@ -71,20 +82,37 @@ for (let ply = opening.moves.length; ply < 180 && !currentGame.game_over(); ply 
   const currentTurn = (currentGame.side === 1) === currentIsWhite;
   let move;
   if (currentTurn) {
-    const scored = current.__scoreAll(currentGame);
-    const candidate = scored.length ? current.__public(currentGame, scored[0].raw) : null;
+    const fastScored = current.__scoreAll(currentGame);
+    const candidate = fastScored.length ? current.__public(currentGame, fastScored[0].raw) : null;
     shadow.__setSeed((seed + ply * 977) ^ 0xC2B2AE35);
     const releasedSuggestion = shadow.__getPro(shadowGame);
+
     if (key(candidate) !== key(releasedSuggestion)) {
+      const candidateKey = key(candidate);
       const releasedKey = key(releasedSuggestion);
-      const releasedIndex = scored.findIndex(entry => current.__uci(currentGame, entry.raw) === releasedKey);
-      const pack = entry => entry ? ({ total: Number.isFinite(entry.score) ? entry.score : null, deep: entry.deep, preliminary: Number.isFinite(entry.preliminary) ? entry.preliminary : null, tactical: entry.tactical, knowledge: entry.knowledge, heritage: !!entry.heritageMatch }) : null;
-      console.log('STONEFISH_V5_PRO_OPENING_DIVERGENCE ' + JSON.stringify({
-        opening: opening.name, color: currentIsWhite ? 'white' : 'black', ply,
-        candidate: key(candidate), releasedSuggestion: releasedKey,
-        releasedSuggestionRank: releasedIndex >= 0 ? releasedIndex + 1 : -1,
-        candidateEntry: pack(scored[0]), releasedSuggestionEntry: releasedIndex >= 0 ? pack(scored[releasedIndex]) : null,
-        top: scored.slice(0, 8).map((entry, i) => ({ rank: i + 1, move: current.__uci(currentGame, entry.raw), ...pack(entry) }))
+      const fastReleasedIndex = fastScored.findIndex(entry => current.__uci(currentGame, entry.raw) === releasedKey);
+
+      // Expensive by design, but only once at the first divergence: ask the
+      // exact released engine to score every move from this synchronized board.
+      const releasedScored = shadow.__scoreAll(shadowGame);
+      const releasedCandidateIndex = releasedScored.findIndex(entry => shadow.__uci(shadowGame, entry.raw) === candidateKey);
+      const releasedChosenIndex = releasedScored.findIndex(entry => shadow.__uci(shadowGame, entry.raw) === releasedKey);
+
+      console.log('STONEFISH_V5_PRO_FULL_SEARCH_DIVERGENCE ' + JSON.stringify({
+        opening: opening.name,
+        color: currentIsWhite ? 'white' : 'black',
+        ply,
+        candidate: candidateKey,
+        releasedSuggestion: releasedKey,
+        fastCandidate: pack(fastScored[0]),
+        fastReleasedRank: fastReleasedIndex >= 0 ? fastReleasedIndex + 1 : -1,
+        fastReleased: fastReleasedIndex >= 0 ? pack(fastScored[fastReleasedIndex]) : null,
+        releasedCandidateRank: releasedCandidateIndex >= 0 ? releasedCandidateIndex + 1 : -1,
+        releasedCandidate: releasedCandidateIndex >= 0 ? pack(releasedScored[releasedCandidateIndex]) : null,
+        releasedChosenRank: releasedChosenIndex >= 0 ? releasedChosenIndex + 1 : -1,
+        releasedChosen: releasedChosenIndex >= 0 ? pack(releasedScored[releasedChosenIndex]) : null,
+        fastTop: fastScored.slice(0, 5).map((entry, i) => ({ rank: i + 1, move: current.__uci(currentGame, entry.raw), ...pack(entry) })),
+        releasedTop: releasedScored.slice(0, 5).map((entry, i) => ({ rank: i + 1, move: shadow.__uci(shadowGame, entry.raw), ...pack(entry) }))
       }));
       process.exit(0);
     }
@@ -94,4 +122,4 @@ for (let ply = opening.moves.length; ply < 180 && !currentGame.game_over(); ply 
   }
   if (!apply(currentGame, move) || !apply(releasedGame, move) || !apply(shadowGame, move)) throw new Error(`Replay failed ${key(move)} at ${ply}`);
 }
-console.log('STONEFISH_V5_PRO_OPENING_DIVERGENCE none-before-limit');
+console.log('STONEFISH_V5_PRO_FULL_SEARCH_DIVERGENCE none-before-limit');
