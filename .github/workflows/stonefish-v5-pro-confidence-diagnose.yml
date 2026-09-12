@@ -1,0 +1,37 @@
+name: Stonefish v5 Pro confidence-blend divergence diagnostic
+
+on:
+  push:
+    branches:
+      - chatgpt/v5-pro-confidence-diagnose
+    paths:
+      - 'diagnose_v5_pro_divergence.js'
+      - 'Stonefish_v5_pro.js'
+      - 'Stonefish_v5_pro_speed_patch.js'
+      - 'Stonefish_v5_pro_geometry_patch.js'
+      - '.github/workflows/stonefish-v5-pro-confidence-diagnose.yml'
+
+jobs:
+  divergence:
+    strategy:
+      fail-fast: false
+      matrix:
+        color: [white, black]
+    name: confidence divergence (${{ matrix.color }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DIAG_COLOR: ${{ matrix.color }}
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+      - name: Checkout released Pro reference
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: reference
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Diagnose first policy divergence
+        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node diagnose_v5_pro_divergence.js
