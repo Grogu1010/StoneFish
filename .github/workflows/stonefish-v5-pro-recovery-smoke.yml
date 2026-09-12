@@ -1,0 +1,120 @@
+name: Stonefish v5 Pro recovery smoke
+
+on:
+  push:
+    branches:
+      - chatgpt/v5-pro-recovery
+    paths:
+      - 'Stonefish_v5_pro.js'
+      - 'Stonefish_v5_pro_speed_patch.js'
+      - 'Stonefish_v5_pro_geometry_patch.js'
+      - 'Stonefish_v5.js'
+      - 'Stonefish_v4_5*.js'
+      - 'Stonefish_v4.js'
+      - 'Stonefish_v3.js'
+      - 'StonefishChess.js'
+      - 'benchmark_v5_pro.js'
+      - 'benchmark_v5_pro_head_to_head.js'
+      - 'benchmark_v5_pro_recovery_equivalence.js'
+      - '.github/workflows/stonefish-v5-pro-recovery-smoke.yml'
+
+concurrency:
+  group: stonefish-v5-pro-recovery-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  equivalence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify optimized scoring equivalence
+        run: node benchmark_v5_pro_recovery_equivalence.js
+
+  v5-smoke:
+    needs: equivalence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GAMES: '8'
+      START_INDEX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require 8-0-0 and Pro no slower than v5
+        run: node benchmark_v5_pro.js
+
+  old-pro-smoke:
+    needs: equivalence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        start: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+    env:
+      H2H_GAMES: '2'
+      START_INDEX: ${{ matrix.start }}
+      H2H_RESULT_FILE: h2h-${{ matrix.start }}.json
+    steps:
+      - name: Checkout recovery candidate
+        uses: actions/checkout@v4
+      - name: Checkout released v5 Pro reference
+        uses: actions/checkout@v4
+        with:
+          ref: 55878135df4100cfee15af4c2e7e9b0696331c53
+          path: reference
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Play two varied paired-opening games
+        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_v5_pro_head_to_head.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: h2h-${{ matrix.start }}
+          path: h2h-${{ matrix.start }}.json
+          retention-days: 1
+
+  aggregate-old-pro-smoke:
+    needs: old-pro-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: h2h-*
+          path: h2h-results
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require a competitive 20-game sample
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const files = fs.readdirSync('h2h-results').filter(name => name.endsWith('.json'));
+          const total = { games: 0, newWins: 0, newLosses: 0, draws: 0 };
+          for (const file of files) {
+            const row = JSON.parse(fs.readFileSync(path.join('h2h-results', file), 'utf8'));
+            total.games += row.games;
+            total.newWins += row.newWins;
+            total.newLosses += row.newLosses;
+            total.draws += row.draws;
+          }
+          console.log('STONEFISH_V5_PRO_RECOVERY_SMOKE ' + JSON.stringify(total));
+          if (total.games !== 20) throw new Error(`Expected 20 games, got ${total.games}`);
+          if (total.newWins < 10) {
+            throw new Error(`Recovery candidate is not competitive enough yet: ${total.newWins}W/${total.newLosses}L/${total.draws}D; need at least 10 wins in smoke.`);
+          }
+          NODE
+
+  recovery-smoke-gate:
+    needs: [v5-smoke, aggregate-old-pro-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Recovery candidate cleared equivalence, v5 speed/strength, and old-Pro smoke gates.'
