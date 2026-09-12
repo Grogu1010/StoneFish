@@ -12,7 +12,7 @@
     <section class="hero">
       <p class="eyebrow">STONEFISH CHESS LAB</p>
       <h1>Play <span id="hero-model">Stonefish_v5</span></h1>
-      <p id="hero-subtitle" class="subtitle">A unified points-and-search architecture that scores every legal move across tactical, positional, inverse, opening, and conversion knowledge at once.</p>
+      <p id="hero-subtitle" class="subtitle">A unified points architecture that scores every legal move across tactical, positional, inverse, opening, and conversion knowledge at once.</p>
     </section>
 
     <section class="game-layout" aria-label="StoneFish chess lab">
@@ -26,7 +26,6 @@
             <div class="model-row">
               <select id="model-select" class="model-select" aria-label="Choose Stonefish model">
                 <option value="v5" selected>Stonefish_v5</option>
-                <option value="v5t1">Stonefish_v5 (testunit1)</option>
                 <option value="v45">Stonefish_v4.5</option>
                 <option value="v4">Stonefish_v4</option>
                 <option value="v3">Stonefish_v3</option>
@@ -34,7 +33,7 @@
                 <option value="v1">Stonefish_v1</option>
               </select>
             </div>
-            <p id="bot-trait" class="bot-trait"><span class="status-dot"></span> Unified scoring + search engine</p>
+            <p id="bot-trait" class="bot-trait"><span class="status-dot"></span> Unified scoring engine</p>
           </div>
         </div>
 
@@ -57,7 +56,7 @@
           <details class="developer-menu">
             <summary>Developer menu</summary>
             <div class="developer-panel">
-              <p class="developer-note">Select any 2 or more models. The total game count is split as evenly as possible across every selected matchup, with colours balanced within each pairing. v5(testunit1) remains as the frozen bridge between v4.5 and the full v5 architecture.</p>
+              <p class="developer-note">Select any 2 or more models. The total game count is split as evenly as possible across every selected matchup, with colours balanced within each pairing.</p>
 
               <div id="test-models" class="model-checklist">
                 <label><input type="checkbox" name="test-model" value="v1" /> Stonefish_v1</label>
@@ -65,7 +64,6 @@
                 <label><input type="checkbox" name="test-model" value="v3" /> Stonefish_v3</label>
                 <label><input type="checkbox" name="test-model" value="v4" /> Stonefish_v4</label>
                 <label><input type="checkbox" name="test-model" value="v45" checked /> Stonefish_v4.5</label>
-                <label><input type="checkbox" name="test-model" value="v5t1" /> Stonefish_v5 (testunit1)</label>
                 <label><input type="checkbox" name="test-model" value="v5" checked /> Stonefish_v5</label>
               </div>
 
@@ -95,9 +93,9 @@
   <script src="Stonefish_v4_5.js"></script>
   <script src="Stonefish_v4_5_opening_overrides.js"></script>
   <script src="Stonefish_v4_5_safety_patch.js"></script>
-  <script src="Stonefish_v5_testunit1.js"></script>
   <script src="Stonefish_v4_5_balance_patch.js"></script>
   <script src="Stonefish_v5.js"></script>
+  <script src="Stonefish_v5_tuning_patch.js"></script>
   <script src="app.js"></script>
   <script src="Stonefish_v5_ui.js"></script>
 </body>
