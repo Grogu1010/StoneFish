@@ -43,4 +43,6 @@ jobs:
     needs: v5-release
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Stonefish v5 Pro fast release gate passed: 100-0-0 vs v5 and no slower than v5."
+      - name: Confirm release gate
+        run: |
+          echo "Stonefish v5 Pro fast release gate passed: 100-0-0 vs v5 and no slower than v5."
