@@ -127,6 +127,15 @@
         <div class="blog-stat"><span>57.3%</span><p>v4.5 win rate</p></div>
       </div>
 
+      <h2>Why does v3 fare better against v4.5 than v4 does?</h2>
+      <p>At first glance, this looks backwards. Stonefish v4 beat Stonefish v3 convincingly, yet v3 takes 174 games from v4.5 while v4 takes none.</p>
+      <p>That is not a contradiction. Chess-engine strength is not perfectly transitive, and v4.5 is not simply “v4 but stronger by the same amount against everyone.” It changes the matchup itself.</p>
+      <p>Stonefish v4 and v4.5 share the same positional vocabulary. v4 tries to improve mobility, king freedom, center control, development, structure, activity, and board control. v4.5 keeps those ideas, then adds inverse versions that explicitly reduce the opponent’s mobility, checking chances, king freedom, center control, and board control.</p>
+      <p>That makes v4.5 unusually well-equipped to attack the exact qualities v4 is trying to optimize. The two engines are speaking the same positional language, but v4.5 can answer many of v4’s priorities with a direct restriction layer on top.</p>
+      <p>Stonefish v3 is different. It is simpler, more tactical, and less dependent on that positional tie-breaking stack. Its decisions are driven more directly by three-ply worst-case material calculation. Because of that, some of v4.5’s positional suppression machinery has less to latch onto, and v3 can produce less structured positions that force more adaptation.</p>
+      <blockquote>v4 is stronger against v3. But v3 is the less convenient opponent for v4.5.</blockquote>
+      <p>The tests do not isolate one single cause, so this should be read as the most plausible explanation from the engines’ decision systems rather than a proven mechanism. What the results clearly show is that strength is matchup-dependent: v4.5 still beats v3 573–174, while its stylistic edge over v4 is dramatically larger.</p>
+
       <h2>Why the opening book changes everything</h2>
       <p><strong>Stonefish starts coordinated.</strong> It can reach coherent structures without independently rediscovering every opening move from generic heuristics.</p>
       <p><strong>Move order becomes knowledge.</strong> A repertoire can encode relationships between developing moves that isolated positional rules cannot capture as directly.</p>
