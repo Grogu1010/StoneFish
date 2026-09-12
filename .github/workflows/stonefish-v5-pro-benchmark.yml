@@ -6,6 +6,7 @@ on:
       - chatgpt/stonefish-v5-pro
     paths:
       - 'Stonefish_v5_pro.js'
+      - 'Stonefish_v5_pro_speed_patch.js'
       - 'Stonefish_v5.js'
       - 'Stonefish_v4_5*.js'
       - 'Stonefish_v4.js'
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - 'Stonefish_v5_pro.js'
+      - 'Stonefish_v5_pro_speed_patch.js'
       - 'Stonefish_v5.js'
       - 'Stonefish_v4_5*.js'
       - 'Stonefish_v4.js'
