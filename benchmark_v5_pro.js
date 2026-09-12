@@ -89,24 +89,28 @@ function simulateGame(proIsWhite, seed, maxPlies = 600, debug = false) {
   }
 }
 
-function runMatch(games = 100) {
+function runMatch(games = 100, startIndex = 0) {
   const totals = { win: 0, loss: 0, draw: 0 };
   const reasons = {};
   let totalPlies = 0;
   const debugGame = Number.parseInt(process.env.DEBUG_GAME || '0', 10) || 0;
 
   for (let i = 0; i < games; i += 1) {
-    const proIsWhite = i % 2 === 0;
-    const result = simulateGame(proIsWhite, 0x5F50A11 + i * 977, 600, i + 1 === debugGame);
+    const globalIndex = startIndex + i;
+    const gameNumber = globalIndex + 1;
+    const proIsWhite = globalIndex % 2 === 0;
+    const result = simulateGame(proIsWhite, 0x5F50A11 + globalIndex * 977, 600, gameNumber === debugGame);
     totals[result.result] += 1;
     reasons[result.reason] = (reasons[result.reason] || 0) + 1;
     totalPlies += result.plies;
-    console.log(`${String(i + 1).padStart(3, '0')}/${games} pro=${proIsWhite ? 'W' : 'B'} ${result.result.toUpperCase()} ${result.reason} ${result.plies} plies`);
-    if (result.result !== 'win') console.log(`TRACE game ${i + 1}: ${result.trace.slice(-48).join(' ')}`);
+    console.log(`${String(gameNumber).padStart(3, '0')} pro=${proIsWhite ? 'W' : 'B'} ${result.result.toUpperCase()} ${result.reason} ${result.plies} plies`);
+    if (result.result !== 'win') console.log(`TRACE game ${gameNumber}: ${result.trace.slice(-48).join(' ')}`);
   }
 
   const summary = {
     games,
+    startIndex,
+    endIndex: startIndex + games - 1,
     proWins: totals.win,
     proLosses: totals.loss,
     draws: totals.draw,
@@ -119,7 +123,8 @@ function runMatch(games = 100) {
 }
 
 const games = Math.max(2, Number.parseInt(process.env.GAMES || '100', 10) || 100);
-const summary = runMatch(games);
+const startIndex = Math.max(0, Number.parseInt(process.env.START_INDEX || '0', 10) || 0);
+const summary = runMatch(games, startIndex);
 const minWins = Math.ceil(games * 0.90);
 const maxDraws = Math.floor(games * 0.10);
 if (summary.proLosses !== 0 || summary.proWins < minWins || summary.draws > maxDraws) {
