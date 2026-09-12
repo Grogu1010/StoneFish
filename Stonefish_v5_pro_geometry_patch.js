@@ -4,9 +4,22 @@
 // they reached deep search. Instead, rank EVERY legal move with Pro root
 // knowledge first (without the expensive three-ply tactical calculation), then
 // spend tactical work on only the best root candidates. The final deep blend
-// matches released Pro and deliberately has no heritage floor.
+// matches released Pro in ordinary positions and uses a bounded confidence
+// adjustment when strong root evidence sharply contradicts a negative narrow
+// deep score. This adds no search nodes.
 
 const STONEFISH_V5_PRO_ROOT_PREPASS = 10;
+const STONEFISH_V5_PRO_CONFIDENCE_ROOT = 900;
+const STONEFISH_V5_PRO_CONFIDENCE_DEEP = -250;
+const STONEFISH_V5_PRO_CONFIDENCE_DEEP_WEIGHT = 1.20;
+
+function stonefishV5ProConfidenceDeepWeight(entry) {
+  if (entry.preliminary >= STONEFISH_V5_PRO_CONFIDENCE_ROOT
+      && entry.deep <= STONEFISH_V5_PRO_CONFIDENCE_DEEP) {
+    return STONEFISH_V5_PRO_CONFIDENCE_DEEP_WEIGHT;
+  }
+  return 1.35;
+}
 
 stonefishV5ProScoreAllMoves = function(game) {
   const legal = game.fastMoves();
@@ -72,7 +85,8 @@ stonefishV5ProScoreAllMoves = function(game) {
       if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
         entry.score = entry.deep;
       } else {
-        entry.score = entry.deep * 1.35 + entry.preliminary * 0.38;
+        const deepWeight = stonefishV5ProConfidenceDeepWeight(entry);
+        entry.score = entry.deep * deepWeight + entry.preliminary * 0.38;
       }
     }
   } finally {
