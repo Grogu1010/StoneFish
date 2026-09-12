@@ -11,6 +11,7 @@ const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 2, 4];
 const STONEFISH_V5_PRO_POSITION_CACHE = new Map();
 const STONEFISH_V5_PRO_CONTEXT_CACHE = new Map();
 const STONEFISH_V5_PRO_ADAPTIVE_CACHE = new Map();
+const STONEFISH_V5_PRO_ORDER_CONTEXT_CACHE = new Map();
 
 function stonefishV5ProSpeedCacheSet(cache, key, value) {
   if (cache.size >= STONEFISH_V5_PRO_SPEED_CACHE_LIMIT) cache.delete(cache.keys().next().value);
@@ -22,15 +23,9 @@ function stonefishV5ProCachedPositionScore(game, perspective) {
   const key = perspective + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_PRO_POSITION_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(
-    STONEFISH_V5_PRO_POSITION_CACHE,
-    key,
-    stonefishV5PositionScore(game, perspective)
-  );
+  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_POSITION_CACHE, key, stonefishV5PositionScore(game, perspective));
 }
 
-// Leaves only need an existence test for legal moves. This helper does not
-// replace any method used by v5.
 if (!Chess.prototype.fastHasLegalMove) {
   Chess.prototype.fastHasLegalMove = function() {
     const pseudo = this._pseudoMoves();
@@ -44,11 +39,7 @@ stonefishV5ProContexts = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_PRO_CONTEXT_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(
-    STONEFISH_V5_PRO_CONTEXT_CACHE,
-    key,
-    stonefishV5ProBaseContexts(game, perspective)
-  );
+  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_CONTEXT_CACHE, key, stonefishV5ProBaseContexts(game, perspective));
 };
 
 const stonefishV5ProBaseAdaptivePosition = stonefishV5ProAdaptivePosition;
@@ -56,15 +47,81 @@ stonefishV5ProAdaptivePosition = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_PRO_ADAPTIVE_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(
-    STONEFISH_V5_PRO_ADAPTIVE_CACHE,
-    key,
-    stonefishV5ProBaseAdaptivePosition(game, perspective)
-  );
+  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_ADAPTIVE_CACHE, key, stonefishV5ProBaseAdaptivePosition(game, perspective));
 };
 
 stonefishV5ProLeaf = function(game, perspective) {
   return stonefishV5ProAdaptivePosition(game, perspective);
+};
+
+// Narrow search only works if quiet moves are ordered sensibly. Cache a tiny
+// board context once per node so ordering can value development, king activity,
+// passer pushes and emergency blockades without running a full evaluation.
+function stonefishV5ProOrderContext(game) {
+  const key = game.fastPositionKey();
+  const cached = STONEFISH_V5_PRO_ORDER_CONTEXT_CACHE.get(key);
+  if (cached !== undefined) return cached;
+  let nonPawn = 0;
+  const enemyPawnBlocks = [];
+  const us = game.side;
+  for (let sq = 0; sq < 64; sq += 1) {
+    const p = game.boardState[sq];
+    if (!p) continue;
+    const type = Math.abs(p);
+    if (type >= 2 && type <= 5) nonPawn += STONEFISH_V5_PIECE[type] || 0;
+    if (p === -us) {
+      const rank = sq >> 3;
+      const progress = -us === 1 ? rank : 7 - rank;
+      const distance = 7 - progress;
+      if (distance <= 3) {
+        const blockSq = sq + (-us) * 8;
+        if (blockSq >= 0 && blockSq < 64) enemyPawnBlocks.push({ blockSq, file: sq & 7, distance });
+      }
+    }
+  }
+  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_ORDER_CONTEXT_CACHE, key, {
+    endgame: stonefishV5ProClamp(1 - nonPawn / STONEFISH_V5_PRO_START_NONPAWN),
+    enemyPawnBlocks
+  });
+}
+
+const stonefishV5ProBaseMoveOrder = stonefishV5ProMoveOrder;
+stonefishV5ProMoveOrder = function(game, move) {
+  let score = stonefishV5ProBaseMoveOrder(game, move);
+  const ctx = stonefishV5ProOrderContext(game);
+  const side = game.side;
+  const fromFile = move.from & 7, fromRank = move.from >> 3;
+  const toFile = move.to & 7, toRank = move.to >> 3;
+  const type = move.piece;
+
+  // Emergency containment of a near-promotion enemy pawn belongs ahead of
+  // ordinary quiet manoeuvres.
+  for (let i = 0; i < ctx.enemyPawnBlocks.length; i += 1) {
+    const threat = ctx.enemyPawnBlocks[i];
+    if (move.to === threat.blockSq) score += threat.distance === 1 ? 2600 : threat.distance === 2 ? 1050 : 360;
+    if ((type === 4 || type === 5) && toFile === threat.file) score += threat.distance === 1 ? 420 : 150;
+  }
+
+  if (type === 1) {
+    const fromProgress = side === 1 ? fromRank : 7 - fromRank;
+    const toProgress = side === 1 ? toRank : 7 - toRank;
+    const advance = toProgress - fromProgress;
+    score += advance * (55 + toProgress * 18);
+    if (toProgress >= 5) score += (toProgress - 4) * 240;
+  } else if (type === 2 || type === 3) {
+    const fromCenter = Math.abs(fromFile - 3.5) + Math.abs(fromRank - 3.5);
+    const toCenter = Math.abs(toFile - 3.5) + Math.abs(toRank - 3.5);
+    score += (fromCenter - toCenter) * 36;
+    const homeRank = side === 1 ? 0 : 7;
+    if (fromRank === homeRank && toRank !== homeRank) score += 135;
+  } else if (type === 6 && ctx.endgame > 0.45) {
+    const fromCenter = Math.abs(fromFile - 3.5) + Math.abs(fromRank - 3.5);
+    const toCenter = Math.abs(toFile - 3.5) + Math.abs(toRank - 3.5);
+    score += (fromCenter - toCenter) * (65 + 90 * ctx.endgame);
+  }
+
+  if (move.flags & (4 | 8)) score += 140;
+  return score;
 };
 
 function stonefishV5ProTTKey(game, depth, perspective, plyFromRoot, positionKey, visits) {
