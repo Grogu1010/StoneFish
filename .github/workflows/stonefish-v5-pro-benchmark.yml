@@ -5,6 +5,7 @@ on:
     branches:
       - chatgpt/stonefish-v5-pro-speed
       - chatgpt/stonefish-speed-pass
+      - chatgpt/stonefish-speed-pass-2
     paths:
       - 'Stonefish_v5_pro.js'
       - 'Stonefish_v5_pro_speed_patch.js'
@@ -15,6 +16,8 @@ on:
       - 'Stonefish_v4.js'
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
+      - 'Stonefish_ui_speed_patch.js'
+      - 'index.html'
       - 'benchmark_v5_pro.js'
       - 'benchmark_v5_pro_head_to_head.js'
       - 'benchmark_v5_pro_regression.js'
@@ -31,6 +34,8 @@ on:
       - 'Stonefish_v4.js'
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
+      - 'Stonefish_ui_speed_patch.js'
+      - 'index.html'
       - 'benchmark_v5_pro.js'
       - 'benchmark_v5_pro_head_to_head.js'
       - 'benchmark_v5_pro_regression.js'

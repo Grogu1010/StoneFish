@@ -5,6 +5,7 @@ on:
     branches:
       - chatgpt/v5-pro-release-candidate
       - chatgpt/stonefish-speed-pass
+      - chatgpt/stonefish-speed-pass-2
     paths:
       - 'Stonefish_v5_pro.js'
       - 'Stonefish_v5_pro_speed_patch.js'
@@ -15,10 +16,13 @@ on:
       - 'Stonefish_v4.js'
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
+      - 'Stonefish_ui_speed_patch.js'
+      - 'index.html'
       - 'benchmark_v5_pro.js'
+      - '.github/workflows/stonefish-v5-pro-benchmark.yml'
       - '.github/workflows/stonefish-v5-pro-fast-release-gate.yml'
 
-# Keep this gate attached to the exact engine-speed PR head being released.
+# Keep this gate attached to the exact speed-pass head being released.
 concurrency:
   group: stonefish-v5-pro-fast-release-${{ github.ref }}
   cancel-in-progress: true
