@@ -12,7 +12,8 @@ importScripts(
   './Stonefish_v5_pro.js',
   './Stonefish_v5_pro_speed_patch.js',
   './Stonefish_v5_pro_geometry_patch.js',
-  './Stonefish_speed_core.js'
+  './Stonefish_speed_core.js',
+  './Stonefish_v5_pro_exact_search.js'
 );
 
 const workerModels = {
