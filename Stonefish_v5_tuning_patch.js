@@ -1,4 +1,4 @@
-// Stonefish_v5 tuning pass 7 — points-only conversion tuning.
+// Stonefish_v5 tuning pass 8 — points-only conversion tuning.
 // No extra ply/search depth is added. Every improvement below is a root score.
 STONEFISH_V5_WEIGHTS.heritage = 1500;
 STONEFISH_V5_WEIGHTS.repetition = 200000;
@@ -37,6 +37,21 @@ function stonefishV5PasserDanger(distance) {
   return 35;
 }
 
+// Static geometry only: if a pawn one step from promotion vacated its current
+// square, would one of our pieces attack the promotion square? This rewards
+// queen/rook containment such as Qh6 behind a white pawn on h7. It is not an
+// extra searched ply; it is one feature of the current-position point score.
+function stonefishV5CoversPromotionAfterAdvance(game, passer, defenderSide) {
+  if (passer.distance !== 1) return false;
+  const promotionRank = passer.file >= 0 ? (game.boardState[passer.sq] > 0 ? 7 : 0) : 0;
+  const promotionSq = promotionRank * 8 + passer.file;
+  const pawn = game.boardState[passer.sq];
+  game.boardState[passer.sq] = 0;
+  const covered = game._isAttacked(promotionSq, defenderSide);
+  game.boardState[passer.sq] = pawn;
+  return covered;
+}
+
 function stonefishV5PasserStatus(game, pawnSide, perspective) {
   let score = 0;
   const passers = stonefishV5PassedPawnInfo(game, pawnSide);
@@ -68,6 +83,10 @@ function stonefishV5PasserStatus(game, pawnSide, perspective) {
 
     // Direct pressure on the pawn itself is also valuable.
     if (game._isAttacked(passer.sq, blockerSide)) effective *= 0.72;
+
+    // Crucial conversion knowledge: a promotion is much less dangerous when the
+    // new piece can be met immediately because the pawn's advance opens our line.
+    if (stonefishV5CoversPromotionAfterAdvance(game, passer, blockerSide)) effective *= 0.20;
 
     score += ours ? effective : -effective * 1.35;
   }
