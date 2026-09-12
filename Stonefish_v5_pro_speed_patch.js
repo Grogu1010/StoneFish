@@ -6,11 +6,10 @@
 const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 40000;
 const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 8;
 const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 4;
-const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 2, 4];
-// Selective five-ply search is intentionally narrow. When it produces a noisy
-// non-mating evaluation for the same move selected by v5's proven heritage
-// system, do not let that noise erase the heritage signal completely.
-const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.72;
+// Root move is ply 1; depth 4 therefore reaches plies 2-5.
+// The leaf is deliberately cheaper than full Pro's adaptive evaluator, which
+// lets us search a much wider tree while staying inside v5's time budget.
+const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 3, 3, 4, 5];
 const STONEFISH_V5_PRO_POSITION_CACHE = new Map();
 const STONEFISH_V5_PRO_CONTEXT_CACHE = new Map();
 const STONEFISH_V5_PRO_ADAPTIVE_CACHE = new Map();
@@ -25,7 +24,11 @@ function stonefishV5ProCachedPositionScore(game, perspective) {
   const key = perspective + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_PRO_POSITION_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_POSITION_CACHE, key, stonefishV5PositionScore(game, perspective));
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_POSITION_CACHE,
+    key,
+    stonefishV5PositionScore(game, perspective)
+  );
 }
 
 if (!Chess.prototype.fastHasLegalMove) {
@@ -41,7 +44,11 @@ stonefishV5ProContexts = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_PRO_CONTEXT_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_CONTEXT_CACHE, key, stonefishV5ProBaseContexts(game, perspective));
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_CONTEXT_CACHE,
+    key,
+    stonefishV5ProBaseContexts(game, perspective)
+  );
 };
 
 const stonefishV5ProBaseAdaptivePosition = stonefishV5ProAdaptivePosition;
@@ -49,11 +56,17 @@ stonefishV5ProAdaptivePosition = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
   const cached = STONEFISH_V5_PRO_ADAPTIVE_CACHE.get(key);
   if (cached !== undefined) return cached;
-  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_ADAPTIVE_CACHE, key, stonefishV5ProBaseAdaptivePosition(game, perspective));
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_ADAPTIVE_CACHE,
+    key,
+    stonefishV5ProBaseAdaptivePosition(game, perspective)
+  );
 };
 
+// Root knowledge still uses the full Pro adaptive model. The deep search leaf
+// uses v5's unified position score so we can spend the saved time on breadth.
 stonefishV5ProLeaf = function(game, perspective) {
-  return stonefishV5ProAdaptivePosition(game, perspective);
+  return stonefishV5ProCachedPositionScore(game, perspective);
 };
 
 function stonefishV5ProTTKey(game, depth, perspective, plyFromRoot, positionKey, visits) {
@@ -108,7 +121,7 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
     return 0;
   }
 
-  const width = STONEFISH_V5_PRO_SPEED_BRANCH[depth] || 2;
+  const width = STONEFISH_V5_PRO_SPEED_BRANCH[depth] || 3;
   const ordered = legal
     .map((move, index) => ({ move, index, order: stonefishV5ProMoveOrder(game, move) }))
     .sort((a, b) => (b.order - a.order) || (a.index - b.index))
@@ -211,20 +224,9 @@ stonefishV5ProScoreAllMoves = function(game) {
       entry.knowledge = proKnowledge;
       entry.preliminary = entry.tactical + proKnowledge;
       entry.deep = stonefishV5ProFivePlyScore(game, entry.raw, perspective);
-      if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
-        // A genuine forced mate/loss always overrides heritage confidence.
-        entry.score = entry.deep;
-      } else {
-        const selective = entry.deep * 1.35 + entry.preliminary * 0.38;
-        // Full-width 100-0 Pro showed that narrow branches can be pessimistic by
-        // hundreds of points on its own proven heritage move. Keep the actual
-        // five-ply score, but floor only that move's final confidence unless the
-        // search found a mating result above.
-        const heritageFloor = entry.heritageMatch
-          ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
-          : -Infinity;
-        entry.score = Math.max(selective, heritageFloor);
-      }
+      entry.score = Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9
+        ? entry.deep
+        : entry.deep * 1.35 + entry.preliminary * 0.38;
     }
   } finally {
     STONEFISH_V5_PRO_ACTIVE_TT = null;
