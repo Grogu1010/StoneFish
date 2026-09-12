@@ -1,0 +1,49 @@
+name: Stonefish v5 no-book gate
+
+on:
+  push:
+    branches:
+      - chatgpt/remove-v5-opening-book
+
+concurrency:
+  group: stonefish-v5-no-book-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prove v5 and Pro never consult the opening book
+        run: node benchmark_v5_no_opening_book.js
+
+  v5-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GAMES: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run bookless v5 smoke
+        run: node benchmark_v5.js
+
+  pro-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GAMES: '4'
+      START_INDEX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run bookless Pro smoke
+        run: node benchmark_v5_pro.js
