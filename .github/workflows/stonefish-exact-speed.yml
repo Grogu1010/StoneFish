@@ -24,7 +24,12 @@ jobs:
   exact-parity:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [v3, v4, v45, v5, v5pro]
     env:
+      MODEL: ${{ matrix.model }}
       PARITY_GAMES: '2'
       MAX_PLIES: '180'
     steps:
@@ -32,5 +37,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify exact traces and report latency
+      - name: Verify exact trace and report latency
         run: node benchmark_speed_parity.js
