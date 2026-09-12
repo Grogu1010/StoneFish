@@ -1,0 +1,26 @@
+name: Stonefish v5 benchmark
+
+on:
+  push:
+    branches:
+      - chatgpt/stonefish-v5
+  pull_request:
+    paths:
+      - 'Stonefish_v5.js'
+      - 'Stonefish_v4_5*.js'
+      - 'Stonefish_v4.js'
+      - 'Stonefish_v3.js'
+      - 'StonefishChess.js'
+      - 'benchmark_v5.js'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run 100-game v5 vs v4.5 match
+        run: node benchmark_v5.js
