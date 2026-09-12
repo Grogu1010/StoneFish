@@ -1,6 +1,6 @@
 // Direct parity gate for the shared runtime optimization layer.
-// Compare v3, v4, v4.5, v5 and v5 Pro against released main on identical
-// deterministic positions with identical RNG seeds. Any move difference fails.
+// Compare complete legal move generation plus v3, v4, v4.5, v5 and v5 Pro
+// decisions against released main. Any move-list or chosen-move difference fails.
 
 const fs = require('fs');
 const path = require('path');
@@ -63,6 +63,85 @@ function seededRandom(seed) {
   };
 }
 
+function rawMoveKey(move) {
+  return move
+    ? `${move.from}:${move.to}:${move.promotion || 0}:${move.flags || 0}:${move.piece || 0}:${move.captured || 0}`
+    : 'null';
+}
+
+function moveKey(move) {
+  return move ? `${move.from}${move.to}${move.promotion || ''}` : 'null';
+}
+
+function assertMoveListParity(referenceGame, currentGame, label) {
+  const released = referenceGame.fastMoves();
+  const optimized = currentGame.fastMoves();
+  if (released.length !== optimized.length) {
+    throw new Error(`Legal move count mismatch ${label}: released=${released.length} optimized=${optimized.length}`);
+  }
+  for (let i = 0; i < released.length; i += 1) {
+    const a = rawMoveKey(released[i]);
+    const b = rawMoveKey(optimized[i]);
+    if (a !== b) throw new Error(`Legal move mismatch ${label} index=${i}: released=${a} optimized=${b}`);
+  }
+  return released;
+}
+
+function playPublic(game, uci) {
+  const move = game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || 'q' });
+  if (!move) throw new Error(`Scripted move failed: ${uci}`);
+}
+
+function verifyScript(reference, current, name, moves) {
+  const a = new reference.__Chess();
+  const b = new current.__Chess();
+  assertMoveListParity(a, b, `${name}:start`);
+  for (let i = 0; i < moves.length; i += 1) {
+    playPublic(a, moves[i]);
+    playPublic(b, moves[i]);
+    assertMoveListParity(a, b, `${name}:ply${i + 1}`);
+  }
+}
+
+function verifyMoveGeneration(reference, current) {
+  let positions = 0;
+
+  // Explicit special-rule/check coverage.
+  const scripts = [
+    ['en-passant', ['e2e4', 'a7a6', 'e4e5', 'd7d5']],
+    ['castling-ready', ['g1f3', 'g8f6', 'g2g3', 'g7g6', 'f1g2', 'f8g7']],
+    ['in-check', ['e2e4', 'f7f6', 'd1h5']],
+    ['queen-pin-lines', ['d2d4', 'e7e6', 'b1c3', 'f8b4', 'c1d2', 'g8f6']]
+  ];
+  for (const [name, moves] of scripts) {
+    verifyScript(reference, current, name, moves);
+    positions += moves.length + 1;
+  }
+
+  // Hundreds of normal positions, using released move order to choose the same
+  // continuation in both engines. Every complete move list and its order match.
+  for (let line = 0; line < 12; line += 1) {
+    const a = new reference.__Chess();
+    const b = new current.__Chess();
+    const random = seededRandom(0xBADC0DE + line * 0x9E3779B1);
+
+    for (let ply = 0; ply < 36; ply += 1) {
+      const released = assertMoveListParity(a, b, `random${line + 1}:ply${ply}`);
+      positions += 1;
+      if (!released.length) break;
+      const index = Math.floor(random() * released.length);
+      const chosen = released[index];
+      const optimized = b.fastMoves()[index];
+      a._applyRaw(chosen, true);
+      b._applyRaw(optimized, true);
+      if (a.halfmove >= 100 || a._insufficientMaterial()) break;
+    }
+  }
+
+  console.log(`LEGAL_MOVE_PARITY positions=${positions} exact=true`);
+  return positions;
+}
+
 function generateHistories(engine) {
   const histories = [];
   const samplePlies = new Set([6, 10, 14, 18, 22]);
@@ -101,16 +180,13 @@ function replay(engine, history) {
   return game;
 }
 
-function moveKey(move) {
-  return move ? `${move.from}${move.to}${move.promotion || ''}` : 'null';
-}
-
 const currentDir = process.cwd();
 const referenceDir = process.env.REFERENCE_DIR;
 if (!referenceDir) throw new Error('REFERENCE_DIR is required');
 
 const reference = makeEngine(referenceDir);
 const current = makeEngine(currentDir);
+const legalMoveParityPositions = verifyMoveGeneration(reference, current);
 const histories = generateHistories(reference);
 const models = ['v3', 'v4', 'v45', 'v5', 'v5pro'];
 const timings = Object.fromEntries(models.map(model => [model, { released: 0, optimized: 0, samples: 0 }]));
@@ -155,7 +231,7 @@ for (let positionIndex = 0; positionIndex < histories.length; positionIndex += 1
   }
 }
 
-const summary = { positions: histories.length, exactMoveMatch: true, models: {} };
+const summary = { legalMoveParityPositions, positions: histories.length, exactMoveMatch: true, models: {} };
 for (const model of models) {
   const t = timings[model];
   const releasedAvgMs = t.samples ? t.released / t.samples : 0;
