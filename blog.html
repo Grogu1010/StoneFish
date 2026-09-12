@@ -27,17 +27,15 @@
       <a class="blog-card" href="#stonefish-v3">
         <span class="blog-card-kicker">MODEL RELEASE</span>
         <h2>Introducing Stonefish v3</h2>
-        <p>Three-ply calculation, worst-case material intelligence, and a 97.0% overall win rate across 2,000 games.</p>
+        <p>Three-ply calculation, worst-case material intelligence, and a 97.0% win rate across 2,000 direct games against v1 and v2.</p>
         <span class="blog-card-link">Read the launch story →</span>
       </a>
-
       <a class="blog-card" href="#stonefish-v2">
         <span class="blog-card-kicker">MODEL RELEASE</span>
         <h2>Introducing Stonefish v2</h2>
         <p>The Stonefish revolution takes its next step with mate awareness, defensive foresight, and an undefeated 1,000-game test against v1.</p>
         <span class="blog-card-link">Read the launch story →</span>
       </a>
-
       <a class="blog-card" href="#stonefish-v1">
         <span class="blog-card-kicker">MODEL RELEASE</span>
         <h2>Introducing Stonefish v1</h2>
@@ -50,7 +48,6 @@
       <p class="eyebrow">MODEL RELEASE · STONEFISH V3</p>
       <h1>Introducing Stonefish v3</h1>
       <p class="blog-lead">Stonefish v3 marks the next major leap in the Stonefish revolution: from immediate tactical awareness to genuine multi-step calculation.</p>
-
       <p>Stonefish v2 learned to recognize mate in one, avoid immediate mate, and reduce the opponent’s best next capture. Stonefish v3 goes much further. It now evaluates a three-ply sequence: our move, the opponent’s reply, and our response.</p>
       <p>For the first time, Stonefish is not only asking what happens next. It is asking <strong>what happens after that.</strong></p>
 
@@ -63,58 +60,45 @@
       <h2>It plans through the opponent</h2>
       <p>The defining idea in v3 is simple: <strong>the opponent gets a vote.</strong></p>
       <p>Stonefish no longer evaluates its move in isolation. It assumes the opponent will answer as strongly as possible, then asks whether Stonefish still comes out ahead after its own best response.</p>
-      <p>That makes v3 materially more resilient. It is harder to bait, harder to trick with one-move threats, and far better at distinguishing real gains from temporary ones.</p>
       <blockquote>Instead of asking “Can I take this piece?”, Stonefish v3 asks “What can they do back — and what can I do after that?”</blockquote>
 
       <h2>Mate still comes first</h2>
-      <p>Stonefish v3 preserves the most important tactical priorities introduced in v2.</p>
-      <p>If checkmate in one is available, it takes it. If a candidate move allows the opponent to mate in one, Stonefish avoids that move whenever a safe alternative exists.</p>
-      <p>But v3 adds another layer: mating opportunities on its own third ply are valued above every material outcome.</p>
+      <p>If checkmate in one is available, Stonefish takes it. If a candidate move allows the opponent to mate in one, Stonefish avoids that move whenever a safe alternative exists. Mating opportunities on its own third ply are valued above every material outcome.</p>
       <p><strong>Material matters. Checkmate matters more.</strong></p>
 
       <h2>More precise piece values</h2>
-      <p>Stonefish v3 also introduces a more refined material model. Bishops are valued at 3.1 rather than being treated exactly the same as knights.</p>
-      <p>That difference is small by design, but it gives the engine a more precise way to compare exchanges when otherwise similar lines compete.</p>
-      <p>The important change is not the decimal itself. It is that Stonefish now has enough depth for those distinctions to matter across a sequence of moves.</p>
+      <p>Stonefish v3 also introduces a more refined material model. Bishops are valued at 3.1 rather than being treated exactly the same as knights. The difference is small by design, but it gives the engine a more precise way to compare exchanges across a sequence of moves.</p>
 
-      <h2>The test: 3,000 head-to-head games</h2>
-      <p>We tested Stonefish v3 in a three-model round robin against Stonefish v1 and Stonefish v2, with 1,000 games in each matchup.</p>
-      <p><strong>The result was overwhelming.</strong></p>
+      <h2>The test: 2,000 direct games</h2>
+      <p>For this release, the benchmark is deliberately focused on Stonefish v3 itself: 1,000 games against Stonefish v1 and 1,000 games against Stonefish v2. The older v1-v2 matchup is not part of the v3 result.</p>
+      <p><strong>Across those 2,000 direct games, v3 was overwhelming.</strong></p>
 
-      <div class="blog-stats" role="group" aria-label="Stonefish v3 overall test results">
+      <div class="blog-stats" role="group" aria-label="Stonefish v3 direct test results">
         <div class="blog-stat"><span>1,940</span><p>Wins</p></div>
         <div class="blog-stat"><span>5</span><p>Losses</p></div>
         <div class="blog-stat"><span>55</span><p>Draws</p></div>
         <div class="blog-stat"><span>97.0%</span><p>Win rate</p></div>
       </div>
 
-      <div class="blog-table-wrap">
-        <table class="blog-table">
-          <thead><tr><th>Model</th><th>Wins</th><th>Losses</th><th>Draws</th><th>Win rate</th></tr></thead>
-          <tbody>
-            <tr><td>Stonefish v1</td><td>0</td><td>1,924</td><td>76</td><td>0.0%</td></tr>
-            <tr><td>Stonefish v2</td><td>937</td><td>948</td><td>115</td><td>46.9%</td></tr>
-            <tr><td><strong>Stonefish v3</strong></td><td><strong>1,940</strong></td><td><strong>5</strong></td><td><strong>55</strong></td><td><strong>97.0%</strong></td></tr>
-          </tbody>
-        </table>
-      </div>
-
       <h2>v3 vs v2: 948–5</h2>
       <p>The most important comparison is the direct matchup against Stonefish v2.</p>
-
       <div class="blog-stats" role="group" aria-label="Stonefish v3 versus v2 test results">
         <div class="blog-stat"><span>948</span><p>v3 wins</p></div>
         <div class="blog-stat"><span>5</span><p>v3 losses</p></div>
         <div class="blog-stat"><span>47</span><p>Draws</p></div>
         <div class="blog-stat"><span>94.8%</span><p>v3 win rate</p></div>
       </div>
-
       <p>Across 1,000 games, Stonefish v3 won 948, lost only 5, and drew 47. Stonefish v2 managed a 0.5% win rate. Stonefish v3 reached 94.8%.</p>
       <blockquote>That is not a tuning improvement. It is a new level of capability.</blockquote>
 
       <h2>v3 vs v1: 992 wins, zero losses</h2>
-      <p>Against Stonefish v1, v3 was even more dominant: 992 wins, 0 losses, and 8 draws across 1,000 games.</p>
-      <p>That is a 99.2% win rate without a single defeat.</p>
+      <div class="blog-stats" role="group" aria-label="Stonefish v3 versus v1 test results">
+        <div class="blog-stat"><span>992</span><p>v3 wins</p></div>
+        <div class="blog-stat"><span>0</span><p>v3 losses</p></div>
+        <div class="blog-stat"><span>8</span><p>Draws</p></div>
+        <div class="blog-stat"><span>99.2%</span><p>v3 win rate</p></div>
+      </div>
+      <p>Against Stonefish v1, v3 won 992 of 1,000 games, drew 8, and did not lose once.</p>
 
       <h2>Why v3 is so much stronger</h2>
       <p><strong>It looks beyond the immediate reply.</strong> v2 could see danger one move ahead. v3 can evaluate whether the position remains favorable after Stonefish answers back.</p>
@@ -123,13 +107,11 @@
       <p><strong>It assumes resistance.</strong> Stonefish v3 optimizes the worst-case continuation rather than hoping the opponent chooses a weak reply.</p>
       <p><strong>It preserves tactical priorities.</strong> Immediate mate and mate avoidance still override ordinary material considerations.</p>
 
-      <p>These changes reinforce each other. v3 is not stronger because it has one new trick. It is stronger because its decision process now evaluates a sequence rather than a snapshot.</p>
-
       <h2>From awareness to calculation</h2>
       <p>Stonefish v1 was unpredictable.</p>
       <p>Stonefish v2 became aware.</p>
       <p><strong>Stonefish v3 calculates.</strong></p>
-      <p>The Stonefish revolution is no longer built only on possibility or immediate danger. It now reasons across sequences, anticipates resistance, and chooses moves that remain strong after the opponent fights back.</p>
+      <p>The Stonefish revolution now reasons across sequences, anticipates resistance, and chooses moves that remain strong after the opponent fights back.</p>
       <blockquote>Stonefish is no longer just reacting to the board. It is starting to look through it.</blockquote>
     </article>
 
@@ -137,67 +119,35 @@
       <p class="eyebrow">MODEL RELEASE · STONEFISH V2</p>
       <h1>Introducing Stonefish v2</h1>
       <p class="blog-lead">Stonefish v2 is the next revolutionary step in the Stonefish project: the speed and decisiveness of the original idea, now with tactical awareness.</p>
-
       <p>Stonefish v1 proved that a chess engine could reject predictability and operate directly from the full legal move space. Stonefish v2 takes that revolution forward by asking a harder question before it moves: <strong>what happens immediately after this move?</strong></p>
-      <p>That single change transforms the character of the engine.</p>
 
       <h2>From possibility to consequence</h2>
-      <p>Stonefish v2 no longer treats every legal move as equal. It evaluates immediate tactical consequences with a strict priority system.</p>
-      <p>First, if Stonefish has checkmate in one, it takes it. Second, it checks whether a candidate move would allow the opponent to deliver checkmate in one. If safer alternatives exist, those losing moves are rejected. Third, among the remaining candidates, Stonefish looks one reply ahead and asks how much material the opponent could take immediately.</p>
-      <p>This creates a compact but meaningful defensive intelligence layer. Stonefish v2 is no longer simply moving through the possibility space. It is filtering that space through survival, punishment, and risk.</p>
+      <p>Stonefish v2 no longer treats every legal move as equal. First, if Stonefish has checkmate in one, it takes it. Second, it checks whether a candidate move would allow the opponent to deliver checkmate in one. If safer alternatives exist, those losing moves are rejected. Third, among the remaining candidates, Stonefish asks how much material the opponent could take immediately.</p>
 
       <h2>Mate awareness changes everything</h2>
-      <p>The most important breakthrough in Stonefish v2 is simple: it understands immediate checkmate.</p>
-      <p>If the winning move is available, Stonefish does not wander past it. It ends the game. Just as importantly, it no longer casually walks into a one-move checkmate when a safe alternative exists.</p>
-      <p>That creates a sharp distinction between legal and viable. Stonefish v1 knew what could be played. Stonefish v2 begins to understand what must not be played.</p>
+      <p>The most important breakthrough in Stonefish v2 is simple: it understands immediate checkmate. Stonefish v1 knew what could be played. Stonefish v2 begins to understand what must not be played.</p>
 
       <h2>Defensive foresight</h2>
-      <p>Avoiding mate is only the first layer. When no immediate mate is involved, Stonefish v2 measures the strongest capture available to the opponent after each candidate move.</p>
-      <p>Piece values give the engine a simple risk model: pawns matter, minor pieces matter more, rooks matter more again, and queens are too valuable to expose casually. Stonefish then minimizes the opponent’s best immediate gain.</p>
-      <p>The result is not heavyweight search. It is something leaner: immediate tactical discipline.</p>
+      <p>When no immediate mate is involved, Stonefish v2 measures the strongest capture available to the opponent after each candidate move and minimizes the opponent’s best immediate gain.</p>
 
       <h2>The test: 1,000 games</h2>
       <p>We tested Stonefish v2 directly against Stonefish v1 across 1,000 games.</p>
-      <p><strong>The result was decisive.</strong></p>
-
       <div class="blog-stats" role="group" aria-label="Stonefish v2 test results">
         <div class="blog-stat"><span>946</span><p>Wins</p></div>
         <div class="blog-stat"><span>0</span><p>Losses</p></div>
         <div class="blog-stat"><span>54</span><p>Draws</p></div>
         <div class="blog-stat"><span>94.6%</span><p>Win rate</p></div>
       </div>
-
-      <div class="blog-table-wrap">
-        <table class="blog-table">
-          <thead><tr><th>Model</th><th>Wins</th><th>Losses</th><th>Draws</th><th>Win rate</th></tr></thead>
-          <tbody>
-            <tr><td>Stonefish v1</td><td>0</td><td>946</td><td>54</td><td>0.0%</td></tr>
-            <tr><td><strong>Stonefish v2</strong></td><td><strong>946</strong></td><td><strong>0</strong></td><td><strong>54</strong></td><td><strong>94.6%</strong></td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p>Stonefish v2 completed all 1,000 games without a single loss. It won 946 games and drew the remaining 54.</p>
-      <p>Against the engine that established the original Stonefish approach, v2 produced a <strong>94.6% win rate and a 0.0% loss rate</strong>.</p>
+      <p>Stonefish v2 completed all 1,000 games without a single loss.</p>
       <blockquote>That is not a marginal improvement. It is a fundamental change in capability.</blockquote>
 
       <h2>Why v2 wins</h2>
       <p><strong>It converts immediate wins.</strong> If checkmate is available in one move, Stonefish v2 recognizes it and plays it.</p>
       <p><strong>It refuses immediate tactical defeat.</strong> Moves that allow mate in one are filtered out whenever safer options exist.</p>
-      <p><strong>It reduces free material losses.</strong> By examining the opponent’s strongest immediate capture, Stonefish v2 actively prefers positions where less material is exposed.</p>
-      <p>These mechanisms reinforce each other. A position is no longer judged only by whether a move is legal. Stonefish v2 now asks whether a move wins immediately, loses immediately, or gives the opponent an immediate material opportunity.</p>
-      <p>That is the beginning of tactical judgment.</p>
-
-      <h2>Still fast. Far more dangerous.</h2>
-      <p>Stonefish v2 remains deliberately focused. It does not attempt to calculate an enormous game tree or bury every move under layers of evaluation.</p>
-      <p>Instead, it concentrates on the most urgent facts on the board: checkmate, survival, and immediate material danger.</p>
-      <p>That focus gives Stonefish v2 a powerful combination of responsiveness and discipline. It retains the directness of Stonefish while eliminating entire classes of catastrophic decisions.</p>
+      <p><strong>It reduces free material losses.</strong> Stonefish actively prefers positions where less material is exposed.</p>
 
       <h2>The Stonefish revolution moves forward</h2>
-      <p>Stonefish v1 opened the door by proving that a chess engine could be built around a radically different decision process.</p>
-      <p>Stonefish v2 steps through that door.</p>
-      <p>It can finish games when the opportunity appears. It can recognize immediate disaster before committing to it. It can protect valuable material by looking at the opponent’s next move.</p>
-      <p>And in 1,000 direct games against Stonefish v1, it did not lose once.</p>
+      <p>Stonefish v1 opened the door. Stonefish v2 steps through it with tactical awareness, survival, and immediate material discipline.</p>
       <blockquote>Stonefish is no longer only unpredictable. Now it is aware.</blockquote>
     </article>
 
@@ -205,26 +155,21 @@
       <p class="eyebrow">MODEL RELEASE · STONEFISH V1</p>
       <h1>Introducing Stonefish v1</h1>
       <p class="blog-lead">Stonefish v1 is a new kind of chess engine built around a simple idea: stop being predictable.</p>
-
       <p>Traditional chess programs are obsessed with finding <em>the</em> move. Stonefish v1 takes a radically different approach. It looks at the full set of legal possibilities in a position and makes its choice from that entire move space.</p>
       <p>The result is an engine that refuses to be boxed in by conventional expectations.</p>
 
       <h2>Every legal move is part of the plan</h2>
       <p>At the heart of Stonefish v1 is a clean, uncompromising decision process: read the position, generate every legal move, select from the complete legal move set, and play immediately.</p>
-      <p>Stonefish v1 does not spend its time imitating standard lines or repeatedly converging on the same familiar continuation. Every legal option remains alive until the moment a move is chosen.</p>
       <p><strong>It’s lightweight. It’s fast. And most importantly, it’s unpredictable.</strong></p>
 
       <h2>Unpredictability as a feature</h2>
-      <p>Chess is often treated purely as a search problem. But against a human opponent, predictability is information. Stonefish v1 attacks that assumption directly.</p>
-      <p>Because its decisions are drawn from the legal move space rather than a fixed preferred line, preparing for it is fundamentally different. You cannot simply memorize what Stonefish “likes” to play and expect the same position to unfold the same way twice.</p>
-      <p>One game might begin quietly. Another might take an immediate turn into something completely unexpected. Stonefish v1 embraces the enormous possibility space of chess instead of compressing it into one approved answer.</p>
+      <p>Because its decisions are drawn from the legal move space rather than a fixed preferred line, preparing for it is fundamentally different. Every legal option remains alive until the moment a move is chosen.</p>
 
       <h2>Built to move</h2>
       <p>Stonefish v1 is intentionally compact. There is no heavyweight evaluation stack standing between the position and the move. Once legal moves are available, Stonefish can make a decision with minimal overhead.</p>
-      <p>That gives v1 a straightforward strength: responsiveness. Stonefish stays focused on the essential job — identify what can legally be played and make a move.</p>
 
       <h2>A different kind of chess engine</h2>
-      <p>Stonefish v1 is not trying to play chess the way every other engine does. It is an experiment in freedom, variation, and machine unpredictability.</p>
+      <p>Stonefish v1 is an experiment in freedom, variation, and machine unpredictability.</p>
       <blockquote>What happens when every legal move gets a chance?</blockquote>
       <p>That experiment begins with Stonefish v1.</p>
     </article>
