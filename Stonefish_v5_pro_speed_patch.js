@@ -1,31 +1,26 @@
 // Stonefish v5 Pro speed/strength layer.
 //
-// Release goals:
-// - keep a genuine five-ply horizon (root move + four searched plies),
-// - add a selective forcing extension beyond ply five,
-// - think no slower than normal Stonefish v5,
-// - retain a perfect release match against v5,
-// - outperform the previously released v5 Pro head-to-head.
+// Base: the proven fast candidate that scored 100-0-0 vs v5 at well under v5
+// think time. This revision keeps that root architecture and only makes the
+// selective beam smarter in danger positions.
 //
-// The released Pro spent most of its time evaluating huge quiet trees. This
-// version spends the same budget more intelligently: wider five-ply search,
-// Pro root knowledge, passer-aware static evaluation, and one extra forcing ply
-// for checks, captures and promotions.
+// Improvements over the fast baseline:
+// - passed-pawn captures and blockades are promoted inside move ordering,
+// - the beam widens only when an advanced enemy passer is genuinely dangerous,
+// - checked leaf positions receive one forced-evasion extension instead of a
+//   static evaluation while still in check.
 
-const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 60000;
-const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 12;
+const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 50000;
+const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 8;
 const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 4;
-const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 3, 4, 5];
-const STONEFISH_V5_PRO_Q_WIDTH = 3;
-const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.50;
+const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 3, 4];
+const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.82;
 const STONEFISH_V5_PRO_POSITION_CACHE = new Map();
 const STONEFISH_V5_PRO_CONTEXT_CACHE = new Map();
 const STONEFISH_V5_PRO_ADAPTIVE_CACHE = new Map();
 
 function stonefishV5ProSpeedCacheSet(cache, key, value) {
-  if (cache.size >= STONEFISH_V5_PRO_SPEED_CACHE_LIMIT) {
-    cache.delete(cache.keys().next().value);
-  }
+  if (cache.size >= STONEFISH_V5_PRO_SPEED_CACHE_LIMIT) cache.delete(cache.keys().next().value);
   cache.set(key, value);
   return value;
 }
@@ -44,9 +39,7 @@ function stonefishV5ProCachedPositionScore(game, perspective) {
 if (!Chess.prototype.fastHasLegalMove) {
   Chess.prototype.fastHasLegalMove = function() {
     const pseudo = this._pseudoMoves();
-    for (let i = 0; i < pseudo.length; i += 1) {
-      if (this._testLegalRaw(pseudo[i])) return true;
-    }
+    for (let i = 0; i < pseudo.length; i += 1) if (this._testLegalRaw(pseudo[i])) return true;
     return false;
   };
 }
@@ -56,11 +49,7 @@ stonefishV5ProContexts = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
   const hit = STONEFISH_V5_PRO_CONTEXT_CACHE.get(key);
   if (hit !== undefined) return hit;
-  return stonefishV5ProSpeedCacheSet(
-    STONEFISH_V5_PRO_CONTEXT_CACHE,
-    key,
-    stonefishV5ProSpeedBaseContexts(game, perspective)
-  );
+  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_CONTEXT_CACHE, key, stonefishV5ProSpeedBaseContexts(game, perspective));
 };
 
 const stonefishV5ProSpeedBaseAdaptive = stonefishV5ProAdaptivePosition;
@@ -68,72 +57,38 @@ stonefishV5ProAdaptivePosition = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
   const hit = STONEFISH_V5_PRO_ADAPTIVE_CACHE.get(key);
   if (hit !== undefined) return hit;
-  return stonefishV5ProSpeedCacheSet(
-    STONEFISH_V5_PRO_ADAPTIVE_CACHE,
-    key,
-    stonefishV5ProSpeedBaseAdaptive(game, perspective)
-  );
+  return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_ADAPTIVE_CACHE, key, stonefishV5ProSpeedBaseAdaptive(game, perspective));
 };
 
-function stonefishV5ProFastStatic(game, perspective) {
+stonefishV5ProLeaf = function(game, perspective) {
   let score = stonefishV5ProCachedPositionScore(game, perspective);
   const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
   const ourThreat = stonefishV5EnemyPasserThreat(game, -perspective);
-  if (enemyThreat >= 2200) score -= enemyThreat * 0.90;
-  else if (enemyThreat >= 900) score -= enemyThreat * 0.45;
-  if (ourThreat >= 2200) score += ourThreat * 0.48;
-  else if (ourThreat >= 900) score += ourThreat * 0.24;
+  if (enemyThreat >= 2200) score -= enemyThreat * 1.35;
+  else if (enemyThreat >= 900) score -= enemyThreat * 0.55;
+  if (ourThreat >= 2200) score += ourThreat * 0.42;
+  else if (ourThreat >= 900) score += ourThreat * 0.18;
   return score;
-}
-
-stonefishV5ProLeaf = function(game, perspective) {
-  return stonefishV5ProFastStatic(game, perspective);
 };
 
-function stonefishV5ProForcingOrder(game, move) {
-  let score = (STONEFISH_V5_PIECE[move.captured] || 0) * 22 - (STONEFISH_V5_PIECE[move.piece] || 0);
-  if (move.promotion) score += (STONEFISH_V5_PIECE[move.promotion] || 0) * 14 + 2400;
-  if (game.fastGivesCheck(move)) score += 2100;
+function stonefishV5ProSpeedMoveOrder(game, move) {
+  let score = stonefishV5ProMoveOrder(game, move);
+  const us = game.side;
+  const enemy = -us;
+  const passers = stonefishV5PassedPawnInfo(game, enemy);
+
+  for (let i = 0; i < passers.length; i += 1) {
+    const passer = passers[i];
+    if (passer.distance > 3) continue;
+    const danger = stonefishV5PasserDanger(passer.distance);
+    const nextSq = passer.sq + enemy * 8;
+    const promotionSq = (enemy === 1 ? 7 : 0) * 8 + passer.file;
+
+    if (move.to === passer.sq && move.captured === 1) score += danger * 8;
+    if (move.to === nextSq) score += danger * 4;
+    if (move.to === promotionSq) score += danger * 6;
+  }
   return score;
-}
-
-// One extra forcing ply after the normal five-ply horizon. Quiet positions stop
-// immediately; only checks/captures/promotions are extended.
-function stonefishV5ProQuiescenceOne(game, perspective, alpha, beta, legal) {
-  const stand = stonefishV5ProFastStatic(game, perspective);
-  const maximizing = game.side === perspective;
-  let best = stand;
-  const forcing = [];
-
-  for (let i = 0; i < legal.length; i += 1) {
-    const move = legal[i];
-    let check = false;
-    if (!move.captured && !move.promotion) check = game.fastGivesCheck(move);
-    if (!move.captured && !move.promotion && !check) continue;
-    const order = stonefishV5ProForcingOrder(game, move) + (check ? 1 : 0);
-    forcing.push({ move, order, index: i });
-  }
-
-  forcing.sort((a, b) => (b.order - a.order) || (a.index - b.index));
-  const moves = forcing.slice(0, STONEFISH_V5_PRO_Q_WIDTH);
-
-  for (const entry of moves) {
-    if (game.fastIsMateMove(entry.move)) {
-      const mate = game.side === perspective ? STONEFISH_V5_PRO_MATE - 6 : -STONEFISH_V5_PRO_MATE + 6;
-      if (maximizing) best = Math.max(best, mate); else best = Math.min(best, mate);
-    } else {
-      game.fastApply(entry.move);
-      const value = stonefishV5ProFastStatic(game, perspective);
-      game.fastUndo();
-      if (maximizing) best = Math.max(best, value); else best = Math.min(best, value);
-    }
-
-    if (maximizing) {
-      if (best > alpha) alpha = best;
-    } else if (best < beta) beta = best;
-    if (beta <= alpha) break;
-  }
-  return best;
 }
 
 let STONEFISH_V5_PRO_ACTIVE_TT = null;
@@ -141,6 +96,38 @@ let STONEFISH_V5_PRO_LAST_SEARCH_STATS = null;
 
 function stonefishV5ProTTKey(game, depth, perspective, plyFromRoot) {
   return perspective + '|' + depth + '|' + plyFromRoot + '|' + game.halfmove + '|' + game.fastPositionKey();
+}
+
+function stonefishV5ProCheckedLeaf(game, perspective, alpha, beta, legal, plyFromRoot) {
+  const maximizing = game.side === perspective;
+  const ordered = legal
+    .map((move, index) => ({ move, index, order: stonefishV5ProSpeedMoveOrder(game, move) }))
+    .sort((a, b) => (b.order - a.order) || (a.index - b.index))
+    .slice(0, Math.min(6, legal.length));
+  let best = maximizing ? -Infinity : Infinity;
+
+  for (const entry of ordered) {
+    game.fastApply(entry.move);
+    let value;
+    if (!game.fastHasLegalMove()) {
+      value = game.in_check()
+        ? (game.side === perspective ? -STONEFISH_V5_PRO_MATE + plyFromRoot + 1 : STONEFISH_V5_PRO_MATE - plyFromRoot - 1)
+        : 0;
+    } else {
+      value = stonefishV5ProLeaf(game, perspective);
+    }
+    game.fastUndo();
+
+    if (maximizing) {
+      if (value > best) best = value;
+      if (best > alpha) alpha = best;
+    } else {
+      if (value < best) best = value;
+      if (best < beta) beta = best;
+    }
+    if (beta <= alpha) break;
+  }
+  return best;
 }
 
 stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromRoot) {
@@ -155,6 +142,34 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
   }
   if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.nodes += 1;
 
+  if (depth <= 0) {
+    if (game.in_check()) {
+      const legal = game.fastMoves();
+      if (!legal.length) {
+        const terminal = game.side === perspective
+          ? -STONEFISH_V5_PRO_MATE + plyFromRoot
+          : STONEFISH_V5_PRO_MATE - plyFromRoot;
+        if (tt) tt.set(key, terminal);
+        return terminal;
+      }
+      const extended = stonefishV5ProCheckedLeaf(game, perspective, alpha, beta, legal, plyFromRoot);
+      if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.leaves += 1;
+      return extended;
+    }
+    if (!game.fastHasLegalMove()) {
+      if (tt) tt.set(key, 0);
+      return 0;
+    }
+    if (game.halfmove >= 100 || game._insufficientMaterial()) {
+      if (tt) tt.set(key, 0);
+      return 0;
+    }
+    const leaf = stonefishV5ProLeaf(game, perspective);
+    if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.leaves += 1;
+    if (tt) tt.set(key, leaf);
+    return leaf;
+  }
+
   const legal = game.fastMoves();
   if (!legal.length) {
     const terminal = !game.in_check()
@@ -168,16 +183,15 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
     return 0;
   }
 
-  if (depth <= 0) {
-    const leaf = stonefishV5ProQuiescenceOne(game, perspective, alpha, beta, legal);
-    if (STONEFISH_V5_PRO_LAST_SEARCH_STATS) STONEFISH_V5_PRO_LAST_SEARCH_STATS.leaves += 1;
-    if (tt) tt.set(key, leaf);
-    return leaf;
-  }
+  let width = STONEFISH_V5_PRO_SPEED_BRANCH[depth] || 2;
+  const danger = stonefishV5EnemyPasserThreat(game, game.side);
+  if (game.in_check()) width = Math.max(width, 6);
+  else if (danger >= 2200) width += 2;
+  else if (danger >= 900) width += 1;
+  width = Math.min(width, legal.length);
 
-  const width = STONEFISH_V5_PRO_SPEED_BRANCH[depth] || 2;
   const ordered = legal
-    .map((move, index) => ({ move, index, order: stonefishV5ProMoveOrder(game, move) }))
+    .map((move, index) => ({ move, index, order: stonefishV5ProSpeedMoveOrder(game, move) }))
     .sort((a, b) => (b.order - a.order) || (a.index - b.index))
     .slice(0, width);
 
@@ -225,7 +239,7 @@ function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspec
   if (raw.promotion) score += ((STONEFISH_V5_PIECE[raw.promotion] || 0) - 100) * 18 + 2400;
   if (raw.flags & (4 | 8)) score += 260;
   if (bookMove && stonefishV5SameMove(raw, bookMove)) score += 3600;
-  if (heritageMove && stonefishV5SameMove(raw, heritageMove)) score += 2500;
+  if (heritageMove && stonefishV5SameMove(raw, heritageMove)) score += 3000;
   score += stonefishV5ProConversionUrgency(game, raw, perspective);
 
   if (game.fastGivesCheck(raw)) {
@@ -234,11 +248,9 @@ function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspec
   }
 
   game.fastApply(raw);
-  score += stonefishV5ProCachedPositionScore(game, perspective) * 0.30;
   const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
-  if (enemyThreat >= 2200) score -= enemyThreat * 10;
-  else if (enemyThreat >= 900) score -= enemyThreat * 5;
-  else if (enemyThreat >= 300) score -= enemyThreat * 2;
+  if (enemyThreat >= 300) score -= enemyThreat * 9;
+  else if (enemyThreat >= 120) score -= enemyThreat * 3;
   const visits = game.positionCounts.get(game.fastPositionKey()) || 0;
   if (visits > 0) score -= visits * 240000;
   game.fastUndo();
@@ -273,8 +285,8 @@ stonefishV5ProScoreAllMoves = function(game) {
   for (let i = 0; i < semifinalCount; i += 1) {
     const entry = scored[i];
     entry.tactical = stonefishV5TacticalScore(game, entry.raw);
-    const heritageBoost = entry.heritageMatch ? STONEFISH_V5_WEIGHTS.heritage : 0;
-    entry.preliminary = entry.tactical + entry.scout * 0.30 + heritageBoost
+    const heritageBoost = entry.heritageMatch ? STONEFISH_V5_WEIGHTS.heritage * 1.25 : 0;
+    entry.preliminary = entry.tactical + entry.scout * 0.34 + heritageBoost
       + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
   }
   for (let i = semifinalCount; i < scored.length; i += 1) scored[i].preliminary = -Infinity;
@@ -300,7 +312,7 @@ stonefishV5ProScoreAllMoves = function(game) {
       if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
         entry.score = entry.deep;
       } else {
-        const selective = entry.deep * 1.38 + entry.preliminary * 0.34;
+        const selective = entry.deep * 1.28 + entry.preliminary * 0.46;
         const heritageFloor = entry.heritageMatch
           ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
           : -Infinity;
