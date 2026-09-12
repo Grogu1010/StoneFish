@@ -24,6 +24,13 @@
     </header>
 
     <section class="blog-index" aria-label="Blog posts">
+      <a class="blog-card" href="#stonefish-v3">
+        <span class="blog-card-kicker">MODEL RELEASE</span>
+        <h2>Introducing Stonefish v3</h2>
+        <p>Three-ply calculation, worst-case material intelligence, and a 97.0% overall win rate across 2,000 games.</p>
+        <span class="blog-card-link">Read the launch story →</span>
+      </a>
+
       <a class="blog-card" href="#stonefish-v2">
         <span class="blog-card-kicker">MODEL RELEASE</span>
         <h2>Introducing Stonefish v2</h2>
@@ -38,6 +45,93 @@
         <span class="blog-card-link">Read the launch story →</span>
       </a>
     </section>
+
+    <article id="stonefish-v3" class="blog-article">
+      <p class="eyebrow">MODEL RELEASE · STONEFISH V3</p>
+      <h1>Introducing Stonefish v3</h1>
+      <p class="blog-lead">Stonefish v3 marks the next major leap in the Stonefish revolution: from immediate tactical awareness to genuine multi-step calculation.</p>
+
+      <p>Stonefish v2 learned to recognize mate in one, avoid immediate mate, and reduce the opponent’s best next capture. Stonefish v3 goes much further. It now evaluates a three-ply sequence: our move, the opponent’s reply, and our response.</p>
+      <p>For the first time, Stonefish is not only asking what happens next. It is asking <strong>what happens after that.</strong></p>
+
+      <h2>Three-ply material intelligence</h2>
+      <p>At the heart of Stonefish v3 is a new worst-case material engine.</p>
+      <p>For every candidate move, Stonefish examines the opponent’s possible replies. For each of those replies, it then looks at its own best response. The sequence is scored from the material Stonefish gains immediately, minus the material the opponent can win back, plus the material Stonefish can recover on the third ply.</p>
+      <p>Then Stonefish chooses the move with the strongest worst-case result.</p>
+      <p>This is a profound change. Stonefish v2 could avoid obvious one-move disasters. Stonefish v3 can recognize that a move which looks dangerous immediately may still be strong if it forces a favorable continuation — and that a move which looks safe at first glance may collapse one move later.</p>
+
+      <h2>It plans through the opponent</h2>
+      <p>The defining idea in v3 is simple: <strong>the opponent gets a vote.</strong></p>
+      <p>Stonefish no longer evaluates its move in isolation. It assumes the opponent will answer as strongly as possible, then asks whether Stonefish still comes out ahead after its own best response.</p>
+      <p>That makes v3 materially more resilient. It is harder to bait, harder to trick with one-move threats, and far better at distinguishing real gains from temporary ones.</p>
+      <blockquote>Instead of asking “Can I take this piece?”, Stonefish v3 asks “What can they do back — and what can I do after that?”</blockquote>
+
+      <h2>Mate still comes first</h2>
+      <p>Stonefish v3 preserves the most important tactical priorities introduced in v2.</p>
+      <p>If checkmate in one is available, it takes it. If a candidate move allows the opponent to mate in one, Stonefish avoids that move whenever a safe alternative exists.</p>
+      <p>But v3 adds another layer: mating opportunities on its own third ply are valued above every material outcome.</p>
+      <p><strong>Material matters. Checkmate matters more.</strong></p>
+
+      <h2>More precise piece values</h2>
+      <p>Stonefish v3 also introduces a more refined material model. Bishops are valued at 3.1 rather than being treated exactly the same as knights.</p>
+      <p>That difference is small by design, but it gives the engine a more precise way to compare exchanges when otherwise similar lines compete.</p>
+      <p>The important change is not the decimal itself. It is that Stonefish now has enough depth for those distinctions to matter across a sequence of moves.</p>
+
+      <h2>The test: 3,000 head-to-head games</h2>
+      <p>We tested Stonefish v3 in a three-model round robin against Stonefish v1 and Stonefish v2, with 1,000 games in each matchup.</p>
+      <p><strong>The result was overwhelming.</strong></p>
+
+      <div class="blog-stats" role="group" aria-label="Stonefish v3 overall test results">
+        <div class="blog-stat"><span>1,940</span><p>Wins</p></div>
+        <div class="blog-stat"><span>5</span><p>Losses</p></div>
+        <div class="blog-stat"><span>55</span><p>Draws</p></div>
+        <div class="blog-stat"><span>97.0%</span><p>Win rate</p></div>
+      </div>
+
+      <div class="blog-table-wrap">
+        <table class="blog-table">
+          <thead><tr><th>Model</th><th>Wins</th><th>Losses</th><th>Draws</th><th>Win rate</th></tr></thead>
+          <tbody>
+            <tr><td>Stonefish v1</td><td>0</td><td>1,924</td><td>76</td><td>0.0%</td></tr>
+            <tr><td>Stonefish v2</td><td>937</td><td>948</td><td>115</td><td>46.9%</td></tr>
+            <tr><td><strong>Stonefish v3</strong></td><td><strong>1,940</strong></td><td><strong>5</strong></td><td><strong>55</strong></td><td><strong>97.0%</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>v3 vs v2: 948–5</h2>
+      <p>The most important comparison is the direct matchup against Stonefish v2.</p>
+
+      <div class="blog-stats" role="group" aria-label="Stonefish v3 versus v2 test results">
+        <div class="blog-stat"><span>948</span><p>v3 wins</p></div>
+        <div class="blog-stat"><span>5</span><p>v3 losses</p></div>
+        <div class="blog-stat"><span>47</span><p>Draws</p></div>
+        <div class="blog-stat"><span>94.8%</span><p>v3 win rate</p></div>
+      </div>
+
+      <p>Across 1,000 games, Stonefish v3 won 948, lost only 5, and drew 47. Stonefish v2 managed a 0.5% win rate. Stonefish v3 reached 94.8%.</p>
+      <blockquote>That is not a tuning improvement. It is a new level of capability.</blockquote>
+
+      <h2>v3 vs v1: 992 wins, zero losses</h2>
+      <p>Against Stonefish v1, v3 was even more dominant: 992 wins, 0 losses, and 8 draws across 1,000 games.</p>
+      <p>That is a 99.2% win rate without a single defeat.</p>
+
+      <h2>Why v3 is so much stronger</h2>
+      <p><strong>It looks beyond the immediate reply.</strong> v2 could see danger one move ahead. v3 can evaluate whether the position remains favorable after Stonefish answers back.</p>
+      <p><strong>It understands recovery.</strong> A temporary material loss is no longer automatically bad if Stonefish can win more material back on the third ply.</p>
+      <p><strong>It sees hidden danger.</strong> Moves that appear safe after one reply can be rejected when the next layer reveals a losing sequence.</p>
+      <p><strong>It assumes resistance.</strong> Stonefish v3 optimizes the worst-case continuation rather than hoping the opponent chooses a weak reply.</p>
+      <p><strong>It preserves tactical priorities.</strong> Immediate mate and mate avoidance still override ordinary material considerations.</p>
+
+      <p>These changes reinforce each other. v3 is not stronger because it has one new trick. It is stronger because its decision process now evaluates a sequence rather than a snapshot.</p>
+
+      <h2>From awareness to calculation</h2>
+      <p>Stonefish v1 was unpredictable.</p>
+      <p>Stonefish v2 became aware.</p>
+      <p><strong>Stonefish v3 calculates.</strong></p>
+      <p>The Stonefish revolution is no longer built only on possibility or immediate danger. It now reasons across sequences, anticipates resistance, and chooses moves that remain strong after the opponent fights back.</p>
+      <blockquote>Stonefish is no longer just reacting to the board. It is starting to look through it.</blockquote>
+    </article>
 
     <article id="stonefish-v2" class="blog-article">
       <p class="eyebrow">MODEL RELEASE · STONEFISH V2</p>
