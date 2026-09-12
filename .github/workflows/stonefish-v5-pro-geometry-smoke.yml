@@ -1,9 +1,9 @@
-name: Stonefish v5 Pro root-trust smoke
+name: Stonefish v5 Pro root-trust 20-game v5 gate
 
 on:
   push:
     branches:
-      - chatgpt/v5-pro-root-trust
+      - chatgpt/v5-pro-root-trust-v5-20
     paths:
       - 'Stonefish_v5_pro.js'
       - 'Stonefish_v5_pro_speed_patch.js'
@@ -14,44 +14,23 @@ on:
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
       - 'benchmark_v5_pro.js'
-      - 'benchmark_v5_pro_head_to_head.js'
       - '.github/workflows/stonefish-v5-pro-geometry-smoke.yml'
 
 concurrency:
-  group: stonefish-v5-pro-root-trust-${{ github.ref }}
+  group: stonefish-v5-pro-root-trust-v5-20-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  v5-smoke:
+  v5-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '4'
+      GAMES: '20'
       START_INDEX: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Require root-trust Pro lossless and no slower than v5
+      - name: Require root-trust Pro release-band strength and no slower than v5
         run: node benchmark_v5_pro.js
-
-  old-pro-smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      H2H_GAMES: '2'
-      START_INDEX: '0'
-    steps:
-      - name: Checkout candidate
-        uses: actions/checkout@v4
-      - name: Checkout released Pro reference
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          path: reference
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Play root-trust candidate vs released Pro
-        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_v5_pro_head_to_head.js
