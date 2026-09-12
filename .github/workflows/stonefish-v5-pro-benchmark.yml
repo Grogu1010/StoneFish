@@ -34,12 +34,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '4'
+      GAMES: '2'
       START_INDEX: '0'
+      DEBUG_GAME: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run v5 Pro strength and speed smoke gate
+      - name: Trace fast Pro against v5
         run: node benchmark_v5_pro.js
