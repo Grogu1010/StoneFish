@@ -6,15 +6,16 @@
 // - retain a perfect release match against v5,
 // - outperform the previously released v5 Pro head-to-head.
 //
-// Unlike the first Pro release, this version deliberately spends deep search
-// only on the most credible root candidates. The saved work is reinvested in
-// stronger conversion handling and a focused five-ply alpha-beta search.
+// Pro first scouts cheaply, then spends its five-ply search budget only on the
+// strongest finalists. This revision deliberately reinvests measured speed
+// headroom into a wider deep tree rather than chasing unnecessary milliseconds.
 
 const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 50000;
-const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 6;
-const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 2;
+const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 8;
+const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 4;
 // Index is remaining depth. Root is ply 1; depth 4 searches plies 2-5.
-const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 2, 3];
+const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 3, 4];
+const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.82;
 const STONEFISH_V5_PRO_POSITION_CACHE = new Map();
 const STONEFISH_V5_PRO_CONTEXT_CACHE = new Map();
 const STONEFISH_V5_PRO_ADAPTIVE_CACHE = new Map();
@@ -72,9 +73,9 @@ stonefishV5ProAdaptivePosition = function(game, perspective) {
   );
 };
 
-// Deep leaves deliberately use v5's proven unified positional evaluator. The
-// full Pro adaptive evaluator is still used at the root. This buys enough time
-// to preserve five-ply tactical reach without making browser turns sluggish.
+// Deep leaves use v5's proven unified positional evaluator. Full Pro adaptive
+// intelligence is retained in root knowledge, while the cheaper leaf lets the
+// deep tree be wide enough to recover tactical/defensive strength.
 stonefishV5ProLeaf = function(game, perspective) {
   return stonefishV5ProCachedPositionScore(game, perspective);
 };
@@ -157,7 +158,6 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
     }
   }
 
-  // Store only exact nodes; cutoffs are bounds, not exact values.
   if (tt && !cutoff) tt.set(key, best);
   return best;
 };
@@ -173,8 +173,6 @@ function stonefishV5ProConversionUrgency(game, raw, perspective) {
   return 0;
 }
 
-// Extremely cheap first-pass ordering. It intentionally avoids running the full
-// v5 three-ply evaluator on every legal root move; only the best few receive it.
 function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective) {
   let score = 0;
   const capture = STONEFISH_V5_PIECE[raw.captured] || 0;
@@ -190,8 +188,6 @@ function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspec
     if (game.fastIsMateMove(raw)) return STONEFISH_V5_PRO_MATE * 4;
   }
 
-  // Cheap one-position sanity signal so quiet defensive moves can survive the
-  // scout when they materially suppress an advanced passed pawn.
   game.fastApply(raw);
   const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
   if (enemyThreat >= 300) score -= enemyThreat * 9;
@@ -254,9 +250,15 @@ stonefishV5ProScoreAllMoves = function(game) {
       entry.preliminary = entry.tactical + entry.knowledge
         + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
       entry.deep = stonefishV5ProFivePlyScore(game, entry.raw, perspective);
-      entry.score = Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9
-        ? entry.deep
-        : entry.deep * 1.28 + entry.preliminary * 0.46;
+      if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
+        entry.score = entry.deep;
+      } else {
+        const selective = entry.deep * 1.28 + entry.preliminary * 0.46;
+        const heritageFloor = entry.heritageMatch
+          ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
+          : -Infinity;
+        entry.score = Math.max(selective, heritageFloor);
+      }
     }
   } finally {
     STONEFISH_V5_PRO_ACTIVE_TT = null;
