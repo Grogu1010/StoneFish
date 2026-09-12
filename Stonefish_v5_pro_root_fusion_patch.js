@@ -1,11 +1,101 @@
 // Stonefish v5 Pro root-fusion optimization.
 //
-// This does not change the root knowledge formula. It evaluates the same v5 +
-// Pro terms from one applied child position and one opponent legal-move list,
-// instead of repeatedly applying the root move for inverse mobility, check risk,
-// mate-pattern geometry, positional score, adaptive score and counterplay.
+// This keeps the same root and adaptive scoring formulas while sharing work:
+// - one applied root child for inverse pressure, pattern geometry and counterplay,
+// - one fused positional feature pass shared by v5 positional and Pro adaptive
+//   scores instead of evaluating the same child position twice.
 
 const stonefishV5ProRootFusionReferenceKnowledge = stonefishV5ProRootKnowledge;
+const STONEFISH_V5_PRO_ROOT_FUSION_BASE_CACHE = new Map();
+
+function stonefishV5ProRootFusionKey(game, perspective) {
+  return perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
+}
+
+// Same adaptive formula as the recovery layer, but retain the exact final-v5
+// base score so root knowledge can consume it without a second position pass.
+stonefishV5ProAdaptivePosition = function(game, perspective) {
+  const key = stonefishV5ProRootFusionKey(game, perspective);
+  const cached = STONEFISH_V5_PRO_RECOVERY_ADAPTIVE_CACHE.get(key);
+  if (cached !== undefined) return cached;
+
+  const enemy = -perspective;
+  const c = stonefishV5ProContexts(game, perspective);
+  const previousMemo = STONEFISH_V5_PRO_RECOVERY_ACTIVE_ATTACK_MEMO;
+  STONEFISH_V5_PRO_RECOVERY_ACTIVE_ATTACK_MEMO = c.attackMemo;
+
+  const ourMobility = game.fastMobility(perspective);
+  const enemyMobility = game.fastMobility(enemy);
+  const mobility = ourMobility - enemyMobility;
+  const development = stonefishV4Development(game, perspective) - stonefishV4Development(game, enemy);
+  const center = stonefishV4CenterControl(game, perspective) - stonefishV4CenterControl(game, enemy);
+  const minorCentral = stonefishV4MinorCentralization(game, perspective) - stonefishV4MinorCentralization(game, enemy);
+  const kingProtection = stonefishV4KingProtection(game, perspective) - stonefishV4KingProtection(game, enemy);
+  const kingFreedom = stonefishV4KingFreedom(game, perspective) - stonefishV4KingFreedom(game, enemy);
+  const pawnStructure = stonefishV4PawnStructure(game, perspective) - stonefishV4PawnStructure(game, enemy);
+  const rookActivity = stonefishV4RookActivity(game, perspective) - stonefishV4RookActivity(game, enemy);
+  const kingPlacement = stonefishV4KingPlacement(game, perspective) - stonefishV4KingPlacement(game, enemy);
+  const boardControl = stonefishV4BoardControl(game, perspective) - stonefishV4BoardControl(game, enemy);
+  const hanging = stonefishV4HangingMax(game, perspective) - stonefishV4HangingMax(game, enemy);
+  const passers = stonefishV5ProRecoveryPassedScore(c.ourPassers)
+    - stonefishV5ProRecoveryPassedScore(c.theirPassers);
+
+  let baseScore = c.lead;
+  baseScore += mobility * STONEFISH_V5_WEIGHTS.mobility;
+  baseScore += development * STONEFISH_V5_WEIGHTS.development;
+  baseScore += center * STONEFISH_V5_WEIGHTS.center;
+  baseScore += minorCentral * STONEFISH_V5_WEIGHTS.minorCentral;
+  baseScore += kingProtection * STONEFISH_V5_WEIGHTS.kingProtection;
+  baseScore += kingFreedom * STONEFISH_V5_WEIGHTS.kingFreedom;
+  baseScore += pawnStructure * STONEFISH_V5_WEIGHTS.pawnStructure;
+  baseScore += rookActivity * STONEFISH_V5_WEIGHTS.rookActivity;
+  baseScore += kingPlacement * STONEFISH_V5_WEIGHTS.kingPlacement;
+  baseScore += boardControl * STONEFISH_V5_WEIGHTS.boardControl;
+  baseScore += hanging * STONEFISH_V5_WEIGHTS.hanging;
+  baseScore += c.bishopPairDiff * STONEFISH_V5_WEIGHTS.bishopPair;
+  baseScore += passers * STONEFISH_V5_WEIGHTS.passedPawn;
+  baseScore += stonefishV5ProRecoveryPasserStatus(game, c.ourPassers, perspective, perspective);
+  baseScore += stonefishV5ProRecoveryPasserStatus(game, c.theirPassers, enemy, perspective);
+
+  stonefishV5ProRecoveryCacheSet(
+    STONEFISH_V5_PRO_ROOT_FUSION_BASE_CACHE,
+    key,
+    baseScore
+  );
+
+  let score = baseScore;
+  score += mobility * (2 + c.attack * 2.5 + c.defence * 1.5);
+  score += development * (9 * c.opening);
+  score += kingProtection * (5 + 18 * c.defence + 8 * c.attack);
+  score += kingFreedom * (3 + 10 * c.endgame);
+  score += kingPlacement * (5 + 17 * c.endgame);
+  score += boardControl * (1.5 + 4 * c.attack);
+  score += passers * (18 + 45 * c.endgame + 65 * c.pawnRace);
+  score += stonefishV5ProLooseAndCoordination(game, perspective) * (1.0 + 0.35 * c.defence);
+  score += stonefishV5ProRayTactics(game, perspective) * (1.0 + 0.55 * c.attack);
+  score += (c.attackPressure - c.defencePressure) * (24 + 22 * c.attack + 18 * c.defence);
+
+  if (c.conversion > 0) {
+    score -= enemyMobility * 2.5 * c.conversion;
+    score += c.lead * 0.18 * c.conversion;
+  }
+
+  STONEFISH_V5_PRO_RECOVERY_ACTIVE_ATTACK_MEMO = previousMemo;
+  return stonefishV5ProRecoveryCacheSet(
+    STONEFISH_V5_PRO_RECOVERY_ADAPTIVE_CACHE,
+    key,
+    score
+  );
+};
+
+function stonefishV5ProRootFusionBasePositionScore(game, perspective) {
+  const key = stonefishV5ProRootFusionKey(game, perspective);
+  let score = STONEFISH_V5_PRO_ROOT_FUSION_BASE_CACHE.get(key);
+  if (score !== undefined) return score;
+  stonefishV5ProAdaptivePosition(game, perspective);
+  score = STONEFISH_V5_PRO_ROOT_FUSION_BASE_CACHE.get(key);
+  return score;
+}
 
 function stonefishV5ProRootFusionStrictPatternAfterApplied(game, raw, ownSide, enemySide) {
   let score = 0;
@@ -28,7 +118,7 @@ function stonefishV5ProRootFusionStrictPatternAfterApplied(game, raw, ownSide, e
   return score;
 }
 
-function stonefishV5ProRootFusionCounterplay(replies, checks, game, c) {
+function stonefishV5ProRootFusionCounterplay(replies, checks, c) {
   let promotions = 0;
   let heavyCaptures = 0;
   let forcing = 0;
@@ -74,8 +164,6 @@ stonefishV5ProRootKnowledge = function(game, raw, heritageMove, bookMove, perspe
     game, raw, ownSide, enemySide
   ) * STONEFISH_V5_WEIGHTS.matePattern;
 
-  points += stonefishV5PositionScore(game, perspective) * STONEFISH_V5_WEIGHTS.positional;
-
   const visits = game.positionCounts.get(game.fastPositionKey()) || 0;
   const c = stonefishV5ProContexts(game, perspective);
   if (visits > 0) {
@@ -87,9 +175,11 @@ stonefishV5ProRootKnowledge = function(game, raw, heritageMove, bookMove, perspe
   }
 
   const adaptive = stonefishV5ProAdaptivePosition(game, perspective);
-  const counterplay = stonefishV5ProRootFusionCounterplay(replies, checks, game, c);
+  const baseScore = stonefishV5ProRootFusionBasePositionScore(game, perspective);
+  const counterplay = stonefishV5ProRootFusionCounterplay(replies, checks, c);
   const enemyThreat = stonefishV5ProRecoveryPasserDanger(c.theirPassers);
 
+  points += baseScore * STONEFISH_V5_WEIGHTS.positional;
   points += adaptive * 0.72;
   points -= counterplay * (0.72 + c.defence * 0.65 + c.conversion * 0.45);
 
