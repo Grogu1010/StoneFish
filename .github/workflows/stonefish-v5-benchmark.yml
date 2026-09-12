@@ -5,6 +5,7 @@ on:
     branches:
       - chatgpt/stonefish-v5
       - chatgpt/stonefish-speed-pass
+      - chatgpt/stonefish-speed-pass-2
   pull_request:
     paths:
       - 'Stonefish_v5.js'
@@ -13,6 +14,8 @@ on:
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
       - 'Stonefish_runtime_speed_patch.js'
+      - 'Stonefish_ui_speed_patch.js'
+      - 'index.html'
       - 'benchmark_v5.js'
       - '.github/workflows/stonefish-v5-benchmark.yml'
 
