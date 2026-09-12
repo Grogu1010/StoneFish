@@ -1,0 +1,50 @@
+name: Stonefish v5 Pro varied divergence diagnostic
+
+on:
+  push:
+    branches:
+      - chatgpt/v5-pro-varied-diagnose
+    paths:
+      - 'diagnose_v5_pro_varied_divergence.js'
+      - '.github/workflows/stonefish-v5-pro-varied-diagnose.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pair: 31
+            color: white
+          - pair: 31
+            color: black
+          - pair: 34
+            color: white
+          - pair: 34
+            color: black
+          - pair: 47
+            color: white
+          - pair: 47
+            color: black
+          - pair: 48
+            color: white
+          - pair: 48
+            color: black
+    env:
+      DIAG_PAIR: ${{ matrix.pair }}
+      DIAG_COLOR: ${{ matrix.color }}
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+      - name: Checkout released v5 Pro reference
+        uses: actions/checkout@v4
+        with:
+          ref: 55878135df4100cfee15af4c2e7e9b0696331c53
+          path: reference
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Find first varied-position policy divergence
+        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node diagnose_v5_pro_varied_divergence.js
