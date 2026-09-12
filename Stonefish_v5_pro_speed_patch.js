@@ -146,13 +146,14 @@ stonefishV5ProMinimax = function(game, depth, perspective, alpha, beta, plyFromR
   return best;
 };
 
-function stonefishV5ProFastScoutScore(game, raw, bookMove, perspective) {
+function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective) {
   let score = 0;
   const capture = STONEFISH_V5_PIECE[raw.captured] || 0;
   score += capture * 14;
   if (raw.promotion) score += ((STONEFISH_V5_PIECE[raw.promotion] || 0) - 100) * 16 + 1800;
   if (raw.flags & (4 | 8)) score += 260;
   if (bookMove && stonefishV5SameMove(raw, bookMove)) score += 3200;
+  if (heritageMove && stonefishV5SameMove(raw, heritageMove)) score += STONEFISH_V5_WEIGHTS.heritage;
 
   const givesCheck = game.fastGivesCheck(raw);
   if (givesCheck) {
@@ -177,12 +178,15 @@ stonefishV5ProScoreAllMoves = function(game) {
   if (!legal.length) return [];
   const perspective = game.side;
   const bookMove = stonefishV45BookMove(game, 1, legal);
+  // This was part of the 100-0 Pro release. Restore the exact signal once per
+  // root rather than approximating it across candidates.
+  const heritageMove = stonefishV5HeritageMove(game);
 
   const scored = legal.map(raw => ({
     raw,
     tactical: null,
     knowledge: 0,
-    scout: stonefishV5ProFastScoutScore(game, raw, bookMove, perspective),
+    scout: stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective),
     preliminary: -Infinity,
     deep: null,
     score: -Infinity
@@ -194,13 +198,14 @@ stonefishV5ProScoreAllMoves = function(game) {
     return au < bu ? -1 : au > bu ? 1 : 0;
   });
 
-  // Stage 2: spend v5's proven three-ply tactical calculation only on the best
-  // eight static candidates instead of every legal move.
   const semifinalCount = Math.min(STONEFISH_V5_PRO_SPEED_SEMIFINALISTS, scored.length);
   for (let i = 0; i < semifinalCount; i += 1) {
     const entry = scored[i];
     entry.tactical = stonefishV5TacticalScore(game, entry.raw);
-    entry.preliminary = entry.tactical + entry.scout * 0.32;
+    const heritageBoost = heritageMove && stonefishV5SameMove(entry.raw, heritageMove)
+      ? STONEFISH_V5_WEIGHTS.heritage
+      : 0;
+    entry.preliminary = entry.tactical + entry.scout * 0.32 + heritageBoost;
   }
   for (let i = semifinalCount; i < scored.length; i += 1) scored[i].preliminary = -Infinity;
 
@@ -210,8 +215,6 @@ stonefishV5ProScoreAllMoves = function(game) {
     return au < bu ? -1 : au > bu ? 1 : 0;
   });
 
-  // Stage 3: only the best four tactically verified moves pay for Pro knowledge
-  // and the extra two searched plies. This is where the full five-ply horizon is used.
   STONEFISH_V5_PRO_ACTIVE_TT = new Map();
   STONEFISH_V5_PRO_LAST_SEARCH_STATS = { nodes: 0, leaves: 0, ttHits: 0 };
   try {
@@ -220,7 +223,7 @@ stonefishV5ProScoreAllMoves = function(game) {
       const entry = scored[i];
       const proKnowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
         ? 0
-        : stonefishV5ProRootKnowledge(game, entry.raw, null, bookMove, perspective, entry.tactical);
+        : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
       entry.knowledge = proKnowledge;
       entry.preliminary = entry.tactical + proKnowledge;
       entry.deep = stonefishV5ProFivePlyScore(game, entry.raw, perspective);
