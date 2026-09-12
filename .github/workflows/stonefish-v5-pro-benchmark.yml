@@ -30,20 +30,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  benchmark:
+  fast-pro:
+    name: fast Pro diagnostic
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '4'
+      GAMES: '2'
       START_INDEX: '0'
+      DEBUG_GAME: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run speed-preserving v5 Pro smoke benchmark
-        run: |
-          start=$(date +%s)
-          node benchmark_v5_pro.js
-          end=$(date +%s)
-          echo "STONEFISH_V5_PRO_WALL_SECONDS=$((end-start))"
+      - name: Run fast Pro line
+        run: node benchmark_v5_pro.js
+
+  reference-pro:
+    name: released 100-0 Pro reference
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GAMES: '2'
+      START_INDEX: '0'
+      DEBUG_GAME: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run released Pro line
+        run: node benchmark_v5_pro.js
