@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - chatgpt/v5-pro-release-candidate
-      - chatgpt/stonefish-speed-pass
-      - chatgpt/stonefish-speed-pass-2
+      - 'chatgpt/stonefish-speed-pass*'
     paths:
       - 'Stonefish_v5_pro.js'
       - 'Stonefish_v5_pro_speed_patch.js'
@@ -19,6 +18,7 @@ on:
       - 'Stonefish_ui_speed_patch.js'
       - 'index.html'
       - 'benchmark_v5_pro.js'
+      - 'benchmark_ui_move_apply.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
       - '.github/workflows/stonefish-v5-pro-fast-release-gate.yml'
 

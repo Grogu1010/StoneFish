@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - chatgpt/stonefish-v5-pro-speed
-      - chatgpt/stonefish-speed-pass
-      - chatgpt/stonefish-speed-pass-2
+      - 'chatgpt/stonefish-speed-pass*'
     paths:
       - 'Stonefish_v5_pro.js'
       - 'Stonefish_v5_pro_speed_patch.js'
@@ -22,6 +21,7 @@ on:
       - 'benchmark_v5_pro_head_to_head.js'
       - 'benchmark_v5_pro_regression.js'
       - 'benchmark_runtime_parity.js'
+      - 'benchmark_ui_move_apply.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
   pull_request:
     paths:
@@ -40,6 +40,7 @@ on:
       - 'benchmark_v5_pro_head_to_head.js'
       - 'benchmark_v5_pro_regression.js'
       - 'benchmark_runtime_parity.js'
+      - 'benchmark_ui_move_apply.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
 
 concurrency:
@@ -47,6 +48,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ui-move-apply-parity:
+    name: UI known-move apply parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compare direct raw apply with Chess.move
+        run: node benchmark_ui_move_apply.js
+
   speed-strength-smoke:
     name: v5 speed + strength smoke
     runs-on: ubuntu-latest

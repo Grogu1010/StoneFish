@@ -1,19 +1,46 @@
 // StoneFish UI latency patch.
-// Normal play used to wait 450 ms before starting the selected engine and then
-// repeated terminal-state move generation on the same unchanged position.
-// Keep engine choice/search untouched: use early-exit legal-move existence,
-// raw moves for square highlighting, and no artificial pre-think pause.
+// Keep engine choice/search untouched: remove artificial waits and avoid asking
+// the rules engine to regenerate moves the UI or bot has already proven legal.
 let stonefishUiGameEnded = false;
+let stonefishUiSelectedRawMoves = [];
 
-// Highlighting only needs destination squares. Avoid converting every legal
-// move to a public object (piece strings, capture strings, wrapper allocation).
+// Commit a raw move that was produced by fastMoves() for this exact position.
+// This mirrors Chess.move() after its legal-move lookup, so SAN/history/check
+// behavior stays the same while skipping that redundant lookup.
+function stonefishUiCommitKnownRaw(targetGame, raw) {
+  const publicBefore = targetGame._publicMove(raw, false);
+  targetGame._applyRaw(raw, true);
+  const check = targetGame.in_check();
+  const mate = check && !targetGame.fastHasLegalMove();
+  return { ...publicBefore, san: targetGame._notation(raw, check, mate) };
+}
+
+// Every StoneFish model returns the exact raw legal move it selected. Reuse it
+// instead of converting it to coordinates and generating every legal move again.
+playMoveOnGame = function(targetGame, move) {
+  if (!move) return null;
+  if (move._raw) return stonefishUiCommitKnownRaw(targetGame, move._raw);
+  return targetGame.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+};
+
+const stonefishUiBaseClearSelection = clearSelection;
+clearSelection = function() {
+  stonefishUiSelectedRawMoves = [];
+  stonefishUiBaseClearSelection();
+};
+
+// Highlighting only needs destination squares. Keep the matching raw moves so a
+// second click can commit the already-validated move without another fastMoves().
 selectSquare = function(square) {
   selectedSquare = square;
   const from = game._sq(square);
   const raw = game.fastMoves();
+  stonefishUiSelectedRawMoves = [];
   legalTargets = [];
   for (let i = 0; i < raw.length; i += 1) {
-    if (raw[i].from === from) legalTargets.push(game._alg(raw[i].to));
+    if (raw[i].from !== from) continue;
+    stonefishUiSelectedRawMoves.push(raw[i]);
+    legalTargets.push(game._alg(raw[i].to));
   }
   renderBoard();
 };
@@ -63,8 +90,13 @@ handleSquareClick = function(square) {
     return;
   }
 
-  const move = game.move({ from: selectedSquare, to: square, promotion: 'q' });
-  if (!move) return;
+  const to = game._sq(square);
+  const raw = stonefishUiSelectedRawMoves.find(move =>
+    move.to === to && (!move.promotion || move.promotion === 5)
+  );
+  if (!raw) return;
+
+  const move = stonefishUiCommitKnownRaw(game, raw);
   lastMoveSquares = [move.from, move.to];
   clearSelection();
   lastMoveElement.textContent = `You played ${move.san}.`;
