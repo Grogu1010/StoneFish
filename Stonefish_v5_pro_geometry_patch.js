@@ -1,12 +1,13 @@
-// Experimental Pro-aware root prepass for v5 Pro.
-//
-// The failed fast scout was discarding strong quiet released-Pro moves before
-// they reached deep search. Instead, rank EVERY legal move with Pro root
-// knowledge first (without the expensive three-ply tactical calculation), then
-// spend tactical work on only the best root candidates. The final deep blend
-// matches released Pro and deliberately has no heritage floor.
+// Experimental Pro-aware root prepass with released-Pro leaf evaluation.
+// Keep the narrow fast tree and root prepass, but use the exact released Pro
+// adaptive evaluator at search leaves instead of the cheaper v5 static leaf.
 
 const STONEFISH_V5_PRO_ROOT_PREPASS = 10;
+
+stonefishV5ProLeaf = function(game, perspective) {
+  if (game.halfmove >= 100 || game._insufficientMaterial()) return 0;
+  return stonefishV5ProAdaptivePosition(game, perspective);
+};
 
 stonefishV5ProScoreAllMoves = function(game) {
   const legal = game.fastMoves();
@@ -16,7 +17,6 @@ stonefishV5ProScoreAllMoves = function(game) {
   const bookMove = stonefishV45BookMove(game, 1, legal);
   const scored = [];
 
-  // Quiet-move-aware first pass: no three-ply tactical search yet.
   for (const raw of legal) {
     const knowledge = stonefishV5ProRootKnowledge(
       game, raw, heritageMove, bookMove, perspective, 0
@@ -43,8 +43,6 @@ stonefishV5ProScoreAllMoves = function(game) {
   for (let i = 0; i < semifinalCount; i += 1) {
     const entry = scored[i];
     entry.tactical = stonefishV5TacticalScore(game, entry.raw);
-    // Recompute knowledge with the real tactical signal so confidence logic is
-    // identical to released Pro for the moves that survive the prepass.
     entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
       ? 0
       : stonefishV5ProRootKnowledge(
@@ -52,9 +50,7 @@ stonefishV5ProScoreAllMoves = function(game) {
         );
     entry.preliminary = entry.tactical + entry.knowledge;
   }
-  for (let i = semifinalCount; i < scored.length; i += 1) {
-    scored[i].preliminary = -Infinity;
-  }
+  for (let i = semifinalCount; i < scored.length; i += 1) scored[i].preliminary = -Infinity;
 
   scored.sort((a, b) => {
     if (Math.abs(b.preliminary - a.preliminary) > 1e-9) return b.preliminary - a.preliminary;
@@ -69,19 +65,14 @@ stonefishV5ProScoreAllMoves = function(game) {
     for (let i = 0; i < finalistCount; i += 1) {
       const entry = scored[i];
       entry.deep = stonefishV5ProFivePlyScore(game, entry.raw, perspective);
-      if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
-        entry.score = entry.deep;
-      } else {
-        entry.score = entry.deep * 1.35 + entry.preliminary * 0.38;
-      }
+      if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) entry.score = entry.deep;
+      else entry.score = entry.deep * 1.35 + entry.preliminary * 0.38;
     }
   } finally {
     STONEFISH_V5_PRO_ACTIVE_TT = null;
   }
 
-  for (let i = Math.min(STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES, semifinalCount); i < scored.length; i += 1) {
-    scored[i].score = -Infinity;
-  }
+  for (let i = Math.min(STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES, semifinalCount); i < scored.length; i += 1) scored[i].score = -Infinity;
 
   scored.sort((a, b) => {
     if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
