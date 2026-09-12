@@ -34,11 +34,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '4'
+      GAMES: '20'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run v5 Pro vs v5 smoke benchmark
+      - name: Run 20-game v5 Pro vs v5 validation
         run: node benchmark_v5_pro.js
