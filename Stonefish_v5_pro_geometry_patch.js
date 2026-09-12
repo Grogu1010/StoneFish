@@ -1,5 +1,5 @@
 // Experimental fast-leaf geometry for v5 Pro.
-// Adds only cheap Pro tactical geometry to the proven fast static leaf.
+// Adds a focused subset of Pro tactical geometry to the proven fast static leaf.
 
 const STONEFISH_V5_PRO_GEOMETRY_CACHE = new Map();
 
@@ -20,6 +20,7 @@ stonefishV5ProLeaf = function(game, perspective) {
   const theirKingPressure = stonefishV5ProKingZonePressure(game, -perspective);
   score += (ourKingPressure - theirKingPressure) * 32;
   score += stonefishV5ProRayTactics(game, perspective) * 1.10;
+  score += stonefishV5ProLooseAndCoordination(game, perspective) * 0.65;
 
   return stonefishV5ProSpeedCacheSet(STONEFISH_V5_PRO_GEOMETRY_CACHE, key, score);
 };
