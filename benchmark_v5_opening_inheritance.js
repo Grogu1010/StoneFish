@@ -35,10 +35,21 @@ function seededRandom(seed) {
   };
 }
 
+function publicUci(move) {
+  return move ? move.from + move.to + (move.promotion || '') : 'null';
+}
+
 function sameMove(game, publicMove, raw) {
-  if (!publicMove || !raw) return false;
-  const uci = publicMove.from + publicMove.to + (publicMove.promotion || '');
-  return uci === stonefishV45RawUci(game, raw);
+  return !!publicMove && !!raw && publicUci(publicMove) === stonefishV45RawUci(game, raw);
+}
+
+function playUci(game, uci) {
+  const played = game.move({
+    from: uci.slice(0, 2),
+    to: uci.slice(2, 4),
+    promotion: uci.length > 4 ? uci[4] : 'q'
+  });
+  if (!played) throw new Error(`Could not construct opening prefix at ${uci}`);
 }
 
 if (STONEFISH_V5_INHERITED_OPENING_PROFILE !== 0) {
@@ -54,57 +65,74 @@ if (!workerSource.includes('Stonefish_v5_pro_geometry_patch.js') || !workerSourc
   throw new Error('Worker does not load the shipped Pro geometry + opening stack.');
 }
 
+const probes = [
+  { id: 'w_berlin', lengths: [0, 2, 4, 6, 8, 10] },
+  { id: 'b_berlin', lengths: [1, 3, 5] },
+  { id: 'w_najdorf', lengths: [4, 6, 8, 10] },
+  { id: 'b_najdorf', lengths: [1, 3, 5, 7, 9] },
+  { id: 'w_catalan_open', lengths: [2, 4, 6, 8] },
+  { id: 'b_nimzo', lengths: [1, 3, 5, 7] }
+];
+
 const originalRandom = Math.random;
 Math.random = seededRandom(0x5100B00C);
-const game = new Chess();
-let checkedPlies = 0;
-const line = [];
+let checkedPositions = 0;
+const samples = [];
 
 try {
-  while (checkedPlies < 18) {
-    const expected = stonefishV45BookMove(game, 0);
-    if (!expected) break;
+  for (const probe of probes) {
+    const line = STONEFISH_V45_OPENINGS.find(entry => entry.id === probe.id);
+    if (!line) throw new Error(`Missing opening line ${probe.id}`);
 
-    const v5Move = getStonefishV5Move(game);
-    const proMove = getStonefishV5ProMove(game);
-    if (!sameMove(game, v5Move, expected)) {
-      throw new Error(`v5 left inherited book at ply ${checkedPlies + 1}: expected ${stonefishV45RawUci(game, expected)}, got ${v5Move ? v5Move.from + v5Move.to + (v5Move.promotion || '') : 'null'}`);
-    }
-    if (!sameMove(game, proMove, expected)) {
-      throw new Error(`v5 Pro left inherited book at ply ${checkedPlies + 1}: expected ${stonefishV45RawUci(game, expected)}, got ${proMove ? proMove.from + proMove.to + (proMove.promotion || '') : 'null'}`);
-    }
+    for (const prefixLength of probe.lengths) {
+      if (prefixLength >= line.moves.length) continue;
+      const game = new Chess();
+      for (const uci of line.moves.slice(0, prefixLength)) playUci(game, uci);
 
-    const publicMove = stonefishV3PublicMove(game, expected);
-    line.push(publicMove.from + publicMove.to + (publicMove.promotion || ''));
-    const played = game.move({ from: publicMove.from, to: publicMove.to, promotion: publicMove.promotion || 'q' });
-    if (!played) throw new Error(`Could not play inherited book move at ply ${checkedPlies + 1}`);
-    checkedPlies += 1;
+      const expected = stonefishV45BookMove(game, 0);
+      if (!expected) {
+        throw new Error(`Profile-0 book unexpectedly missing for ${probe.id} prefix ${prefixLength}`);
+      }
+
+      const v5Move = getStonefishV5Move(game);
+      const proMove = getStonefishV5ProMove(game);
+      const expectedUci = stonefishV45RawUci(game, expected);
+      if (!sameMove(game, v5Move, expected)) {
+        throw new Error(`v5 left inherited book at ${probe.id}/${prefixLength}: expected ${expectedUci}, got ${publicUci(v5Move)}`);
+      }
+      if (!sameMove(game, proMove, expected)) {
+        throw new Error(`v5 Pro left inherited book at ${probe.id}/${prefixLength}: expected ${expectedUci}, got ${publicUci(proMove)}`);
+      }
+
+      checkedPositions += 1;
+      if (samples.length < 8) samples.push(`${probe.id}@${prefixLength}:${expectedUci}`);
+    }
   }
 } finally {
   Math.random = originalRandom;
 }
 
-if (checkedPlies < 8) {
-  throw new Error(`Opening inheritance test exercised only ${checkedPlies} plies; expected at least 8.`);
+if (checkedPositions < 16) {
+  throw new Error(`Opening inheritance test exercised only ${checkedPositions} compatible positions.`);
 }
 
-// Ensure the wrappers do not replace the post-book engines: once no profile-0
-// continuation exists, each public function must still return a normal legal move.
-while (stonefishV45BookMove(game, 0)) {
-  const raw = stonefishV45BookMove(game, 0);
-  const move = stonefishV3PublicMove(game, raw);
-  if (!game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' })) break;
+// Force a position outside every stored repertoire first move. With no book
+// continuation, both wrappers must hand control back to the existing engines.
+const offBook = new Chess();
+for (const uci of ['a2a3', 'a7a6', 'h2h3', 'h7h6']) playUci(offBook, uci);
+if (stonefishV45BookMove(offBook, 0)) {
+  throw new Error('Expected deliberately constructed position to be out of book.');
 }
-const v5AfterBook = getStonefishV5Move(game);
-const proAfterBook = getStonefishV5ProMove(game);
+const v5AfterBook = getStonefishV5Move(offBook);
+const proAfterBook = getStonefishV5ProMove(offBook);
 if (!v5AfterBook || !proAfterBook) {
   throw new Error('v5 or v5 Pro failed to fall back to normal engine logic after book.');
 }
 
 console.log('STONEFISH_V5_OPENING_INHERITANCE ' + JSON.stringify({
   profile: STONEFISH_V5_INHERITED_OPENING_PROFILE,
-  checkedPlies,
-  line,
+  checkedPositions,
+  samples,
   browserStack: true,
   workerStack: true,
   postBookFallback: true
