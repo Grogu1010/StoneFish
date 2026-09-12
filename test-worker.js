@@ -7,9 +7,9 @@ importScripts(
   './Stonefish_v4_5.js',
   './Stonefish_v4_5_opening_overrides.js',
   './Stonefish_v4_5_safety_patch.js',
-  './Stonefish_v5_testunit1.js',
   './Stonefish_v4_5_balance_patch.js',
-  './Stonefish_v5.js'
+  './Stonefish_v5.js',
+  './Stonefish_v5_tuning_patch.js'
 );
 
 const workerModels = {
@@ -18,7 +18,6 @@ const workerModels = {
   v3: getStonefishV3Move,
   v4: getStonefishV4Move,
   v45: getStonefishV45Move,
-  v5t1: getStonefishV5Testunit1Move,
   v5: getStonefishV5Move
 };
 
