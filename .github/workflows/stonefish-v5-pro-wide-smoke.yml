@@ -1,0 +1,46 @@
+name: Stonefish v5 Pro wide smoke
+
+on:
+  push:
+    branches:
+      - chatgpt/v5-pro-wide
+    paths:
+      - 'Stonefish_v5_pro_speed_patch.js'
+      - '.github/workflows/stonefish-v5-pro-wide-smoke.yml'
+
+concurrency:
+  group: stonefish-v5-pro-wide-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  v5-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GAMES: '4'
+      START_INDEX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require lossless v5 smoke within v5 speed
+        run: node benchmark_v5_pro.js
+
+  old-pro-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      H2H_GAMES: '2'
+      START_INDEX: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: reference
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Play candidate vs released Pro
+        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_v5_pro_head_to_head.js
