@@ -23,12 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '10'
-      DEBUG_GAME: '10'
+      GAMES: '2'
+      DEBUG_GAME: '2'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Trace v5 vs v4.5 failing seed
+      - name: Trace v5 vs v4.5 Black promotion-loss seed
         run: node benchmark_v5.js
