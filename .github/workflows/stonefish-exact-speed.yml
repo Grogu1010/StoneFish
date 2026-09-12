@@ -1,14 +1,6 @@
 name: Stonefish exact speed parity
 
 on:
-  push:
-    branches:
-      - chatgpt/exact-speed-optimizations
-    paths:
-      - 'Stonefish_speed_core.js'
-      - 'Stonefish*.js'
-      - 'benchmark_speed_parity.js'
-      - '.github/workflows/stonefish-exact-speed.yml'
   pull_request:
     paths:
       - 'Stonefish_speed_core.js'
