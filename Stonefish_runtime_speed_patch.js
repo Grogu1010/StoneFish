@@ -66,13 +66,121 @@ function stonefishRuntimeMemo(game, key, compute) {
   return value;
 }
 
+// In a legal position that is not currently in check, a non-king move can only
+// expose its own king if the moving piece was shielding a rook/bishop/queen ray.
+// Find those absolutely pinned FROM-squares once. Two 32-bit masks avoid array
+// allocation. En-passant remains on the full legality path because removing the
+// captured pawn can uncover a second ray.
+function stonefishRuntimeKingSafety(game) {
+  const us = game.side;
+  const king = game.kingSq[us];
+  if (game._isAttacked(king, -us)) return { inCheck: true, lo: 0, hi: 0 };
+
+  const b = game.boardState;
+  const kf = king & 7;
+  const kr = king >> 3;
+  let lo = 0;
+  let hi = 0;
+
+  for (let d = 0; d < SF_ALL_DIRS.length; d += 2) {
+    const df = SF_ALL_DIRS[d];
+    const dr = SF_ALL_DIRS[d + 1];
+    let f = kf + df;
+    let r = kr + dr;
+    let blocker = -1;
+
+    while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+      const sq = r * 8 + f;
+      const piece = b[sq];
+      if (!piece) {
+        f += df;
+        r += dr;
+        continue;
+      }
+
+      const pieceSide = piece > 0 ? 1 : -1;
+      if (blocker < 0) {
+        if (pieceSide !== us) break;
+        blocker = sq;
+        f += df;
+        r += dr;
+        continue;
+      }
+
+      if (pieceSide === us) break;
+      const type = Math.abs(piece);
+      const diagonal = df !== 0 && dr !== 0;
+      const slider = type === 5 || (diagonal ? type === 3 : type === 4);
+      if (slider) {
+        if (blocker < 32) lo |= (1 << blocker);
+        else hi |= (1 << (blocker - 32));
+      }
+      break;
+    }
+  }
+
+  return { inCheck: false, lo, hi };
+}
+
+function stonefishRuntimeIsPinned(safety, sq) {
+  return sq < 32
+    ? (safety.lo & (1 << sq)) !== 0
+    : (safety.hi & (1 << (sq - 32))) !== 0;
+}
+
+// Keep _pseudoMoves() and its order exactly as released. In check, or for kings,
+// en-passant and pinned pieces, retain the original full make/test/restore path.
+// Every other pseudo move is necessarily legal with respect to the unmoving king.
+Chess.prototype.fastMoves = function() {
+  const pseudo = this._pseudoMoves();
+  const legal = [];
+  const safety = stonefishRuntimeKingSafety(this);
+
+  if (safety.inCheck) {
+    for (let i = 0; i < pseudo.length; i += 1) {
+      if (this._testLegalRaw(pseudo[i])) legal.push(pseudo[i]);
+    }
+    return legal;
+  }
+
+  for (let i = 0; i < pseudo.length; i += 1) {
+    const move = pseudo[i];
+    if (
+      move.piece !== 6 &&
+      !(move.flags & 2) &&
+      !stonefishRuntimeIsPinned(safety, move.from)
+    ) {
+      legal.push(move);
+    } else if (this._testLegalRaw(move)) {
+      legal.push(move);
+    }
+  }
+  return legal;
+};
+
 // Mate probes only need to know whether ONE legal reply exists. Avoid creating
 // and filtering the full legal-move array when the first reply already proves
-// the move is not mate.
+// the move is not mate. Because mate probes are called after a checking move,
+// the in-check path remains fully verified move-by-move.
 Chess.prototype.fastHasLegalMove = function() {
   const pseudo = this._pseudoMoves();
+  const safety = stonefishRuntimeKingSafety(this);
+
+  if (safety.inCheck) {
+    for (let i = 0; i < pseudo.length; i += 1) {
+      if (this._testLegalRaw(pseudo[i])) return true;
+    }
+    return false;
+  }
+
   for (let i = 0; i < pseudo.length; i += 1) {
-    if (this._testLegalRaw(pseudo[i])) return true;
+    const move = pseudo[i];
+    if (
+      move.piece !== 6 &&
+      !(move.flags & 2) &&
+      !stonefishRuntimeIsPinned(safety, move.from)
+    ) return true;
+    if (this._testLegalRaw(move)) return true;
   }
   return false;
 };
