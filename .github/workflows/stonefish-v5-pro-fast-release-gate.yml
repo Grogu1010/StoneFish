@@ -18,6 +18,7 @@ on:
       - 'benchmark_v5_pro.js'
       - '.github/workflows/stonefish-v5-pro-fast-release-gate.yml'
 
+# Keep this gate attached to the exact engine-speed PR head being released.
 concurrency:
   group: stonefish-v5-pro-fast-release-${{ github.ref }}
   cancel-in-progress: true
