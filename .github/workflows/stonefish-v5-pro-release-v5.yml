@@ -1,0 +1,56 @@
+name: Stonefish v5 Pro release v5 gate
+
+on:
+  push:
+    branches:
+      - chatgpt/v5-pro-release-gate
+    paths:
+      - 'Stonefish_v5_pro.js'
+      - 'Stonefish_v5_pro_speed_patch.js'
+      - 'Stonefish_v5.js'
+      - 'Stonefish_v4_5*.js'
+      - 'Stonefish_v4.js'
+      - 'Stonefish_v3.js'
+      - 'StonefishChess.js'
+      - 'benchmark_v5_pro.js'
+      - '.github/workflows/stonefish-v5-pro-release-v5.yml'
+
+concurrency:
+  group: stonefish-v5-pro-release-v5-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-v5-shard:
+    name: v5 release shard ${{ matrix.start }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        start: [0, 20, 40, 60, 80]
+    env:
+      GAMES: '20'
+      START_INDEX: ${{ matrix.start }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require 20-0-0 and v5-or-better speed
+        shell: bash
+        run: |
+          set -o pipefail
+          node benchmark_v5_pro.js | tee result.log
+          node - <<'NODE'
+          const fs = require('fs');
+          const text = fs.readFileSync('result.log', 'utf8');
+          const line = text.split(/\r?\n/).find(x => x.startsWith('STONEFISH_V5_PRO_BENCHMARK '));
+          if (!line) throw new Error('Missing benchmark summary');
+          const s = JSON.parse(line.slice('STONEFISH_V5_PRO_BENCHMARK '.length));
+          if (s.proWins !== 20 || s.proLosses !== 0 || s.draws !== 0) {
+            throw new Error(`Release shard must be 20-0-0, got ${s.proWins}-${s.proLosses}-${s.draws}`);
+          }
+          if (!(s.proAvgMs <= s.v5AvgMs)) {
+            throw new Error(`Pro slower than v5: ${s.proAvgMs}ms vs ${s.v5AvgMs}ms`);
+          }
+          NODE
