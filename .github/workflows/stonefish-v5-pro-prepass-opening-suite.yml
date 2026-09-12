@@ -1,0 +1,46 @@
+name: Stonefish v5 Pro prepass opening suite
+
+on:
+  push:
+    branches:
+      - chatgpt/v5-pro-prepass-opening-suite
+    paths:
+      - 'benchmark_v5_pro_opening_suite.js'
+      - 'Stonefish_v5_pro.js'
+      - 'Stonefish_v5_pro_speed_patch.js'
+      - 'Stonefish_v5_pro_geometry_patch.js'
+      - 'Stonefish_v5.js'
+      - 'Stonefish_v4_5*.js'
+      - 'Stonefish_v4.js'
+      - 'Stonefish_v3.js'
+      - 'StonefishChess.js'
+      - '.github/workflows/stonefish-v5-pro-prepass-opening-suite.yml'
+
+concurrency:
+  group: stonefish-v5-pro-prepass-opening-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  opening-suite:
+    strategy:
+      fail-fast: false
+      matrix:
+        opening: [0, 1, 2, 3]
+    name: prepass opening ${{ matrix.opening }} both colors
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENING_INDEX: ${{ matrix.opening }}
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+      - name: Checkout released Pro reference
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: reference
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Play one legal opening in both colors
+        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_v5_pro_opening_suite.js
