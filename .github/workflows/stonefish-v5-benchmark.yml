@@ -23,11 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GAMES: '20'
+      GAMES: '4'
+      DEBUG_GAME: '4'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run 20-game v5 vs v4.5 validation
+      - name: Trace remaining v5 Black loss seed
         run: node benchmark_v5.js
