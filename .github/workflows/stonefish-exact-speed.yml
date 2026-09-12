@@ -1,0 +1,36 @@
+name: Stonefish exact speed parity
+
+on:
+  push:
+    branches:
+      - chatgpt/exact-speed-optimizations
+    paths:
+      - 'Stonefish_speed_core.js'
+      - 'Stonefish*.js'
+      - 'benchmark_speed_parity.js'
+      - '.github/workflows/stonefish-exact-speed.yml'
+  pull_request:
+    paths:
+      - 'Stonefish_speed_core.js'
+      - 'Stonefish*.js'
+      - 'benchmark_speed_parity.js'
+      - '.github/workflows/stonefish-exact-speed.yml'
+
+concurrency:
+  group: stonefish-exact-speed-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PARITY_GAMES: '2'
+      MAX_PLIES: '180'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact traces and report latency
+        run: node benchmark_speed_parity.js
