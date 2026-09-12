@@ -31,14 +31,20 @@ concurrency:
 
 jobs:
   benchmark:
+    name: benchmark games ${{ matrix.start + 1 }}-${{ matrix.start + 4 }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        start: [0, 4, 8, 12, 16]
     env:
-      GAMES: '20'
+      GAMES: '4'
+      START_INDEX: ${{ matrix.start }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run 20-game v5 Pro vs v5 validation
+      - name: Run v5 Pro vs v5 validation shard
         run: node benchmark_v5_pro.js
