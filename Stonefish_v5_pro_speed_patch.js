@@ -6,19 +6,22 @@
 // - retain a perfect release match against v5,
 // - outperform the previously released v5 Pro head-to-head.
 //
-// Pro first scouts cheaply, then spends its five-ply search budget only on the
-// strongest finalists. This revision deliberately reinvests measured speed
-// headroom into a wider deep tree rather than chasing unnecessary milliseconds.
+// This revision spends measured speed headroom on the full Pro adaptive leaf
+// evaluator. Expensive geometry is memoized so we recover Pro-level tactical
+// context without returning to the released engine's brute-force cost.
 
-const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 50000;
-const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 8;
-const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 4;
+const STONEFISH_V5_PRO_SPEED_CACHE_LIMIT = 70000;
+const STONEFISH_V5_PRO_SPEED_SEMIFINALISTS = 10;
+const STONEFISH_V5_PRO_SPEED_ROOT_CANDIDATES = 5;
 // Index is remaining depth. Root is ply 1; depth 4 searches plies 2-5.
 const STONEFISH_V5_PRO_SPEED_BRANCH = [0, 2, 2, 3, 4];
-const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.82;
+const STONEFISH_V5_PRO_HERITAGE_FLOOR = 0.65;
 const STONEFISH_V5_PRO_POSITION_CACHE = new Map();
 const STONEFISH_V5_PRO_CONTEXT_CACHE = new Map();
 const STONEFISH_V5_PRO_ADAPTIVE_CACHE = new Map();
+const STONEFISH_V5_PRO_ATTACK_CACHE = new Map();
+const STONEFISH_V5_PRO_PASSER_INFO_CACHE = new Map();
+const STONEFISH_V5_PRO_PASSER_STATUS_CACHE = new Map();
 
 function stonefishV5ProSpeedCacheSet(cache, key, value) {
   if (cache.size >= STONEFISH_V5_PRO_SPEED_CACHE_LIMIT) {
@@ -49,6 +52,44 @@ if (!Chess.prototype.fastHasLegalMove) {
   };
 }
 
+// These three helpers dominate adaptive evaluation in tactical positions.
+// They are pure for a position, so memoizing them changes no chess logic.
+const stonefishV5ProSpeedBaseAttackCount = stonefishV5ProAttackCount;
+stonefishV5ProAttackCount = function(game, sq, side) {
+  const key = side + '|' + sq + '|' + game.fastPositionKey();
+  const hit = STONEFISH_V5_PRO_ATTACK_CACHE.get(key);
+  if (hit !== undefined) return hit;
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_ATTACK_CACHE,
+    key,
+    stonefishV5ProSpeedBaseAttackCount(game, sq, side)
+  );
+};
+
+const stonefishV5ProSpeedBasePassedPawnInfo = stonefishV5PassedPawnInfo;
+stonefishV5PassedPawnInfo = function(game, side) {
+  const key = side + '|' + game.fastPositionKey();
+  const hit = STONEFISH_V5_PRO_PASSER_INFO_CACHE.get(key);
+  if (hit !== undefined) return hit;
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_PASSER_INFO_CACHE,
+    key,
+    stonefishV5ProSpeedBasePassedPawnInfo(game, side)
+  );
+};
+
+const stonefishV5ProSpeedBasePasserStatus = stonefishV5PasserStatus;
+stonefishV5PasserStatus = function(game, pawnSide, perspective) {
+  const key = pawnSide + '|' + perspective + '|' + game.fastPositionKey();
+  const hit = STONEFISH_V5_PRO_PASSER_STATUS_CACHE.get(key);
+  if (hit !== undefined) return hit;
+  return stonefishV5ProSpeedCacheSet(
+    STONEFISH_V5_PRO_PASSER_STATUS_CACHE,
+    key,
+    stonefishV5ProSpeedBasePasserStatus(game, pawnSide, perspective)
+  );
+};
+
 const stonefishV5ProSpeedBaseContexts = stonefishV5ProContexts;
 stonefishV5ProContexts = function(game, perspective) {
   const key = perspective + '|' + game.fullmove + '|' + game.fastPositionKey();
@@ -73,11 +114,15 @@ stonefishV5ProAdaptivePosition = function(game, perspective) {
   );
 };
 
-// Deep leaves use v5's proven unified positional evaluator. Full Pro adaptive
-// intelligence is retained in root knowledge, while the cheaper leaf lets the
-// deep tree be wide enough to recover tactical/defensive strength.
+// Restore the released Pro's full adaptive leaf intelligence. The extra passer
+// urgency makes imminent promotion races dominate quiet positional niceties.
 stonefishV5ProLeaf = function(game, perspective) {
-  return stonefishV5ProCachedPositionScore(game, perspective);
+  let score = stonefishV5ProAdaptivePosition(game, perspective);
+  const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
+  const ourThreat = stonefishV5EnemyPasserThreat(game, -perspective);
+  if (enemyThreat >= 900) score -= enemyThreat * 0.55;
+  if (ourThreat >= 900) score += ourThreat * 0.28;
+  return score;
 };
 
 let STONEFISH_V5_PRO_ACTIVE_TT = null;
@@ -189,6 +234,7 @@ function stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspec
   }
 
   game.fastApply(raw);
+  score += stonefishV5ProCachedPositionScore(game, perspective) * 0.28;
   const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
   if (enemyThreat >= 300) score -= enemyThreat * 9;
   else if (enemyThreat >= 120) score -= enemyThreat * 3;
@@ -226,8 +272,8 @@ stonefishV5ProScoreAllMoves = function(game) {
   for (let i = 0; i < semifinalCount; i += 1) {
     const entry = scored[i];
     entry.tactical = stonefishV5TacticalScore(game, entry.raw);
-    const heritageBoost = entry.heritageMatch ? STONEFISH_V5_WEIGHTS.heritage * 1.25 : 0;
-    entry.preliminary = entry.tactical + entry.scout * 0.34 + heritageBoost
+    const heritageBoost = entry.heritageMatch ? STONEFISH_V5_WEIGHTS.heritage : 0;
+    entry.preliminary = entry.tactical + entry.scout * 0.30 + heritageBoost
       + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
   }
   for (let i = semifinalCount; i < scored.length; i += 1) scored[i].preliminary = -Infinity;
@@ -253,7 +299,7 @@ stonefishV5ProScoreAllMoves = function(game) {
       if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
         entry.score = entry.deep;
       } else {
-        const selective = entry.deep * 1.28 + entry.preliminary * 0.46;
+        const selective = entry.deep * 1.35 + entry.preliminary * 0.38;
         const heritageFloor = entry.heritageMatch
           ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
           : -Infinity;
