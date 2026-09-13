@@ -9,10 +9,13 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt5-speed1',
+  version: 'preview-adapt6-mature3',
   kind: 'opponent-adaptation',
   reset: 'per-game',
-  candidateLimit: 2,
+  candidateLimit: 3,
+  baseCandidateLimit: 2,
+  expandedCandidateMinPlies: 36,
+  expandedCandidateMinEvidence: 5.5,
   minEvidence: 1.25,
   fullConfidenceEvidence: 5.5,
   maxMultiplierDelta: 0.18,
@@ -303,6 +306,17 @@ function armxPreviewHasUsefulReplyEvidence(profile) {
   return false;
 }
 
+function armxPreviewProfileMatureForThirdCandidate(profile) {
+  if (!profile || profile.processedPlies < ARMX_PREVIEW.expandedCandidateMinPlies) return false;
+  for (const feature of ARMX_PREVIEW_FEATURES) {
+    const ours = profile.ourEffects[feature];
+    const opponent = profile.opponentEffects[feature];
+    if (ours && ours.weight >= ARMX_PREVIEW.expandedCandidateMinEvidence) return true;
+    if (opponent && opponent.weight >= ARMX_PREVIEW.expandedCandidateMinEvidence) return true;
+  }
+  return false;
+}
+
 function armxPreviewCandidateReplyOpportunities(game, raw) {
   const historyDepth = game.historyStack.length;
   const available = new Set();
@@ -396,7 +410,10 @@ function armxPreviewProfileNotes(profile) {
 
 function armxPreviewReview(game, candidates, perspective = game.side) {
   const profile = armxPreviewSyncProfile(game, perspective);
-  const finalists = candidates.filter(entry => entry && Number.isFinite(entry.score)).slice(0, ARMX_PREVIEW.candidateLimit);
+  const reviewLimit = armxPreviewProfileMatureForThirdCandidate(profile)
+    ? ARMX_PREVIEW.candidateLimit
+    : ARMX_PREVIEW.baseCandidateLimit;
+  const finalists = candidates.filter(entry => entry && Number.isFinite(entry.score)).slice(0, reviewLimit);
   const reports = finalists.map(entry => armxPreviewCandidateReport(game, entry, profile));
   reports.sort((a, b) => b.adaptedScore - a.adaptedScore);
   profile.notes = armxPreviewProfileNotes(profile);
@@ -409,6 +426,8 @@ function armxPreviewReview(game, candidates, perspective = game.side) {
     observedPlies: profile.processedPlies,
     opponentMovesObserved: profile.opponentMoves,
     notes: profile.notes.slice(),
+    candidateLimitUsed: reviewLimit,
+    expandedCandidateReview: reviewLimit > ARMX_PREVIEW.baseCandidateLimit,
     candidatesReviewed: reports.length,
     reports,
     nodes: 0,
