@@ -1,19 +1,15 @@
 // Stonefish v5.5 native search core — ARMX-guided Guarded PVS.
 //
-// v5.5 keeps v5 Pro's evaluation/knowledge, but does NOT pay for Pro's full
-// four-finalist five-ply search. It keeps Pro's eight-move semifinal pool,
-// runs a tiny three-ply gate across the best four, then spends full five-ply work
-// on only two finalists. ARMX may add one opponent reply beyond the normal beam.
+// v5.5 keeps v5 Pro's evaluation/knowledge but reallocates the search budget.
+// It preserves Pro's eight-move semifinal pool and four serious root candidates,
+// while searching a much narrower five-ply tree. ARMX audits the provisional
+// winner afterward and may inject one missed opponent reply for a targeted re-search.
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'ARMX-guided Guarded PVS',
   semifinalists: 8,
-  gateCandidates: 4,
-  gateDepth: 2,
-  gateDeepWeight: 1.00,
-  gatePreliminaryWeight: 0.28,
-  rootCandidates: 2,
-  branch: [0, 1, 2, 2, 4],
+  rootCandidates: 4,
+  branch: [0, 1, 1, 2, 3],
   lmrMinDepth: 3,
   lmrAfterMove: 2,
 });
@@ -74,7 +70,8 @@ function stonefishV55Ordered(game, legal, depth, injectedMove) {
   const injectedIndex = ordered.findIndex(entry => stonefishV55SameRaw(entry.move, injectedMove));
   if (injectedIndex < 0 || injectedIndex < width) return selected;
 
-  // ARMX is additive: never throw away a normal beam move just to hear the critic.
+  // ARMX is additive: the critic contributes a missed reply without evicting the
+  // host's normal beam. This only happens on the targeted audited root move.
   selected.push(ordered[injectedIndex]);
   return selected;
 }
@@ -129,29 +126,6 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
   return best;
 }
 
-function stonefishV55GateCandidateScore(game, raw, perspective) {
-  const historyDepth = game.historyStack.length;
-  const oldStats = STONEFISH_V5_5_LAST_SEARCH_STATS;
-  STONEFISH_V5_5_LAST_SEARCH_STATS = null;
-  try {
-    game.fastApply(raw); // root ply 1
-    const legal = game.fastMoves();
-    if (!legal.length) return game.in_check() ? STONEFISH_V5_PRO_MATE - 1 : 0;
-    return stonefishV55Minimax(
-      game,
-      STONEFISH_V5_5_SEARCH.gateDepth,
-      perspective,
-      -STONEFISH_V5_PRO_MATE,
-      STONEFISH_V5_PRO_MATE,
-      1,
-      null
-    );
-  } finally {
-    while (game.historyStack.length > historyDepth) game.fastUndo();
-    STONEFISH_V5_5_LAST_SEARCH_STATS = oldStats;
-  }
-}
-
 function stonefishV55FivePlyScore(game, raw, perspective, criticalReply = null) {
   const historyDepth = game.historyStack.length;
   STONEFISH_V5_5_LAST_SEARCH_STATS = { nodes: 0, leaves: 0, reductions: 0, researches: 0, cutoffs: 0 };
@@ -173,6 +147,23 @@ function stonefishV55FivePlyScore(game, raw, perspective, criticalReply = null) 
   }
 }
 
+function stonefishV55RecomputeFinalScore(entry) {
+  if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) return entry.deep;
+  const selective = entry.deep * 1.28 + entry.preliminary * 0.46;
+  const heritageFloor = entry.heritageMatch
+    ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
+    : -Infinity;
+  return Math.max(selective, heritageFloor);
+}
+
+function stonefishV55SortFinalScores(game, ranked) {
+  ranked.sort((a, b) => {
+    if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
+    return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
+  });
+  return ranked;
+}
+
 function stonefishV55FastCandidates(game) {
   const legal = game.fastMoves();
   if (!legal.length) return [];
@@ -185,7 +176,6 @@ function stonefishV55FastCandidates(game) {
     knowledge: 0,
     heritageMatch: !!heritageMove && stonefishV5SameMove(raw, heritageMove),
     scout: stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective),
-    gate: null,
     preliminary: -Infinity,
     deep: null,
     score: -Infinity,
@@ -196,8 +186,6 @@ function stonefishV55FastCandidates(game) {
     return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
   });
 
-  // Match Pro's eight-move semifinal pool so good quiet candidates survive the
-  // cheap scout stage, but do not pay for Pro's four full five-ply root searches.
   const n = Math.min(STONEFISH_V5_5_SEARCH.semifinalists, scored.length);
   for (let i = 0; i < n; i += 1) {
     const entry = scored[i];
@@ -216,28 +204,10 @@ function stonefishV55FastCandidates(game) {
     if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
     return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
   });
-
-  // Three-ply gate: cheaply test Pro's four likely finalists before narrowing to
-  // v5.5's two expensive five-ply searches. This is deliberately much smaller
-  // than a second full search and is where v5.5 spends some of its speed advantage.
-  const gateCount = Math.min(STONEFISH_V5_5_SEARCH.gateCandidates, n);
-  for (let i = 0; i < gateCount; i += 1) {
-    const entry = scored[i];
-    entry.gate = stonefishV55GateCandidateScore(game, entry.raw, perspective);
-    if (Math.abs(entry.gate) >= STONEFISH_V5_PRO_MATE * 0.9) entry.score = entry.gate;
-    else entry.score = entry.gate * STONEFISH_V5_5_SEARCH.gateDeepWeight
-      + entry.preliminary * STONEFISH_V5_5_SEARCH.gatePreliminaryWeight;
-  }
-  for (let i = gateCount; i < scored.length; i += 1) scored[i].score = -Infinity;
-
-  scored.sort((a, b) => {
-    if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
-    return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
-  });
   return scored;
 }
 
-function stonefishV55FinishCandidates(game, ranked, armxReview) {
+function stonefishV55FinishCandidates(game, ranked) {
   if (!ranked.length) return [];
   const perspective = game.side;
   const legal = game.fastMoves();
@@ -252,38 +222,31 @@ function stonefishV55FinishCandidates(game, ranked, armxReview) {
       : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
     entry.preliminary = entry.tactical + entry.knowledge
       + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
-
-    let criticalReply = null;
-    if (armxReview && Array.isArray(armxReview.reports)) {
-      const report = armxReview.reports.find(item => stonefishV55SameRaw(item.raw, entry.raw));
-      if (report) criticalReply = report.criticalReply || null;
-    }
-    entry.armxCriticalReply = criticalReply;
-    entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, criticalReply);
-
-    if (Math.abs(entry.deep) >= STONEFISH_V5_PRO_MATE * 0.9) entry.score = entry.deep;
-    else {
-      const selective = entry.deep * 1.28 + entry.preliminary * 0.46;
-      const heritageFloor = entry.heritageMatch
-        ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
-        : -Infinity;
-      entry.score = Math.max(selective, heritageFloor);
-    }
+    entry.armxCriticalReply = null;
+    entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
+    entry.score = stonefishV55RecomputeFinalScore(entry);
   }
 
   for (let i = finalists; i < ranked.length; i += 1) ranked[i].score = -Infinity;
-  ranked.sort((a, b) => {
-    if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
-    return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
-  });
-  return ranked;
+  return stonefishV55SortFinalScores(game, ranked);
+}
+
+function stonefishV55AuditCandidate(game, entry, perspective, criticalReply) {
+  if (!entry || !criticalReply) return entry;
+  entry.armxOriginalDeep = entry.deep;
+  entry.armxCriticalReply = criticalReply;
+  entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, criticalReply);
+  entry.score = stonefishV55RecomputeFinalScore(entry);
+  entry.armxVerifiedDeep = entry.deep;
+  return entry;
 }
 
 if (typeof globalThis !== 'undefined') {
   globalThis.STONEFISH_V5_5_SEARCH = STONEFISH_V5_5_SEARCH;
   globalThis.stonefishV55Minimax = stonefishV55Minimax;
-  globalThis.stonefishV55GateCandidateScore = stonefishV55GateCandidateScore;
   globalThis.stonefishV55FivePlyScore = stonefishV55FivePlyScore;
   globalThis.stonefishV55FastCandidates = stonefishV55FastCandidates;
   globalThis.stonefishV55FinishCandidates = stonefishV55FinishCandidates;
+  globalThis.stonefishV55AuditCandidate = stonefishV55AuditCandidate;
+  globalThis.stonefishV55SortFinalScores = stonefishV55SortFinalScores;
 }
