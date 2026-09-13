@@ -1,9 +1,10 @@
 // Stonefish v5.5 testunit1 — v5 Pro knowledge + native v5.5 search + ARMX-preview.
 //
 // v5.5 inherits v5 Pro's chess knowledge and uses a fast four-root Guarded-PVS
-// search with late-move reductions and exact transposition reuse. ARMX audits the
-// actual provisional winner only when the fully searched host result is close or
-// the position carries exceptional passer danger.
+// search with late-move reductions and exact transposition reuse. ARMX acts as a
+// separate comparative critic: when the host result is close, it audits the top
+// two finalists and only changes the choice when their relative adversarial risk
+// justifies doing so.
 
 const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   name: 'Stonefish v5.5 testunit1',
@@ -11,7 +12,7 @@ const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   knowledgeBase: 'Stonefish v5 Pro',
   search: 'Guarded PVS',
   nativeFeature: 'PVS + TT four-root search',
-  armx: 'ARMX-preview selective adversarial critic',
+  armx: 'ARMX-preview comparative adversarial critic',
   thirdRootChallenger: false,
   armxScoreGap: 450,
 });
@@ -43,6 +44,10 @@ function stonefishV55Testunit1HostSearch(game) {
   return { finished, fastLeader, challengerSearched: false };
 }
 
+function stonefishV55FindEntry(finished, raw) {
+  return finished.find(entry => entry && raw && stonefishV5SameMove(entry.raw, raw)) || null;
+}
+
 function stonefishV55Testunit1ScoreAllMoves(game) {
   const perspective = game.side;
   const host = stonefishV55Testunit1HostSearch(game);
@@ -65,29 +70,37 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   let criticApplied = false;
   let criticAdjustment = 0;
   let criticRisk = 0;
+  let candidatesPenalized = 0;
   const shouldAskARMX = stonefishV55Testunit1ShouldAskARMX(game, finished, perspective);
 
   if (provisional && shouldAskARMX && typeof armxPreviewReview === 'function') {
-    review = armxPreviewReview(game, [provisional], perspective);
-    const report = review && Array.isArray(review.reports) ? review.reports[0] : null;
-    if (report && report.criticalReply) {
-      const originalScore = provisional.score;
-      stonefishV55AuditCandidate(game, provisional, perspective, report.criticalReply);
-      audited = true;
-      criticRisk = Number.isFinite(report.risk) ? report.risk : 0;
-      criticAdjustment = Number.isFinite(report.adjustment) ? report.adjustment : 0;
+    const comparisonSet = runnerUp ? [provisional, runnerUp] : [provisional];
+    review = armxPreviewReview(game, comparisonSet, perspective);
+    const reports = review && Array.isArray(review.reports) ? review.reports : [];
 
-      // ARMX is deliberately allowed to disagree with the host. The injected host
-      // re-search remains the first line of defence, but when ARMX independently
-      // finds a materially worse novel reply we also retain a bounded critic penalty.
-      // Taking the more pessimistic of the two avoids double-counting the same risk.
-      if (criticAdjustment < 0) {
-        provisional.armxCriticAdjustment = criticAdjustment;
-        provisional.score = Math.min(provisional.score, originalScore + criticAdjustment);
-        criticApplied = true;
-      }
-      stonefishV55SortFinalScores(game, finished);
+    // Apply ARMX symmetrically to the candidates it reviewed. This is the key
+    // fast5 invariant: ARMX must compare risk, not simply distrust whoever the
+    // host happened to rank first. A candidate only receives a bounded penalty
+    // after ARMX finds a novel reply beyond its risk threshold.
+    for (const report of reports) {
+      const target = stonefishV55FindEntry(finished, report.raw);
+      if (!target) continue;
+      criticRisk = Math.max(criticRisk, Number.isFinite(report.risk) ? report.risk : 0);
+      const adjustment = Number.isFinite(report.adjustment) ? report.adjustment : 0;
+      if (!(adjustment < 0) || !report.criticalReply) continue;
+
+      const originalScore = target.score;
+      stonefishV55AuditCandidate(game, target, perspective, report.criticalReply);
+      audited = true;
+      target.armxCriticAdjustment = adjustment;
+      target.armxOriginalScore = originalScore;
+      target.score = Math.min(target.score, originalScore + adjustment);
+      criticApplied = true;
+      candidatesPenalized += 1;
+      criticAdjustment = Math.min(criticAdjustment, adjustment);
     }
+
+    if (audited || criticApplied) stonefishV55SortFinalScores(game, finished);
   }
 
   const winner = finished[0] || null;
@@ -102,16 +115,19 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review || {}, {
     connected: Boolean(review),
     eligible: shouldAskARMX,
+    comparative: reports.length > 1,
     hostCandidatesReviewed: reports.length,
     injectedReplies: reports.filter(report => report && report.criticalReply).length,
     audited,
     criticApplied,
     criticAdjustment,
     criticRisk,
+    candidatesPenalized,
     override: changedByARMX,
     changedMove: changedByARMX,
     recommendedRaw: winner ? winner.raw : null,
     provisionalRaw,
+    runnerUpRaw: runnerUp ? runnerUp.raw : null,
     fastLeaderRaw: host.fastLeader,
     hostSearchChangedMove: changedFromFastLeader,
     challengerSearched: false,
