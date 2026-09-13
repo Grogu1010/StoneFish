@@ -1,52 +1,64 @@
-// ARMX-preview — development-only adversarial critic for Stonefish v5.5 testunit1.
+// ARMX-preview — development-only second-opinion model for Stonefish v5.5 testunit1.
 //
-// Fast by design:
-// - 3-ply base critic.
-// - selective 4th ply only on one forcing continuation.
-// - only the top 3 Stonefish v5 candidates are reviewed.
-// - 2 replies x 2 continuations, then at most 1 fourth-ply reply.
-// - hard 72-node budget per root review.
-// - no full-width duplicate search of Stonefish v5.
-//
-// ARMX-preview is intentionally limited. It is a separate model/critic, not a replacement
-// evaluator, so future ARMX versions can gain tactical vocabulary, depth and authority while
-// Stonefish v5 itself stays unchanged.
+// v5.5 baseline is Stonefish v5 Pro. ARMX-preview deliberately searches differently:
+// v5 Pro is deeper but narrow; ARMX is shallower (3 ply, selective 4th) but reviews a
+// broader root set and uses a counterplay-heavy evaluation. That gives it a real chance
+// to catch candidates that v5 Pro's finalist beam did not search deeply.
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview',
+  version: 'preview-pro1',
+  base: 'Stonefish v5 Pro',
   basePly: 3,
   maxPly: 4,
-  maxCandidates: 3,
-  maxReplies: 2,
-  maxContinuations: 2,
-  maxFourthPlyReplies: 1,
-  maxNodes: 72,
-  maxAdjustment: 180,
-  checkProbeLimit: 8,
+  maxCandidates: 8,
+  maxReplies: 4,
+  maxContinuations: 3,
+  maxFourthPlyReplies: 2,
+  maxNodes: 320,
+  overrideThreshold: 55,
+  emergencyOverrideThreshold: 28,
+  emergencyScore: -180,
 });
 
 function armxPreviewPieceValue(type) {
   if (type === 1) return 100;
   if (type === 2) return 320;
-  if (type === 3) return 330;
-  if (type === 4) return 500;
-  if (type === 5) return 900;
+  if (type === 3) return 335;
+  if (type === 4) return 510;
+  if (type === 5) return 930;
   if (type === 6) return 20000;
   return 0;
 }
 
-function armxPreviewMoveUrgency(move) {
-  let score = 0;
-  if (move.captured) score += armxPreviewPieceValue(move.captured) * 4 - armxPreviewPieceValue(move.piece);
-  if (move.promotion) score += armxPreviewPieceValue(move.promotion) * 3;
-  if (move.flags & (4 | 8)) score += 40;
+function armxPreviewMoveKey(move) {
+  return `${move.from}:${move.to}:${move.promotion || 0}`;
+}
+
+function armxPreviewMoveOrder(game, move) {
+  let score = (armxPreviewPieceValue(move.captured) || 0) * 16 - (armxPreviewPieceValue(move.piece) || 0) * (move.captured ? 1 : 0);
+  if (move.promotion) score += armxPreviewPieceValue(move.promotion) * 11 + 1800;
+  if (move.flags & (4 | 8)) score += 180;
+  if (game.fastGivesCheck && game.fastGivesCheck(move)) score += 2200;
   return score;
 }
 
-function armxPreviewStatic(game, perspective) {
-  // Deliberately primitive preview evaluation: material only.
-  // Rich positional understanding is reserved for later ARMX versions.
+function armxPreviewIsForcing(game, move) {
+  if (move.captured || move.promotion) return true;
+  return Boolean(game.fastGivesCheck && game.fastGivesCheck(move));
+}
+
+function armxPreviewTopMoves(game, cap) {
+  const legal = game.fastMoves();
+  if (legal.length <= cap) return legal;
+  return legal
+    .map((move, index) => ({ move, index, order: armxPreviewMoveOrder(game, move) }))
+    .sort((a, b) => (b.order - a.order) || (a.index - b.index))
+    .slice(0, cap)
+    .map(entry => entry.move);
+}
+
+function armxPreviewMaterial(game, perspective) {
   let score = 0;
   for (let sq = 0; sq < 64; sq += 1) {
     const p = game.boardState[sq];
@@ -58,97 +70,159 @@ function armxPreviewStatic(game, perspective) {
   return score;
 }
 
-function armxPreviewTopMoves(game, cap) {
-  const moves = game.fastMoves();
-  if (moves.length <= cap) return moves;
-
-  // Tiny insertion set instead of sorting the entire legal list.
-  const best = [];
-  for (let i = 0; i < moves.length; i += 1) {
-    const move = moves[i];
-    const score = armxPreviewMoveUrgency(move);
-    let at = best.length;
-    while (at > 0 && score > best[at - 1].score) at -= 1;
-    if (at < cap) {
-      best.splice(at, 0, { move, score });
-      if (best.length > cap) best.pop();
-    }
-  }
-
-  // Preview gets a small bounded chance to notice a quiet check without checking every move.
-  const probe = Math.min(moves.length, ARMX_PREVIEW.checkProbeLimit);
-  for (let i = 0; i < probe; i += 1) {
-    const move = moves[i];
-    if (!move.captured && !move.promotion && game.fastGivesCheck && game.fastGivesCheck(move)) {
-      if (!best.some(entry => entry.move === move)) {
-        best[best.length - 1] = { move, score: 1200 };
-      }
-      break;
-    }
-  }
-
-  return best.map(entry => entry.move);
+function armxPreviewTerminal(game, perspective, plyFromRoot, legal) {
+  if (legal && legal.length) return null;
+  if (!legal) legal = game.fastMoves();
+  if (legal.length) return null;
+  if (!game.in_check()) return 0;
+  const mate = typeof STONEFISH_V5_PRO_MATE !== 'undefined' ? STONEFISH_V5_PRO_MATE : 20000000;
+  return game.side === perspective ? -mate + plyFromRoot : mate - plyFromRoot;
 }
 
-function armxPreviewIsForcing(game, move) {
-  if (move.captured || move.promotion) return true;
-  return Boolean(game.fastGivesCheck && game.fastGivesCheck(move));
+function armxPreviewEvaluate(game, perspective) {
+  if (game.halfmove >= 100 || game._insufficientMaterial()) return 0;
+  if ((game.positionCounts.get(game.fastPositionKey()) || 0) >= 3) return 0;
+
+  let score = typeof stonefishV5ProAdaptivePosition === 'function'
+    ? stonefishV5ProAdaptivePosition(game, perspective)
+    : armxPreviewMaterial(game, perspective);
+
+  // ARMX intentionally weights immediate counterplay more heavily than Pro's main search.
+  if (typeof stonefishV5ProCounterplay === 'function') {
+    const forcing = stonefishV5ProCounterplay(game, perspective);
+    score += game.side === perspective ? forcing * 0.28 : -forcing * 0.82;
+  }
+
+  if (typeof stonefishV5ProKingZonePressure === 'function') {
+    const ours = stonefishV5ProKingZonePressure(game, perspective);
+    const theirs = stonefishV5ProKingZonePressure(game, -perspective);
+    score += (ours - theirs) * 22;
+  }
+
+  if (typeof stonefishV5EnemyPasserThreat === 'function') {
+    const danger = stonefishV5EnemyPasserThreat(game, perspective);
+    const ourDanger = stonefishV5EnemyPasserThreat(game, -perspective);
+    if (danger >= 2200) score -= danger * 1.15;
+    else if (danger >= 900) score -= danger * 0.48;
+    else if (danger >= 300) score -= danger * 0.22;
+    if (ourDanger >= 2200) score += ourDanger * 0.52;
+    else if (ourDanger >= 900) score += ourDanger * 0.25;
+  }
+
+  if (game.in_check()) score += game.side === perspective ? -240 : 190;
+  return score;
 }
 
-function armxPreviewCritiqueCandidate(game, candidate, perspective, baseline, nodeBudget) {
-  let nodes = 0;
+function armxPreviewCandidatePriority(game, entry) {
+  const raw = entry.raw || entry.move;
+  if (!raw) return -Infinity;
+  let score = armxPreviewMoveOrder(game, raw) * 0.9;
+  if (Number.isFinite(entry.preliminary)) score += entry.preliminary * 0.22;
+  if (Number.isFinite(entry.scout)) score += entry.scout * 0.08;
+  if (Number.isFinite(entry.tactical)) score += entry.tactical * 0.28;
+  return score;
+}
+
+function armxPreviewCandidatePool(game, proScored) {
+  const result = [];
+  const seen = new Set();
+  const add = entry => {
+    const raw = entry && (entry.raw || entry.move);
+    if (!raw) return;
+    const key = armxPreviewMoveKey(raw);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(entry);
+  };
+
+  // Always include every candidate Pro actually deep-searched first.
+  proScored
+    .filter(entry => Number.isFinite(entry.score))
+    .sort((a, b) => b.score - a.score)
+    .forEach(add);
+
+  // Then deliberately widen beyond Pro's finalist beam using a different ordering.
+  proScored
+    .filter(entry => !seen.has(armxPreviewMoveKey(entry.raw || entry.move)))
+    .map((entry, index) => ({ entry, index, priority: armxPreviewCandidatePriority(game, entry) }))
+    .sort((a, b) => (b.priority - a.priority) || (a.index - b.index))
+    .forEach(item => {
+      if (result.length < ARMX_PREVIEW.maxCandidates) add(item.entry);
+    });
+
+  return result.slice(0, ARMX_PREVIEW.maxCandidates);
+}
+
+function armxPreviewSearchCandidate(game, candidate, perspective, state) {
+  const criticalLine = [];
   let worst = Infinity;
-  let criticalReply = null;
-  let criticalLine = [];
+  let worstReply = null;
 
+  if (state.nodes >= state.maxNodes) return { score: -Infinity, nodes: 0, line: [] };
   game.fastApply(candidate);
-  nodes += 1;
+  state.nodes += 1;
   const replies = armxPreviewTopMoves(game, ARMX_PREVIEW.maxReplies);
-
-  if (!replies.length) {
-    const score = armxPreviewStatic(game, perspective);
+  const rootTerminal = armxPreviewTerminal(game, perspective, 1, replies);
+  if (rootTerminal !== null) {
     game.fastUndo();
-    return { score, risk: Math.max(0, baseline - score), nodes, criticalReply: null, line: [] };
+    return { score: rootTerminal, nodes: 1, line: [] };
   }
 
   for (const reply of replies) {
-    if (nodes >= nodeBudget) break;
+    if (state.nodes >= state.maxNodes) break;
+    const replyForcing = armxPreviewIsForcing(game, reply);
     game.fastApply(reply);
-    nodes += 1;
+    state.nodes += 1;
 
-    let bestRecovery = -Infinity;
-    let bestRecoveryMove = null;
     const continuations = armxPreviewTopMoves(game, ARMX_PREVIEW.maxContinuations);
+    const replyTerminal = armxPreviewTerminal(game, perspective, 2, continuations);
+    let bestRecovery = replyTerminal !== null ? replyTerminal : -Infinity;
+    let bestContinuation = null;
 
-    if (!continuations.length) {
-      bestRecovery = armxPreviewStatic(game, perspective);
-    } else {
+    if (replyTerminal === null) {
       for (const continuation of continuations) {
-        if (nodes >= nodeBudget) break;
-
-        // This must be evaluated before applying the continuation because fastGivesCheck
-        // expects a move from the current position.
-        const forcingContinuation = armxPreviewIsForcing(game, continuation);
+        if (state.nodes >= state.maxNodes) break;
+        const continuationForcing = armxPreviewIsForcing(game, continuation);
         game.fastApply(continuation);
-        nodes += 1;
+        state.nodes += 1;
 
-        let value = armxPreviewStatic(game, perspective);
+        let value;
+        const fourthMoves = game.fastMoves();
+        const thirdTerminal = armxPreviewTerminal(game, perspective, 3, fourthMoves);
+        if (thirdTerminal !== null) {
+          value = thirdTerminal;
+        } else {
+          value = armxPreviewEvaluate(game, perspective);
 
-        // Fourth ply is exceptional, not normal: one reply, only after a forcing third ply.
-        if (nodes < nodeBudget && forcingContinuation) {
-          const fourthReplies = armxPreviewTopMoves(game, ARMX_PREVIEW.maxFourthPlyReplies);
-          if (fourthReplies.length) {
-            game.fastApply(fourthReplies[0]);
-            nodes += 1;
-            value = Math.min(value, armxPreviewStatic(game, perspective));
-            game.fastUndo();
+          // Fourth ply is selective: spend it when the line is forcing or when the opponent
+          // has an immediately dangerous reply. The opponent gets the minimum value.
+          const shouldExtend = continuationForcing || replyForcing ||
+            fourthMoves.some(move => armxPreviewIsForcing(game, move));
+          if (shouldExtend && state.nodes < state.maxNodes) {
+            const orderedFourth = fourthMoves
+              .map((move, index) => ({ move, index, order: armxPreviewMoveOrder(game, move) }))
+              .sort((a, b) => (b.order - a.order) || (a.index - b.index))
+              .slice(0, ARMX_PREVIEW.maxFourthPlyReplies)
+              .map(entry => entry.move);
+            let fourthWorst = Infinity;
+            for (const fourth of orderedFourth) {
+              if (state.nodes >= state.maxNodes) break;
+              game.fastApply(fourth);
+              state.nodes += 1;
+              const fifthLegal = game.fastMoves();
+              const fourthTerminal = armxPreviewTerminal(game, perspective, 4, fifthLegal);
+              const fourthValue = fourthTerminal !== null ? fourthTerminal : armxPreviewEvaluate(game, perspective);
+              game.fastUndo();
+              if (fourthValue < fourthWorst) fourthWorst = fourthValue;
+            }
+            if (fourthWorst !== Infinity) value = Math.min(value, fourthWorst);
           }
         }
 
         game.fastUndo();
         if (value > bestRecovery) {
           bestRecovery = value;
-          bestRecoveryMove = continuation;
+          bestContinuation = continuation;
         }
       }
     }
@@ -156,60 +230,68 @@ function armxPreviewCritiqueCandidate(game, candidate, perspective, baseline, no
     game.fastUndo();
     if (bestRecovery < worst) {
       worst = bestRecovery;
-      criticalReply = reply;
-      criticalLine = bestRecoveryMove ? [reply, bestRecoveryMove] : [reply];
+      worstReply = reply;
+      criticalLine.length = 0;
+      criticalLine.push(reply);
+      if (bestContinuation) criticalLine.push(bestContinuation);
     }
   }
 
   game.fastUndo();
-  if (worst === Infinity) worst = baseline;
-
-  return {
-    score: worst,
-    risk: Math.max(0, baseline - worst),
-    nodes,
-    criticalReply,
-    line: criticalLine,
-  };
+  if (worst === Infinity) worst = armxPreviewEvaluate(game, perspective);
+  return { score: worst, reply: worstReply, line: criticalLine.slice() };
 }
 
-function armxPreviewReview(game, candidates, perspective) {
+function armxPreviewReview(game, proScored, perspective) {
+  const pool = armxPreviewCandidatePool(game, proScored);
+  const state = { nodes: 0, maxNodes: ARMX_PREVIEW.maxNodes };
   const reports = [];
-  const baseline = armxPreviewStatic(game, perspective);
-  let totalNodes = 0;
 
-  for (const entry of candidates.slice(0, ARMX_PREVIEW.maxCandidates)) {
-    const remaining = ARMX_PREVIEW.maxNodes - totalNodes;
-    if (remaining <= 0) break;
-
+  for (const entry of pool) {
+    if (state.nodes >= state.maxNodes) break;
     const raw = entry.raw || entry.move;
-    if (!raw) continue;
-
-    const report = armxPreviewCritiqueCandidate(game, raw, perspective, baseline, remaining);
-    totalNodes += report.nodes;
-
-    // Preview authority is intentionally modest. A 100cp concrete risk does not automatically
-    // overturn v5; it merely subtracts a bounded warning from that candidate's existing score.
-    const adjustment = -Math.min(ARMX_PREVIEW.maxAdjustment, report.risk * 0.55);
+    const before = state.nodes;
+    const searched = armxPreviewSearchCandidate(game, raw, perspective, state);
     reports.push({
       raw,
-      stonefishScore: entry.score,
-      armxScore: report.score,
-      risk: report.risk,
-      criticalReply: report.criticalReply,
-      line: report.line,
-      nodes: report.nodes,
-      adjustment,
+      proScore: entry.score,
+      armxScore: searched.score,
+      criticalReply: searched.reply || null,
+      line: searched.line || [],
+      nodes: state.nodes - before,
+      forcing: armxPreviewIsForcing(game, raw),
     });
   }
+
+  reports.sort((a, b) => {
+    if (Math.abs(b.armxScore - a.armxScore) > 1e-9) return b.armxScore - a.armxScore;
+    const au = stonefishV45RawUci(game, a.raw), bu = stonefishV45RawUci(game, b.raw);
+    return au < bu ? -1 : au > bu ? 1 : 0;
+  });
+
+  const proRaw = proScored.length ? proScored[0].raw : null;
+  const proReport = reports.find(report => proRaw && stonefishV5SameMove(report.raw, proRaw)) || null;
+  const best = reports.length ? reports[0] : null;
+  const gain = best && proReport ? best.armxScore - proReport.armxScore : 0;
+  const threshold = proReport && proReport.armxScore <= ARMX_PREVIEW.emergencyScore
+    ? ARMX_PREVIEW.emergencyOverrideThreshold
+    : ARMX_PREVIEW.overrideThreshold;
+  const override = Boolean(best && proReport && !stonefishV5SameMove(best.raw, proRaw) && gain >= threshold);
 
   return {
     model: ARMX_PREVIEW.name,
     version: ARMX_PREVIEW.version,
+    base: ARMX_PREVIEW.base,
     basePly: ARMX_PREVIEW.basePly,
     maxPly: ARMX_PREVIEW.maxPly,
-    nodes: totalNodes,
+    nodes: state.nodes,
+    candidatesReviewed: reports.length,
     reports,
+    proRaw,
+    recommendedRaw: override ? best.raw : proRaw,
+    override,
+    gain,
+    threshold,
   };
 }
 
