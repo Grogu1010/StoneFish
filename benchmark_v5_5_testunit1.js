@@ -1,6 +1,7 @@
 // Development benchmark for Stonefish v5.5 testunit1.
-// Invariant: v5.5 = Stonefish v5 Pro + ARMX-preview. This benchmark uses varied
-// deterministic openings so repeated games do not collapse into one identical line.
+// v5.5 now combines v5 Pro chess knowledge, a native Guarded-PVS search core,
+// and the separate ARMX-preview critic. Varied deterministic openings prevent
+// repeated games from collapsing into one identical line.
 
 const fs = require('fs');
 const vm = require('vm');
@@ -21,7 +22,7 @@ const engineFiles = [
 if (fs.existsSync('Stonefish_v5_pro_geometry_patch.js')) engineFiles.push('Stonefish_v5_pro_geometry_patch.js');
 if (fs.existsSync('Stonefish_runtime_speed_patch.js')) engineFiles.push('Stonefish_runtime_speed_patch.js');
 if (fs.existsSync('Stonefish_fast_moves_experiment.js')) engineFiles.push('Stonefish_fast_moves_experiment.js');
-engineFiles.push('ARMX_preview_fast.js', 'Stonefish_v5_5_testunit1.js');
+engineFiles.push('Stonefish_v5_5_search.js', 'ARMX_preview_fast.js', 'Stonefish_v5_5_testunit1.js');
 
 vm.runInThisContext(engineFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n'), {
   filename: 'stonefish-v5-5-testunit1-bundle.js'
@@ -59,10 +60,6 @@ function cloneGame(source) {
 }
 
 function clearSharedEngineCaches() {
-  // Pro's speed layer uses global position-keyed caches. Without clearing these,
-  // measuring Pro first warms data that v5.5 can reuse and makes the second model
-  // look artificially fast. Per-game runtime memos live on each cloned Chess object
-  // and therefore do not need clearing here.
   if (typeof STONEFISH_V5_PRO_POSITION_CACHE !== 'undefined') STONEFISH_V5_PRO_POSITION_CACHE.clear();
   if (typeof STONEFISH_V5_PRO_CONTEXT_CACHE !== 'undefined') STONEFISH_V5_PRO_CONTEXT_CACHE.clear();
   if (typeof STONEFISH_V5_PRO_ADAPTIVE_CACHE !== 'undefined') STONEFISH_V5_PRO_ADAPTIVE_CACHE.clear();
@@ -82,20 +79,27 @@ function cleanMove(game, raw) {
 }
 
 function assertContract() {
-  if (STONEFISH_V5_5_TESTUNIT1.base !== 'Stonefish v5 Pro') throw new Error(`Wrong v5.5 base: ${STONEFISH_V5_5_TESTUNIT1.base}`);
-  if (ARMX_PREVIEW.basePly !== 3 || ARMX_PREVIEW.maxPly !== 4) throw new Error('ARMX-preview must remain 3-ply base / 4-ply max');
-  if (ARMX_PREVIEW.maxNodes > 400) throw new Error(`ARMX-preview node budget too high: ${ARMX_PREVIEW.maxNodes}`);
+  if (STONEFISH_V5_5_TESTUNIT1.knowledgeBase !== 'Stonefish v5 Pro') {
+    throw new Error(`Wrong v5.5 knowledge base: ${STONEFISH_V5_5_TESTUNIT1.knowledgeBase}`);
+  }
+  if (STONEFISH_V5_5_TESTUNIT1.search !== 'Guarded PVS') {
+    throw new Error(`Wrong v5.5 search core: ${STONEFISH_V5_5_TESTUNIT1.search}`);
+  }
+  if (ARMX_PREVIEW.basePly !== 3 || ARMX_PREVIEW.maxPly !== 4) {
+    throw new Error('ARMX-preview must remain 3-ply base / 4-ply max');
+  }
+  if (ARMX_PREVIEW.maxNodes > 160) throw new Error(`ARMX-preview node budget too high: ${ARMX_PREVIEW.maxNodes}`);
+  if (STONEFISH_V5_5_SEARCH.rootCandidates > 2) throw new Error('Preview v5.5 must keep at most two full-depth root finalists');
 }
 
-function assertProFallbackParity() {
+function assertNativeFallbackWorks() {
   const saved = globalThis.armxPreviewReview;
   try {
     globalThis.armxPreviewReview = undefined;
     clearSharedEngineCaches();
-    const pro = withSeed(0x5150, () => getStonefishV5ProMove(new Chess()));
-    clearSharedEngineCaches();
-    const v55 = withSeed(0x5150, () => getStonefishV55Testunit1Move(new Chess()));
-    if (moveKey(pro) !== moveKey(v55)) throw new Error(`Without ARMX, v5.5 must equal v5 Pro: ${moveKey(pro)} vs ${moveKey(v55)}`);
+    const game = new Chess();
+    const move = withSeed(0x5150, () => getStonefishV55Testunit1Move(game));
+    if (!move || !play(game, move)) throw new Error('v5.5 native search must remain legal without ARMX');
   } finally {
     globalThis.armxPreviewReview = saved;
   }
@@ -142,9 +146,6 @@ function timedMove(seed, fn) {
 
 function latencyAndBehavior(samples) {
   let proMs = 0, v55Ms = 0, changed = 0, overrides = 0, nodes = 0;
-
-  // Warm both code paths before timing. Caches are cleared around each warmup so
-  // only JIT/code warmup is shared, not position evaluation data.
   if (samples.length) {
     clearSharedEngineCaches();
     withSeed(0x7701, () => getStonefishV5ProMove(cloneGame(samples[0])));
@@ -158,8 +159,6 @@ function latencyAndBehavior(samples) {
     const b = cloneGame(samples[i]);
     const seed = 0x9000 + i;
     let proResult, v55Result;
-
-    // Alternate measurement order to balance any residual runtime/CPU effects.
     if (i % 2 === 0) {
       proResult = timedMove(seed, () => getStonefishV5ProMove(a));
       v55Result = timedMove(seed, () => getStonefishV55Testunit1Move(b));
@@ -171,20 +170,21 @@ function latencyAndBehavior(samples) {
     proMs += proResult.ms;
     v55Ms += v55Result.ms;
     if (moveKey(proResult.move) !== moveKey(v55Result.move)) changed += 1;
-
     const review = stonefishV55Testunit1LastARMX();
     if (!review || !review.connected) throw new Error('ARMX-preview was not connected');
     if (review.nodes > ARMX_PREVIEW.maxNodes) throw new Error(`ARMX node budget exceeded: ${review.nodes}`);
     if (review.override) overrides += 1;
     nodes += review.nodes;
   }
+
   return {
     samples: samples.length,
     changedMoves: changed,
     overrides,
     proAverageMs: samples.length ? proMs / samples.length : 0,
     v55AverageMs: samples.length ? v55Ms / samples.length : 0,
-    slowdownRatio: proMs ? v55Ms / proMs : 0,
+    latencyRatio: proMs ? v55Ms / proMs : 0,
+    speedupVsPro: v55Ms ? proMs / v55Ms : 0,
     armxAverageNodes: samples.length ? nodes / samples.length : 0
   };
 }
@@ -221,16 +221,24 @@ function variedHeadToHead(games) {
 }
 
 assertContract();
-assertProFallbackParity();
+assertNativeFallbackWorks();
 const sampleCount = Math.max(4, Number.parseInt(process.env.SAMPLES || '12', 10) || 12);
 const latency = latencyAndBehavior(buildSamplePositions(sampleCount));
 const games = Math.max(0, Number.parseInt(process.env.GAMES || '12', 10) || 0);
 const headToHead = games ? variedHeadToHead(games) : null;
 
-console.log('\nSTONEFISH_V5_5_TESTUNIT1 ' + JSON.stringify({
+const result = {
   testUnit: STONEFISH_V5_5_TESTUNIT1.name,
-  base: STONEFISH_V5_5_TESTUNIT1.base,
+  knowledgeBase: STONEFISH_V5_5_TESTUNIT1.knowledgeBase,
+  search: STONEFISH_V5_5_SEARCH,
   armx: ARMX_PREVIEW,
   latency,
-  headToHead
-}));
+  headToHead,
+  targets: { winsPer100: 65, speedupVsPro: 3 }
+};
+console.log('\nSTONEFISH_V5_5_TESTUNIT1 ' + JSON.stringify(result));
+
+if (process.env.RELEASE_GATE === '1' && games >= 100) {
+  if (headToHead.win < 65) throw new Error(`v5.5 strength gate failed: ${headToHead.win} wins; need >=65`);
+  if (latency.speedupVsPro < 3) throw new Error(`v5.5 speed gate failed: ${latency.speedupVsPro.toFixed(3)}x; need >=3x`);
+}
