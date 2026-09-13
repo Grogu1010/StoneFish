@@ -125,13 +125,17 @@ function armxPreviewCritiqueCandidate(game, candidate, perspective, baseline, no
     } else {
       for (const continuation of continuations) {
         if (nodes >= nodeBudget) break;
+
+        // This must be evaluated before applying the continuation because fastGivesCheck
+        // expects a move from the current position.
+        const forcingContinuation = armxPreviewIsForcing(game, continuation);
         game.fastApply(continuation);
         nodes += 1;
 
         let value = armxPreviewStatic(game, perspective);
 
         // Fourth ply is exceptional, not normal: one reply, only after a forcing third ply.
-        if (nodes < nodeBudget && armxPreviewIsForcing(game, continuation)) {
+        if (nodes < nodeBudget && forcingContinuation) {
           const fourthReplies = armxPreviewTopMoves(game, ARMX_PREVIEW.maxFourthPlyReplies);
           if (fourthReplies.length) {
             game.fastApply(fourthReplies[0]);
