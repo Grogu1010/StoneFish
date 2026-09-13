@@ -10,6 +10,7 @@ on:
       - 'Stonefish_v5_pro_speed_patch.js'
       - 'Stonefish_v5_pro_geometry_patch.js'
       - 'Stonefish_runtime_speed_patch.js'
+      - 'Stonefish_fast_moves_experiment.js'
       - 'Stonefish_v5.js'
       - 'Stonefish_v4_5*.js'
       - 'Stonefish_v4.js'
@@ -21,6 +22,7 @@ on:
       - 'benchmark_v5_pro_head_to_head.js'
       - 'benchmark_v5_pro_regression.js'
       - 'benchmark_runtime_parity.js'
+      - 'benchmark_fast_moves_parity.js'
       - 'benchmark_ui_move_apply.js'
       - 'benchmark_attack_count_parity.js'
       - 'benchmark_has_legal_move_parity.js'
@@ -31,6 +33,7 @@ on:
       - 'Stonefish_v5_pro_speed_patch.js'
       - 'Stonefish_v5_pro_geometry_patch.js'
       - 'Stonefish_runtime_speed_patch.js'
+      - 'Stonefish_fast_moves_experiment.js'
       - 'Stonefish_v5.js'
       - 'Stonefish_v4_5*.js'
       - 'Stonefish_v4.js'
@@ -42,6 +45,7 @@ on:
       - 'benchmark_v5_pro_head_to_head.js'
       - 'benchmark_v5_pro_regression.js'
       - 'benchmark_runtime_parity.js'
+      - 'benchmark_fast_moves_parity.js'
       - 'benchmark_ui_move_apply.js'
       - 'benchmark_attack_count_parity.js'
       - 'benchmark_has_legal_move_parity.js'
@@ -52,6 +56,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  fast-moves-parity:
+    name: fastMoves one-pass parity + speed
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout optimized candidate
+        uses: actions/checkout@v4
+      - name: Checkout released production reference
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: reference
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compare exact legal move lists and same-run speed
+        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_fast_moves_parity.js
+
   has-legal-move-parity:
     name: fastHasLegalMove early-exit parity + speed
     runs-on: ubuntu-latest

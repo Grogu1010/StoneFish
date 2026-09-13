@@ -18,6 +18,9 @@ const engineFiles = [
 if (fs.existsSync('Stonefish_runtime_speed_patch.js')) {
   engineFiles.push('Stonefish_runtime_speed_patch.js');
 }
+if (fs.existsSync('Stonefish_fast_moves_experiment.js')) {
+  engineFiles.push('Stonefish_fast_moves_experiment.js');
+}
 
 const source = engineFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n');
 vm.runInThisContext(source, { filename: 'stonefish-benchmark-bundle.js' });

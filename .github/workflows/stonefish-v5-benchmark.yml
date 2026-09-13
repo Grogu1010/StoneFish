@@ -13,9 +13,11 @@ on:
       - 'Stonefish_v3.js'
       - 'StonefishChess.js'
       - 'Stonefish_runtime_speed_patch.js'
+      - 'Stonefish_fast_moves_experiment.js'
       - 'Stonefish_ui_speed_patch.js'
       - 'index.html'
       - 'benchmark_v5.js'
+      - 'benchmark_fast_moves_parity.js'
       - 'benchmark_ui_move_apply.js'
       - '.github/workflows/stonefish-v5-benchmark.yml'
 
