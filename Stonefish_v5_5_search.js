@@ -15,6 +15,10 @@ const STONEFISH_V5_5_SEARCH = Object.freeze({
   lmrMinDepth: 3,
   lmrAfterMove: 2,
   pvsEpsilon: 1e-6,
+  tacticalWeight: 1.10,
+  scoutWeight: 0.20,
+  heritageMultiplier: 0.75,
+  conversionWeight: 0.50,
 });
 
 let STONEFISH_V5_5_LAST_SEARCH_STATS = null;
@@ -245,9 +249,14 @@ function stonefishV55FastCandidates(game) {
   for (let i = 0; i < n; i += 1) {
     const entry = scored[i];
     entry.tactical = stonefishV5TacticalScore(game, entry.raw);
-    const heritageBoost = entry.heritageMatch ? STONEFISH_V5_WEIGHTS.heritage * 1.25 : 0;
-    entry.preliminary = entry.tactical + entry.scout * 0.34 + heritageBoost
-      + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+    const heritageBoost = entry.heritageMatch
+      ? STONEFISH_V5_WEIGHTS.heritage * STONEFISH_V5_5_SEARCH.heritageMultiplier
+      : 0;
+    const conversion = stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+    entry.preliminary = entry.tactical * STONEFISH_V5_5_SEARCH.tacticalWeight
+      + entry.scout * STONEFISH_V5_5_SEARCH.scoutWeight
+      + heritageBoost
+      + conversion * STONEFISH_V5_5_SEARCH.conversionWeight;
     entry.score = entry.preliminary;
   }
   for (let i = n; i < scored.length; i += 1) {
