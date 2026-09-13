@@ -15,7 +15,8 @@ const files = [
   'Stonefish_v5_pro.js',
   'Stonefish_v5_pro_speed_patch.js',
   'Stonefish_v5_pro_geometry_patch.js',
-  'Stonefish_runtime_speed_patch.js'
+  'Stonefish_runtime_speed_patch.js',
+  'Stonefish_fast_moves_experiment.js'
 ];
 
 const ctx = vm.createContext({ console });
@@ -94,7 +95,6 @@ const histories = generateHistories();
 const models = ['v1', 'v2', 'v3', 'v4', 'v45', 'v5', 'v5pro'];
 const result = { positions: histories.length, models: {} };
 
-// One unmeasured warmup on the first sampled position for each model.
 for (let i = 0; i < models.length; i += 1) {
   const model = models[i];
   ctx.__setSeed(0xABC000 + i);
