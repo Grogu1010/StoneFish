@@ -9,7 +9,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt4',
+  version: 'preview-adapt5',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 2,
@@ -18,6 +18,7 @@ const ARMX_PREVIEW = Object.freeze({
   maxMultiplierDelta: 0.18,
   multiplierSignalScale: 0.18,
   opponentSignalWeight: 1.10,
+  responseOutcomeWeight: 0.65,
   effectScale: 360,
   episodeFeatureWeight: 0.55,
   maxHostGap: 260,
@@ -358,17 +359,36 @@ function armxPreviewCandidateReport(game, entry, profile) {
 
   for (const feature of replyOpportunities) {
     const choice = armxPreviewOpponentChoiceRate(profile, feature);
-    const effect = armxPreviewEffect(profile.opponentEffects, feature);
-    if (choice.evidence < 2 || effect.evidence < ARMX_PREVIEW.minEvidence) continue;
-    // Choice propensity matters twice: a behavior the opponent only selects one
-    // time in four should not dominate a root decision merely because its past
-    // outcome was dramatic. Frequently chosen behaviors retain strong influence.
-    const propensity = choice.rate * choice.rate;
-    const contribution = propensity * effect.value * ARMX_PREVIEW.opponentSignalWeight;
-    signal += contribution;
-    evidence += Math.min(2.5, (choice.evidence * 0.35 + effect.evidence * 0.25) * Math.max(0.25, choice.rate));
-    if (Math.abs(contribution) >= 0.08) {
-      reasons.push(`opp-${feature}:${Math.round(choice.rate * 100)}%/${effect.value > 0 ? '+' : ''}${effect.value.toFixed(2)}`);
+    const opponentEffect = armxPreviewEffect(profile.opponentEffects, feature);
+
+    if (choice.evidence >= 2 && opponentEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+      // What the opponent actually tends to do matters: uncommon responses should
+      // not dominate merely because one historical occurrence had a huge result.
+      const propensity = choice.rate * choice.rate;
+      const contribution = propensity * opponentEffect.value * ARMX_PREVIEW.opponentSignalWeight;
+      signal += contribution;
+      evidence += Math.min(2.5, (choice.evidence * 0.35 + opponentEffect.evidence * 0.25) * Math.max(0.25, choice.rate));
+      if (Math.abs(contribution) >= 0.08) {
+        reasons.push(`opp-${feature}:${Math.round(choice.rate * 100)}%/${opponentEffect.value > 0 ? '+' : ''}${opponentEffect.value.toFixed(2)}`);
+      }
+    }
+
+    // Connect earlier exchange outcomes to a new exchange invitation. If ARMX has
+    // learned that *our* rook/trade/simplification episodes work against this
+    // opponent, a candidate that gives them the option to accept such an exchange
+    // receives only the acceptance-rate-weighted expected value. If they rarely
+    // accept it, its influence stays small; if they habitually accept, the learned
+    // result matters. This uses no search tree and adds no board traversal.
+    const ourEffect = armxPreviewEffect(profile.ourEffects, feature);
+    if (choice.evidence >= 3 && ourEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+      const reliability = armxPreviewClamp((choice.evidence - 1) / 6, 0.25, 1);
+      const expectedOutcome = choice.rate * ourEffect.value
+        * ARMX_PREVIEW.responseOutcomeWeight * reliability;
+      signal += expectedOutcome;
+      evidence += Math.min(1.75, ourEffect.evidence * 0.20 + choice.evidence * 0.12) * Math.max(0.2, choice.rate);
+      if (Math.abs(expectedOutcome) >= 0.06) {
+        reasons.push(`offer-${feature}:${Math.round(choice.rate * 100)}%/${ourEffect.value > 0 ? '+' : ''}${ourEffect.value.toFixed(2)}`);
+      }
     }
   }
 
