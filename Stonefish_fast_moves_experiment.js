@@ -1,4 +1,4 @@
-// Pass-9 experiment: generate the final legal move list directly in the exact
+// Pass-9 speed patch: generate the final legal move list directly in the exact
 // released pseudo-move order, avoiding the intermediate pseudo array and second walk.
 Chess.prototype.fastMoves = function() {
   const b = this.boardState;
