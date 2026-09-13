@@ -11,7 +11,7 @@ const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   knowledgeBase: 'Stonefish v5 Pro',
   search: 'Guarded PVS',
   nativeFeature: 'PVS + TT four-root search',
-  armx: 'ARMX-preview selective audit',
+  armx: 'ARMX-preview selective adversarial critic',
   thirdRootChallenger: false,
   armxScoreGap: 450,
 });
@@ -62,15 +62,31 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
     : Infinity;
   let review = null;
   let audited = false;
+  let criticApplied = false;
+  let criticAdjustment = 0;
+  let criticRisk = 0;
   const shouldAskARMX = stonefishV55Testunit1ShouldAskARMX(game, finished, perspective);
 
   if (provisional && shouldAskARMX && typeof armxPreviewReview === 'function') {
     review = armxPreviewReview(game, [provisional], perspective);
     const report = review && Array.isArray(review.reports) ? review.reports[0] : null;
     if (report && report.criticalReply) {
+      const originalScore = provisional.score;
       stonefishV55AuditCandidate(game, provisional, perspective, report.criticalReply);
-      stonefishV55SortFinalScores(game, finished);
       audited = true;
+      criticRisk = Number.isFinite(report.risk) ? report.risk : 0;
+      criticAdjustment = Number.isFinite(report.adjustment) ? report.adjustment : 0;
+
+      // ARMX is deliberately allowed to disagree with the host. The injected host
+      // re-search remains the first line of defence, but when ARMX independently
+      // finds a materially worse novel reply we also retain a bounded critic penalty.
+      // Taking the more pessimistic of the two avoids double-counting the same risk.
+      if (criticAdjustment < 0) {
+        provisional.armxCriticAdjustment = criticAdjustment;
+        provisional.score = Math.min(provisional.score, originalScore + criticAdjustment);
+        criticApplied = true;
+      }
+      stonefishV55SortFinalScores(game, finished);
     }
   }
 
@@ -89,6 +105,9 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
     hostCandidatesReviewed: reports.length,
     injectedReplies: reports.filter(report => report && report.criticalReply).length,
     audited,
+    criticApplied,
+    criticAdjustment,
+    criticRisk,
     override: changedByARMX,
     changedMove: changedByARMX,
     recommendedRaw: winner ? winner.raw : null,
