@@ -11,7 +11,8 @@ const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'Guarded PVS',
   semifinalists: 7,
   rootCandidates: 4,
-  branch: [0, 1, 2, 1, 4],
+  rootProbeKeep: 2,
+  branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
   lmrAfterMove: 2,
   pvsEpsilon: 1e-6,
@@ -169,6 +170,7 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
     }
     if (beta <= alpha) {
       cutoff = true;
+      if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.cutoffs += 1;
       break;
     }
   }
@@ -177,8 +179,7 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
   return best;
 }
 
-function stonefishV55FivePlyScore(game, raw, perspective, injectedReply = null) {
-  const historyDepth = game.historyStack.length;
+function stonefishV55ResetSearchStats() {
   STONEFISH_V5_5_LAST_SEARCH_STATS = {
     nodes: 0,
     leaves: 0,
@@ -188,22 +189,30 @@ function stonefishV55FivePlyScore(game, raw, perspective, injectedReply = null) 
     cutoffs: 0,
     ttHits: 0,
   };
+}
+
+function stonefishV55FivePlyWindowScore(game, raw, perspective, alpha, beta, injectedReply = null) {
+  const historyDepth = game.historyStack.length;
+  stonefishV55ResetSearchStats();
   try {
     game.fastApply(raw);
     const legal = game.fastMoves();
     if (!legal.length) return game.in_check() ? STONEFISH_V5_PRO_MATE - 1 : 0;
-    return stonefishV55Minimax(
-      game,
-      4,
-      perspective,
-      -STONEFISH_V5_PRO_MATE,
-      STONEFISH_V5_PRO_MATE,
-      1,
-      injectedReply
-    );
+    return stonefishV55Minimax(game, 4, perspective, alpha, beta, 1, injectedReply);
   } finally {
     while (game.historyStack.length > historyDepth) game.fastUndo();
   }
+}
+
+function stonefishV55FivePlyScore(game, raw, perspective, injectedReply = null) {
+  return stonefishV55FivePlyWindowScore(
+    game,
+    raw,
+    perspective,
+    -STONEFISH_V5_PRO_MATE,
+    STONEFISH_V5_PRO_MATE,
+    injectedReply
+  );
 }
 
 function stonefishV55RecomputeFinalScore(entry) {
@@ -273,6 +282,32 @@ function stonefishV55FastCandidates(game) {
   return scored;
 }
 
+function stonefishV55RootSecondScore(entries) {
+  let first = -Infinity;
+  let second = -Infinity;
+  for (const entry of entries) {
+    if (!entry || !Number.isFinite(entry.score)) continue;
+    if (entry.score > first) {
+      second = first;
+      first = entry.score;
+    } else if (entry.score > second) {
+      second = entry.score;
+    }
+  }
+  return second;
+}
+
+function stonefishV55RootProbeThreshold(entry, secondScore) {
+  if (!Number.isFinite(secondScore)) return null;
+  const heritageFloor = entry.heritageMatch
+    ? entry.preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
+    : -Infinity;
+  if (heritageFloor >= secondScore - 1e-9) return null;
+  if (secondScore <= -STONEFISH_V5_PRO_MATE * 0.9) return null;
+  if (secondScore >= STONEFISH_V5_PRO_MATE * 0.9) return secondScore;
+  return (secondScore - entry.preliminary * 0.46) / 1.28;
+}
+
 function stonefishV55FinishCandidates(game, ranked) {
   if (!ranked.length) return [];
   const context = ranked.v55Context || null;
@@ -287,6 +322,9 @@ function stonefishV55FinishCandidates(game, ranked) {
   STONEFISH_V5_5_ACTIVE_TT = rootTT;
 
   try {
+    // Root knowledge is cheap relative to the five-ply search. Compute it for all
+    // four finalists first so the lower finalists can be probed against the exact
+    // score needed to enter the current top two.
     for (let i = 0; i < finalists; i += 1) {
       const entry = ranked[i];
       entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
@@ -294,8 +332,49 @@ function stonefishV55FinishCandidates(game, ranked) {
         : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
       entry.preliminary = entry.tactical + entry.knowledge + entry.conversion;
       entry.refutationGuardCriticalReply = null;
+      entry.rootProbeOnly = false;
+      entry.rootProbeBound = null;
+      entry.deep = null;
+      entry.score = -Infinity;
+    }
+
+    const keep = Math.min(STONEFISH_V5_5_SEARCH.rootProbeKeep, finalists);
+    const exact = [];
+    for (let i = 0; i < keep; i += 1) {
+      const entry = ranked[i];
       entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
       entry.score = stonefishV55RecomputeFinalScore(entry);
+      exact.push(entry);
+    }
+
+    for (let i = keep; i < finalists; i += 1) {
+      const entry = ranked[i];
+      const secondScore = stonefishV55RootSecondScore(exact);
+      const threshold = stonefishV55RootProbeThreshold(entry, secondScore);
+      let needsFullSearch = threshold === null;
+
+      if (!needsFullSearch) {
+        const alpha = Math.max(-STONEFISH_V5_PRO_MATE, threshold);
+        const beta = Math.min(STONEFISH_V5_PRO_MATE, alpha + STONEFISH_V5_5_SEARCH.pvsEpsilon);
+        const probe = stonefishV55FivePlyWindowScore(game, entry.raw, perspective, alpha, beta, null);
+        entry.rootProbeBound = probe;
+        if (probe > alpha + STONEFISH_V5_5_SEARCH.pvsEpsilon * 0.5) {
+          needsFullSearch = true;
+        } else {
+          // The zero-window search proved this candidate cannot enter the exact
+          // top two under the same final-score formula. ARMX only consumes those
+          // exact top two, so no full search is needed here.
+          entry.rootProbeOnly = true;
+          entry.deep = probe;
+          entry.score = -Infinity;
+        }
+      }
+
+      if (needsFullSearch) {
+        entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
+        entry.score = stonefishV55RecomputeFinalScore(entry);
+        exact.push(entry);
+      }
     }
   } finally {
     STONEFISH_V5_5_ACTIVE_TT = oldTT;
@@ -325,6 +404,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.STONEFISH_V5_5_SEARCH = STONEFISH_V5_5_SEARCH;
   globalThis.stonefishV55Minimax = stonefishV55Minimax;
   globalThis.stonefishV55FivePlyScore = stonefishV55FivePlyScore;
+  globalThis.stonefishV55FivePlyWindowScore = stonefishV55FivePlyWindowScore;
   globalThis.stonefishV55FastCandidates = stonefishV55FastCandidates;
   globalThis.stonefishV55FinishCandidates = stonefishV55FinishCandidates;
   globalThis.stonefishV55VerifyInjectedReply = stonefishV55VerifyInjectedReply;
