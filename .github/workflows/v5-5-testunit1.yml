@@ -1,6 +1,19 @@
 name: Stonefish v5.5 testunit1 dev
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'ARMX_preview_fast.js'
+      - 'Stonefish_v5_5_search.js'
+      - 'Stonefish_v5_5_testunit1.js'
+      - 'Stonefish_v5_5_testunit1_dev_ui.js'
+      - 'test-worker.js'
+      - 'benchmark_v5_5_testunit1.js'
+      - 'benchmark_v5_5_teacher.js'
+      - 'DEV_V5_5_TESTUNIT1.md'
+      - '.github/workflows/v5-5-testunit1.yml'
   pull_request:
     paths:
       - 'ARMX_preview_fast.js'
@@ -9,6 +22,7 @@ on:
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
       - 'test-worker.js'
       - 'benchmark_v5_5_testunit1.js'
+      - 'benchmark_v5_5_teacher.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
   workflow_dispatch:
@@ -28,6 +42,12 @@ jobs:
         run: node --check Stonefish_v5_5_search.js
       - name: Syntax check v5.5 testunit1
         run: node --check Stonefish_v5_5_testunit1.js
+      - name: Syntax check v5.5 teacher benchmark
+        run: node --check benchmark_v5_5_teacher.js
+      - name: Run v5.5 teacher benchmark
+        env:
+          TEACHER_POSITIONS: '80'
+        run: node benchmark_v5_5_teacher.js
       - name: Run v5.5 dev benchmark
         env:
           SAMPLES: '20'
