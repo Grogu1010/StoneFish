@@ -9,7 +9,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt3',
+  version: 'preview-adapt4',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 2,
@@ -19,6 +19,7 @@ const ARMX_PREVIEW = Object.freeze({
   multiplierSignalScale: 0.18,
   opponentSignalWeight: 1.10,
   effectScale: 360,
+  episodeFeatureWeight: 0.55,
   maxHostGap: 260,
   maxDeepSacrifice: 55,
   minOverrideEvidence: 3.5,
@@ -50,10 +51,22 @@ function armxPreviewSquareDistance(a, b) {
   return Math.max(Math.abs(af - bf), Math.abs(ar - br));
 }
 
-function armxPreviewModelEval(game, perspective) {
+function armxPreviewStateSnapshot(game, perspective) {
   // Independent, intentionally small ARMX evaluation. It is not Stonefish's
   // evaluator: material + activity + king-zone presence + pawn advancement.
+  // Material counts are gathered in the same pass so ARMX can recognize exchange
+  // episodes without adding another board scan per observed ply.
   let score = 0;
+  const material = {
+    whiteRooks: 0,
+    blackRooks: 0,
+    whiteQueens: 0,
+    blackQueens: 0,
+    whiteMinors: 0,
+    blackMinors: 0,
+    whiteNonPawn: 0,
+    blackNonPawn: 0,
+  };
   const board = game.boardState;
   const enemyKing = game.kingSq[-perspective];
   const ourKing = game.kingSq[perspective];
@@ -65,6 +78,21 @@ function armxPreviewModelEval(game, perspective) {
     const type = Math.abs(piece);
     const sign = side === perspective ? 1 : -1;
     score += sign * ARMX_PREVIEW_PIECE_VALUES[type];
+
+    if (type >= 2 && type <= 5) {
+      if (side === 1) material.whiteNonPawn += 1;
+      else material.blackNonPawn += 1;
+    }
+    if (type === 4) {
+      if (side === 1) material.whiteRooks += 1;
+      else material.blackRooks += 1;
+    } else if (type === 5) {
+      if (side === 1) material.whiteQueens += 1;
+      else material.blackQueens += 1;
+    } else if (type === 2 || type === 3) {
+      if (side === 1) material.whiteMinors += 1;
+      else material.blackMinors += 1;
+    }
 
     const file = sq & 7;
     const rank = sq >> 3;
@@ -78,7 +106,11 @@ function armxPreviewModelEval(game, perspective) {
     if (side === perspective && type !== 6 && armxPreviewSquareDistance(sq, enemyKing) <= 2) score += 12;
     if (side !== perspective && type !== 6 && armxPreviewSquareDistance(sq, ourKing) <= 2) score -= 12;
   }
-  return score;
+  return { score, material };
+}
+
+function armxPreviewModelEval(game, perspective) {
+  return armxPreviewStateSnapshot(game, perspective).score;
 }
 
 function armxPreviewFeatureSet(game, move) {
@@ -142,7 +174,7 @@ function armxPreviewNewProfile(perspective) {
     perspective,
     processedPlies: 0,
     replay,
-    currentEval: armxPreviewModelEval(replay, perspective),
+    currentSnapshot: armxPreviewStateSnapshot(replay, perspective),
     pending: [],
     ourEffects: armxPreviewFreshStats(),
     opponentEffects: armxPreviewFreshStats(),
@@ -164,11 +196,28 @@ function armxPreviewRecordImpact(bucket, features, impact, weight) {
   }
 }
 
-function armxPreviewResolvePending(profile, currentPly, currentEval = profile.currentEval) {
+function armxPreviewEpisodeFeatures(baseFeatures, before, after) {
+  const derived = new Set();
+  if (!before || !after) return derived;
+  const bothDropped = (whiteKey, blackKey) => after[whiteKey] < before[whiteKey]
+    && after[blackKey] < before[blackKey];
+
+  if (bothDropped('whiteRooks', 'blackRooks')) derived.add('rookTrade');
+  if (bothDropped('whiteQueens', 'blackQueens')) derived.add('queenTrade');
+  if (bothDropped('whiteMinors', 'blackMinors')) derived.add('minorTrade');
+  if (bothDropped('whiteNonPawn', 'blackNonPawn')) {
+    derived.add('trade');
+    derived.add('simplify');
+  }
+
+  for (const feature of baseFeatures) derived.delete(feature);
+  return derived;
+}
+
+function armxPreviewResolvePending(profile, currentPly, currentSnapshot = profile.currentSnapshot) {
   if (!profile.pending.length) return;
-  const now = Number.isFinite(currentEval)
-    ? currentEval
-    : armxPreviewModelEval(profile.replay, profile.perspective);
+  const snapshot = currentSnapshot || armxPreviewStateSnapshot(profile.replay, profile.perspective);
+  const now = snapshot.score;
   const keep = [];
   for (const event of profile.pending) {
     if (currentPly < event.resolveAt) {
@@ -178,6 +227,19 @@ function armxPreviewResolvePending(profile, currentPly, currentEval = profile.cu
     const impact = now - event.before;
     const bucket = event.actor === profile.perspective ? profile.ourEffects : profile.opponentEffects;
     armxPreviewRecordImpact(bucket, event.features, impact, event.weight);
+    const episodeFeatures = armxPreviewEpisodeFeatures(
+      event.features,
+      event.beforeMaterial,
+      snapshot.material
+    );
+    if (episodeFeatures.size) {
+      armxPreviewRecordImpact(
+        bucket,
+        episodeFeatures,
+        impact,
+        event.weight * ARMX_PREVIEW.episodeFeatureWeight
+      );
+    }
   }
   profile.pending = keep;
 }
@@ -214,7 +276,8 @@ function armxPreviewSyncProfile(game, perspective) {
     const move = state && state.move;
     if (!move) break;
     const actor = profile.replay.side;
-    const before = profile.currentEval;
+    const before = profile.currentSnapshot.score;
+    const beforeMaterial = profile.currentSnapshot.material;
     const features = armxPreviewFeatureSet(profile.replay, move);
 
     if (actor === -perspective) armxPreviewObserveOpponentOpportunity(profile, profile.replay, move);
@@ -223,6 +286,7 @@ function armxPreviewSyncProfile(game, perspective) {
       actor,
       features,
       before,
+      beforeMaterial,
       resolveAt: index + ARMX_PREVIEW.shortHorizonPlies,
       weight: 0.65,
     });
@@ -230,17 +294,18 @@ function armxPreviewSyncProfile(game, perspective) {
       actor,
       features,
       before,
+      beforeMaterial,
       resolveAt: index + ARMX_PREVIEW.longHorizonPlies,
       weight: 0.35,
     });
 
     profile.replay.fastApply(move);
-    profile.currentEval = armxPreviewModelEval(profile.replay, perspective);
+    profile.currentSnapshot = armxPreviewStateSnapshot(profile.replay, perspective);
     profile.processedPlies += 1;
-    armxPreviewResolvePending(profile, profile.processedPlies, profile.currentEval);
+    armxPreviewResolvePending(profile, profile.processedPlies, profile.currentSnapshot);
   }
 
-  armxPreviewResolvePending(profile, profile.processedPlies, profile.currentEval);
+  armxPreviewResolvePending(profile, profile.processedPlies, profile.currentSnapshot);
   return profile;
 }
 
@@ -335,7 +400,7 @@ function armxPreviewCandidateReport(game, entry, profile) {
 
 function armxPreviewProfileNotes(profile) {
   const notes = [];
-  const important = ['rookTrade', 'queenTrade', 'trade', 'simplify', 'capture', 'kingAttack', 'quiet'];
+  const important = ['rookTrade', 'queenTrade', 'minorTrade', 'trade', 'simplify', 'capture', 'kingAttack', 'quiet'];
   for (const feature of important) {
     const ours = armxPreviewEffect(profile.ourEffects, feature);
     if (ours.evidence >= ARMX_PREVIEW.minEvidence && Math.abs(ours.value) >= 0.14) {
