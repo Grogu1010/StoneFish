@@ -3,14 +3,15 @@
 // v5.5 keeps v5 Pro's evaluation/knowledge but spends the expensive five-ply
 // budget on only two root finalists. The host uses true principal-variation
 // probes, safe exact transposition reuse, and late-move reductions to spend fewer
-// nodes on quiet alternatives. ARMX audits the actual provisional winner and may
-// inject one missed opponent reply for a targeted re-search.
+// nodes on quiet alternatives. The critical middle layer gets one extra branch
+// of concrete coverage. ARMX audits the actual provisional winner and may inject
+// one missed opponent reply for a targeted re-search.
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'ARMX-guided Guarded PVS',
   semifinalists: 5,
   rootCandidates: 2,
-  branch: [0, 1, 2, 2, 4],
+  branch: [0, 1, 2, 3, 4],
   lmrMinDepth: 3,
   lmrAfterMove: 2,
   pvsEpsilon: 1e-6,
