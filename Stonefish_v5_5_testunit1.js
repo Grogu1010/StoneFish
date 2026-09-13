@@ -1,18 +1,17 @@
-// Stonefish v5.5 testunit1 — Stonefish v5 Pro + ARMX-preview, and nothing else.
+// Stonefish v5.5 testunit1 — v5 Pro knowledge, v5.5 native search, ARMX-preview.
 //
-// v5 Pro runs normally first. ARMX-preview is a separate 3/4-ply adversarial critic
-// that searches opponent replies outside Pro's normal reply beam. Stonefish then
-// verifies those missed replies at the SAME five-ply root horizon before allowing
-// them to alter the result. ARMX never gets final authority.
+// This is now intentionally more than "v5 Pro with ARMX". v5.5 keeps Pro's
+// evaluation/knowledge layer, replaces Pro's root search with Guarded PVS, then
+// lets the separate ARMX-preview model audit only the chosen leader for missed
+// opponent replies. ARMX can challenge; the chess engine still verifies and decides.
 
 const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   name: 'Stonefish v5.5 testunit1',
-  base: 'Stonefish v5 Pro',
+  knowledgeBase: 'Stonefish v5 Pro',
+  search: 'Guarded PVS',
   armx: 'ARMX-preview',
 });
 
-const STONEFISH_V5_5_ARMX_CANDIDATES = 2;
-const STONEFISH_V5_5_MAX_REPLY_VERIFICATIONS = 3;
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
 function stonefishV55RawKey(move) {
@@ -21,32 +20,29 @@ function stonefishV55RawKey(move) {
 }
 
 function stonefishV55VerifyReply(game, rootMove, reply, perspective) {
-  const oldTT = STONEFISH_V5_PRO_ACTIVE_TT;
-  const oldStats = STONEFISH_V5_PRO_LAST_SEARCH_STATS;
   const historyDepth = game.historyStack.length;
-  STONEFISH_V5_PRO_ACTIVE_TT = new Map();
-  STONEFISH_V5_PRO_LAST_SEARCH_STATS = { nodes: 0, leaves: 0, ttHits: 0 };
+  const oldStats = STONEFISH_V5_5_LAST_SEARCH_STATS;
+  STONEFISH_V5_5_LAST_SEARCH_STATS = { nodes: 0, leaves: 0, reductions: 0, researches: 0, cutoffs: 0 };
 
   try {
     game.fastApply(rootMove); // ply 1
-    game.fastApply(reply);    // ply 2 chosen by ARMX
-    const value = stonefishV5ProMinimax(
+    game.fastApply(reply);    // ply 2 nominated by ARMX
+    const value = stonefishV55Minimax(
       game,
       3,
       perspective,
       -STONEFISH_V5_PRO_MATE,
       STONEFISH_V5_PRO_MATE,
       2
-    ); // plies 3-5 use normal Pro search
-    return { value, stats: Object.assign({}, STONEFISH_V5_PRO_LAST_SEARCH_STATS) };
+    ); // plies 3-5 use v5.5 Guarded PVS
+    return { value, stats: Object.assign({}, STONEFISH_V5_5_LAST_SEARCH_STATS) };
   } finally {
     while (game.historyStack.length > historyDepth) game.fastUndo();
-    STONEFISH_V5_PRO_ACTIVE_TT = oldTT;
-    STONEFISH_V5_PRO_LAST_SEARCH_STATS = oldStats;
+    STONEFISH_V5_5_LAST_SEARCH_STATS = oldStats;
   }
 }
 
-function stonefishV55RecomputeProScore(entry, deep) {
+function stonefishV55RecomputeScore(entry, deep) {
   if (Math.abs(deep) >= STONEFISH_V5_PRO_MATE * 0.9) return deep;
   const selective = deep * 1.28 + entry.preliminary * 0.46;
   const heritageFloor = entry.heritageMatch
@@ -63,115 +59,93 @@ function stonefishV55SortScored(game, scored) {
   });
 }
 
-function stonefishV55CriticalReplies(report) {
-  if (!report) return [];
+function stonefishV55FirstCriticalReply(report) {
+  if (!report) return null;
   if (Array.isArray(report.criticalReplies) && report.criticalReplies.length) {
-    return report.criticalReplies
-      .map(item => item && item.reply ? item : null)
-      .filter(Boolean);
+    const item = report.criticalReplies.find(value => value && value.reply);
+    if (item) return item;
   }
   return report.criticalReply
-    ? [{ reply: report.criticalReply, score: report.armxScore, line: report.line || [report.criticalReply] }]
-    : [];
+    ? { reply: report.criticalReply, score: report.armxScore, line: report.line || [report.criticalReply] }
+    : null;
 }
 
 function stonefishV55Testunit1ScoreAllMoves(game) {
-  const baseScored = stonefishV5ProScoreAllMoves(game);
+  const baseScored = stonefishV55NativeScoreAllMoves(game);
   if (!baseScored.length) {
     STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
     return [];
   }
 
-  if (typeof armxPreviewReview !== 'function') {
+  const baseWinner = baseScored[0];
+  if (typeof armxPreviewReview !== 'function' || !baseWinner || !Number.isFinite(baseWinner.deep)) {
     STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = {
       model: null,
       connected: false,
       nodes: 0,
       reports: [],
       override: false,
+      nativeOnly: true,
     };
     return baseScored;
   }
 
   const perspective = game.side;
-  // Preview only consults ARMX on Pro's two leaders. Most decisions never need
-  // criticism of candidates 3/4, and avoiding that duplicate work materially
-  // lowers latency while still covering the move that can actually be selected
-  // plus its most likely replacement if the leader is refuted.
-  const armxCandidates = baseScored.slice(0, Math.min(STONEFISH_V5_5_ARMX_CANDIDATES, baseScored.length));
-  const review = armxPreviewReview(game, armxCandidates, perspective);
-  if (!review || !Array.isArray(review.reports) || !review.reports.length) {
-    STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({ connected: true, override: false }, review || {});
+  // Preview audits only the move v5.5 actually intends to play. This is the speed
+  // boundary: one ARMX critique and at most one full five-ply verification.
+  const review = armxPreviewReview(game, [baseWinner], perspective);
+  const report = review && Array.isArray(review.reports) ? review.reports[0] : null;
+  const critical = stonefishV55FirstCriticalReply(report);
+
+  if (!critical) {
+    STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review || {}, {
+      connected: true,
+      hostCandidatesReviewed: 1,
+      verifications: [],
+      verificationCount: 0,
+      override: false,
+      recommendedRaw: baseWinner.raw,
+      nativeRaw: baseWinner.raw,
+    });
     return baseScored;
   }
 
   const adjusted = baseScored.map(entry => Object.assign({}, entry));
-  const verifications = [];
-  const verifiedReplyKeys = new Set();
+  const leader = adjusted[0];
+  const verification = stonefishV55VerifyReply(game, leader.raw, critical.reply, perspective);
+  const originalDeep = leader.deep;
+  const verifiedDeep = Math.min(originalDeep, verification.value);
+  const changedEval = verifiedDeep < originalDeep - 1e-9;
 
-  // Only the current leader needs protection. If an ARMX-discovered missed reply
-  // lowers it enough that the second Pro candidate becomes best, protect that new
-  // leader next. Preview intentionally stops if a lower-ranked candidate becomes
-  // leader; later ARMX versions can broaden that coverage.
-  for (let attempt = 0; attempt < STONEFISH_V5_5_MAX_REPLY_VERIFICATIONS; attempt += 1) {
+  if (changedEval) {
+    leader.deep = verifiedDeep;
+    leader.score = stonefishV55RecomputeScore(leader, verifiedDeep);
+    leader.armxRefuted = true;
+    leader.armxOriginalDeep = originalDeep;
+    leader.armxVerifiedDeep = verifiedDeep;
+    leader.armxCriticalReply = critical.reply;
     stonefishV55SortScored(game, adjusted);
-    const leader = adjusted[0];
-    if (!leader || !Number.isFinite(leader.deep) || !Number.isFinite(leader.score)) break;
-
-    const report = review.reports.find(item => stonefishV5SameMove(item.raw, leader.raw));
-    const criticals = stonefishV55CriticalReplies(report);
-    if (!criticals.length) break;
-
-    let selected = null;
-    for (const critical of criticals) {
-      const key = stonefishV55RawKey(leader.raw) + '|' + stonefishV55RawKey(critical.reply);
-      if (!verifiedReplyKeys.has(key)) {
-        selected = { critical, key };
-        break;
-      }
-    }
-    if (!selected) break;
-    verifiedReplyKeys.add(selected.key);
-
-    const verification = stonefishV55VerifyReply(game, leader.raw, selected.critical.reply, perspective);
-    const originalDeep = leader.deep;
-    const verifiedDeep = Math.min(originalDeep, verification.value);
-    const changed = verifiedDeep < originalDeep - 1e-9;
-
-    if (changed) {
-      leader.deep = verifiedDeep;
-      leader.score = stonefishV55RecomputeProScore(leader, verifiedDeep);
-      leader.armxRefuted = true;
-      leader.armxOriginalDeep = leader.armxOriginalDeep === undefined ? originalDeep : leader.armxOriginalDeep;
-      leader.armxVerifiedDeep = verifiedDeep;
-      leader.armxCriticalReply = selected.critical.reply;
-    }
-
-    verifications.push({
-      raw: leader.raw,
-      criticalReply: selected.critical.reply,
-      armxScore: selected.critical.score,
-      line: selected.critical.line,
-      originalDeep,
-      verifiedDeep,
-      changed,
-      stats: verification.stats,
-    });
   }
 
-  stonefishV55SortScored(game, adjusted);
-  const baseWinner = baseScored[0];
   const finalWinner = adjusted[0];
   const changedMove = !stonefishV5SameMove(baseWinner.raw, finalWinner.raw);
-
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review, {
+  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review || {}, {
     connected: true,
-    hostCandidatesReviewed: armxCandidates.length,
-    verifications,
-    verificationCount: verifications.length,
+    hostCandidatesReviewed: 1,
+    verifications: [{
+      raw: leader.raw,
+      criticalReply: critical.reply,
+      armxScore: critical.score,
+      line: critical.line,
+      originalDeep,
+      verifiedDeep,
+      changed: changedEval,
+      stats: verification.stats,
+    }],
+    verificationCount: 1,
     override: changedMove,
     recommendedRaw: finalWinner.raw,
-    proRaw: baseWinner.raw,
+    nativeRaw: baseWinner.raw,
     changedMove,
   });
 
