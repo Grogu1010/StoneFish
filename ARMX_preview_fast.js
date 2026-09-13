@@ -16,7 +16,7 @@ const ARMX_PREVIEW = Object.freeze({
   maxReplies: 8,
   maxContinuations: 3,
   maxFourthPlyReplies: 2,
-  maxNodes: 420,
+  maxNodes: 400,
 });
 
 function armxPreviewPieceValue(type) {
