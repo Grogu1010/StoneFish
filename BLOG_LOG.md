@@ -12,3 +12,4 @@ The release story of Stonefish, one major model at a time.
 | Stonefish v4 | [Introducing Stonefish v4](blog/v4.md) |
 | Stonefish v4.5 | [Introducing Stonefish v4.5](blog/v4_5.md) |
 | Stonefish v5 | [Introducing Stonefish v5](blog/v5.md) |
+| Stonefish v5 Pro | [Introducing Stonefish v5 Pro](blog/v5_pro.md) |
