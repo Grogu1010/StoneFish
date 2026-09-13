@@ -4,7 +4,10 @@ on:
   pull_request:
     paths:
       - 'ARMX_preview_fast.js'
+      - 'Stonefish_v5_5_search.js'
       - 'Stonefish_v5_5_testunit1.js'
+      - 'Stonefish_v5_5_testunit1_dev_ui.js'
+      - 'test-worker.js'
       - 'benchmark_v5_5_testunit1.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
@@ -13,7 +16,7 @@ on:
 jobs:
   dev-testunit1:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,10 +24,12 @@ jobs:
           node-version: '20'
       - name: Syntax check ARMX-preview
         run: node --check ARMX_preview_fast.js
+      - name: Syntax check v5.5 native search
+        run: node --check Stonefish_v5_5_search.js
       - name: Syntax check v5.5 testunit1
         run: node --check Stonefish_v5_5_testunit1.js
       - name: Run v5.5 dev benchmark
         env:
-          SAMPLES: '8'
-          GAMES: '2'
+          SAMPLES: '20'
+          GAMES: '20'
         run: node benchmark_v5_5_testunit1.js

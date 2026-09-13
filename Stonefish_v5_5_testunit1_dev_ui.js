@@ -1,16 +1,29 @@
-// Developer-menu registration only for Stonefish v5.5 testunit1.
-// This does not add v5.5 to the normal opponent selector and does not run ARMX
-// on the main UI thread. Round-robin games execute the model inside test-worker.js.
+// Developer-menu registration only for Stonefish v5.5 testunit1 variants.
+// Neither variant is added to the normal opponent selector. Round-robin games run
+// in test-worker.js so ARMX-on vs ARMX-off can be compared directly.
+
+models.v55test1noarmx = {
+  name: 'Stonefish_v5.5 testunit1 (No ARMX)',
+  trait: 'Development-only v5.5 control build',
+  subtitle: 'The native v5.5 Guarded-PVS engine with the exact same search and evaluation stack, but ARMX-preview completely disabled.',
+  logic: [
+    'Use Stonefish_v5 Pro chess knowledge and evaluation',
+    'Rank candidates with the native v5.5 fast safety layer',
+    'Search the two finalists with v5.5 Guarded PVS',
+    'Do not call ARMX-preview at any point'
+  ],
+  getMove: null
+};
 
 models.v55test1 = {
-  name: 'Stonefish_v5.5 testunit1',
-  trait: 'Development-only v5 + ARMX-preview test unit',
-  subtitle: 'Stonefish_v5 unchanged, with ARMX-preview available only in developer round-robin tests.',
+  name: 'Stonefish_v5.5 testunit1 (ARMX-preview)',
+  trait: 'Development-only v5.5 + ARMX-preview test unit',
+  subtitle: 'The native v5.5 Guarded-PVS engine with ARMX-preview auditing missed opponent replies before the final decision.',
   logic: [
-    'Use Stonefish_v5 as the unchanged base engine',
-    'Ask ARMX-preview to review only the strongest v5 candidates',
-    'Use a 3-ply ARMX base with a selective 4-ply forcing extension',
-    'Keep ARMX under a hard node budget for low test latency'
+    'Use Stonefish_v5 Pro chess knowledge and evaluation',
+    'Rank candidates with the native v5.5 fast safety layer',
+    'Ask the separate ARMX-preview model to inspect replies outside the host beam',
+    'Inject ARMX’s critical reply into v5.5 Guarded PVS before choosing the move'
   ],
   getMove: null
 };

@@ -9,13 +9,14 @@ importScripts(
   './Stonefish_v4_5_safety_patch.js',
   './Stonefish_v4_5_balance_patch.js',
   './Stonefish_v5.js',
-  './ARMX_preview_fast.js',
-  './Stonefish_v5_5_testunit1.js',
   './Stonefish_v5_pro.js',
   './Stonefish_v5_pro_speed_patch.js',
   './Stonefish_v5_pro_geometry_patch.js',
   './Stonefish_runtime_speed_patch.js',
-  './Stonefish_fast_moves_experiment.js'
+  './Stonefish_fast_moves_experiment.js',
+  './Stonefish_v5_5_search.js',
+  './ARMX_preview_fast.js',
+  './Stonefish_v5_5_testunit1.js'
 );
 
 const workerModels = {
@@ -25,6 +26,7 @@ const workerModels = {
   v4: getStonefishV4Move,
   v45: getStonefishV45Move,
   v5: getStonefishV5Move,
+  v55test1noarmx: getStonefishV55Testunit1NoARMXMove,
   v55test1: getStonefishV55Testunit1Move,
   v5pro: getStonefishV5ProMove
 };
