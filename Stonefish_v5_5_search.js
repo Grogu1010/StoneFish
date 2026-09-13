@@ -9,7 +9,7 @@
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'Guarded PVS',
-  semifinalists: 8,
+  semifinalists: 7,
   rootCandidates: 4,
   branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
@@ -282,7 +282,9 @@ function stonefishV55FinishCandidates(game, ranked) {
   const heritageMove = context ? context.heritageMove : stonefishV5HeritageMove(game);
   const finalists = Math.min(STONEFISH_V5_5_SEARCH.rootCandidates, ranked.length);
   const oldTT = STONEFISH_V5_5_ACTIVE_TT;
-  STONEFISH_V5_5_ACTIVE_TT = new Map();
+  const rootTT = new Map();
+  ranked.v55SearchTT = rootTT;
+  STONEFISH_V5_5_ACTIVE_TT = rootTT;
 
   try {
     for (let i = 0; i < finalists; i += 1) {
@@ -303,12 +305,12 @@ function stonefishV55FinishCandidates(game, ranked) {
   return stonefishV55SortFinalScores(game, ranked);
 }
 
-function stonefishV55VerifyInjectedReply(game, entry, perspective, injectedReply) {
+function stonefishV55VerifyInjectedReply(game, entry, perspective, injectedReply, reusableTT = null) {
   if (!entry || !injectedReply) return entry;
   entry.refutationGuardOriginalDeep = entry.deep;
   entry.refutationGuardCriticalReply = injectedReply;
   const oldTT = STONEFISH_V5_5_ACTIVE_TT;
-  STONEFISH_V5_5_ACTIVE_TT = new Map();
+  STONEFISH_V5_5_ACTIVE_TT = reusableTT || new Map();
   try {
     entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, injectedReply);
   } finally {
