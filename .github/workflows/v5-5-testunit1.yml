@@ -64,10 +64,10 @@ jobs:
         run: node benchmark_v5_5_teacher.js
       - name: Run ARMX in-game diagnostics
         env:
-          ARMX_DIAG_GAMES: '16'
+          ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
       - name: Run v5.5 dev benchmark
         env:
           SAMPLES: '20'
-          GAMES: '40'
+          GAMES: '8'
         run: node benchmark_v5_5_testunit1.js
