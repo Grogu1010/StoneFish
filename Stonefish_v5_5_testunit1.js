@@ -47,39 +47,60 @@ function stonefishV55ARMXMateScale(entry) {
     || (Number.isFinite(entry.score) && Math.abs(entry.score) >= mate * 0.9);
 }
 
-function stonefishV55ARMXChangeAllowed(
+function stonefishV55ARMXChangeDecision(
   provisional,
   challenger,
   provisionalReport,
   challengerReport,
   observedPlies = 0
 ) {
-  if (!provisional || !challenger || !provisionalReport || !challengerReport) return false;
+  if (!provisional || !challenger || !provisionalReport || !challengerReport) {
+    return { allowed: false, reason: 'missing-candidate-report' };
+  }
 
   // Native search owns forced tactical truth. ARMX must never re-rank a mate-scale
   // decision just because its behavioral multipliers prefer another mating line.
-  if (stonefishV55ARMXMateScale(provisional) || stonefishV55ARMXMateScale(challenger)) return false;
+  if (stonefishV55ARMXMateScale(provisional) || stonefishV55ARMXMateScale(challenger)) {
+    return { allowed: false, reason: 'mate-scale' };
+  }
 
   const hostGap = provisional.armxOriginalScore - challenger.armxOriginalScore;
-  if (hostGap > ARMX_PREVIEW.maxHostGap) return false;
-  if (Number.isFinite(provisional.deep) && Number.isFinite(challenger.deep)
-    && challenger.deep < provisional.deep - ARMX_PREVIEW.maxDeepSacrifice) return false;
+  if (hostGap > ARMX_PREVIEW.maxHostGap) {
+    return { allowed: false, reason: 'host-gap', hostGap };
+  }
+  const deepSacrifice = Number.isFinite(provisional.deep) && Number.isFinite(challenger.deep)
+    ? provisional.deep - challenger.deep
+    : 0;
+  if (deepSacrifice > ARMX_PREVIEW.maxDeepSacrifice) {
+    return { allowed: false, reason: 'deep-sacrifice', hostGap, deepSacrifice };
+  }
 
   const challengerConfidence = Number(challengerReport.confidence) || 0;
   const challengerEvidence = Number(challengerReport.evidence) || 0;
-  if (challengerEvidence < ARMX_PREVIEW.minOverrideEvidence
-    || challengerConfidence < ARMX_PREVIEW.minOverrideConfidence) return false;
+  if (challengerEvidence < ARMX_PREVIEW.minOverrideEvidence) {
+    return { allowed: false, reason: 'evidence', hostGap, deepSacrifice, challengerEvidence, challengerConfidence };
+  }
+  if (challengerConfidence < ARMX_PREVIEW.minOverrideConfidence) {
+    return { allowed: false, reason: 'confidence', hostGap, deepSacrifice, challengerEvidence, challengerConfidence };
+  }
 
   // Early observations are especially noisy: the bad adapt2 trace flipped a move
   // after only a few observed choices with sub-0.4 challenger confidence. ARMX may
   // still learn immediately, but it only gets voting power this early when the
   // evidence is already overwhelming.
   if (observedPlies < ARMX_PREVIEW.earlyOverridePlies
-    && (challengerEvidence < ARMX_PREVIEW.earlyOverrideEvidence
-      || challengerConfidence < ARMX_PREVIEW.earlyOverrideConfidence)) return false;
+    && challengerEvidence < ARMX_PREVIEW.earlyOverrideEvidence) {
+    return { allowed: false, reason: 'early-evidence', hostGap, deepSacrifice, challengerEvidence, challengerConfidence };
+  }
+  if (observedPlies < ARMX_PREVIEW.earlyOverridePlies
+    && challengerConfidence < ARMX_PREVIEW.earlyOverrideConfidence) {
+    return { allowed: false, reason: 'early-confidence', hostGap, deepSacrifice, challengerEvidence, challengerConfidence };
+  }
 
   const adaptedLead = challengerReport.adaptedScore - provisionalReport.adaptedScore;
-  if (adaptedLead < ARMX_PREVIEW.minAdaptedLead) return false;
+  if (adaptedLead < ARMX_PREVIEW.minAdaptedLead) {
+    return { allowed: false, reason: 'adapted-lead', hostGap, deepSacrifice, challengerEvidence, challengerConfidence, adaptedLead };
+  }
 
   // Do not change a sound native choice merely because two negative ARMX signals
   // differ by a few points. A flip needs either a positively learned challenger
@@ -87,9 +108,48 @@ function stonefishV55ARMXChangeAllowed(
   const challengerSignal = Number(challengerReport.signal) || 0;
   const provisionalSignal = Number(provisionalReport.signal) || 0;
   if (challengerSignal < STONEFISH_V5_5_ARMX_MIN_POSITIVE_SIGNAL
-    && provisionalSignal > STONEFISH_V5_5_ARMX_STRONG_AVOID_SIGNAL) return false;
+    && provisionalSignal > STONEFISH_V5_5_ARMX_STRONG_AVOID_SIGNAL) {
+    return {
+      allowed: false,
+      reason: 'signal-quality',
+      hostGap,
+      deepSacrifice,
+      challengerEvidence,
+      challengerConfidence,
+      adaptedLead,
+      challengerSignal,
+      provisionalSignal,
+    };
+  }
 
-  return challengerReport.adaptedScore > provisionalReport.adaptedScore;
+  const allowed = challengerReport.adaptedScore > provisionalReport.adaptedScore;
+  return {
+    allowed,
+    reason: allowed ? 'allowed' : 'adapted-order',
+    hostGap,
+    deepSacrifice,
+    challengerEvidence,
+    challengerConfidence,
+    adaptedLead,
+    challengerSignal,
+    provisionalSignal,
+  };
+}
+
+function stonefishV55ARMXChangeAllowed(
+  provisional,
+  challenger,
+  provisionalReport,
+  challengerReport,
+  observedPlies = 0
+) {
+  return stonefishV55ARMXChangeDecision(
+    provisional,
+    challenger,
+    provisionalReport,
+    challengerReport,
+    observedPlies
+  ).allowed;
 }
 
 function stonefishV55ARMXPromoteReviewedCandidate(finished, candidate) {
@@ -120,6 +180,8 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   let adaptationApplied = false;
   let adaptationRejected = false;
   let totalAdjustment = 0;
+  let gateDecision = null;
+  let proposedRaw = null;
 
   // ARMX is deliberately cheap enough to observe every v5.5 turn. If the game
   // has not produced enough evidence yet, its multipliers stay at/near 1.0.
@@ -145,18 +207,20 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
 
     const proposedReport = reports[0] || null;
     const proposed = proposedReport ? stonefishV55FindEntry(finished, proposedReport.raw) : null;
+    proposedRaw = proposed ? proposed.raw : null;
     const provisionalReport = stonefishV55FindARMXReport(reports, provisionalRaw);
     const wantsChange = Boolean(proposed && provisionalRaw && !stonefishV5SameMove(proposed.raw, provisionalRaw));
 
     let allowChange = !wantsChange;
     if (wantsChange) {
-      allowChange = stonefishV55ARMXChangeAllowed(
+      gateDecision = stonefishV55ARMXChangeDecision(
         provisional,
         proposed,
         provisionalReport,
         proposedReport,
         review && Number(review.observedPlies) || 0
       );
+      allowChange = gateDecision.allowed;
       adaptationRejected = !allowChange;
     }
 
@@ -181,6 +245,9 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
     eligible: Boolean(review),
     adaptationApplied,
     adaptationRejected,
+    rejectionReason: adaptationRejected && gateDecision ? gateDecision.reason : null,
+    gateDecision,
+    proposedRaw,
     totalAdjustment,
     override: changedByARMX,
     changedMove: changedByARMX,
