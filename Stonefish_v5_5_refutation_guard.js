@@ -1,13 +1,15 @@
-// Stonefish v5.5 native Five-ply Refutation Guard.
+// Stonefish v5.5 native Refutation Guard.
 //
 // This is deliberately part of v5.5, NOT ARMX. It preserves the useful idea from
 // the old ARMX experiments: look outside the normal selective reply beam for a
-// legal opponent resource, then force that reply into the SAME five-ply v5.5
-// search. The guard never gives a move an optimistic bonus. A candidate can only
-// be lowered after v5.5 itself verifies that the omitted reply is genuinely worse.
+// legal opponent resource, then force that reply into the SAME v5.5 search
+// horizon. The current v5.5 implementation searches five plies; future versions
+// can deepen the guard without renaming the feature. The guard never gives a move
+// an optimistic bonus. A candidate can only be lowered after v5.5 itself verifies
+// that the omitted reply is genuinely worse.
 
 const STONEFISH_V5_5_REFUTATION_GUARD = Object.freeze({
-  name: 'Five-ply Refutation Guard',
+  name: 'Refutation Guard',
   ply: 5,
   candidates: 1,
   maxScreenedReplies: 5,
