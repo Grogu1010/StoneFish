@@ -23,6 +23,7 @@ on:
       - 'benchmark_runtime_parity.js'
       - 'benchmark_ui_move_apply.js'
       - 'benchmark_attack_count_parity.js'
+      - 'benchmark_has_legal_move_parity.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
   pull_request:
     paths:
@@ -43,6 +44,7 @@ on:
       - 'benchmark_runtime_parity.js'
       - 'benchmark_ui_move_apply.js'
       - 'benchmark_attack_count_parity.js'
+      - 'benchmark_has_legal_move_parity.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
 
 concurrency:
@@ -50,6 +52,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  has-legal-move-parity:
+    name: fastHasLegalMove early-exit parity + speed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout optimized candidate
+        uses: actions/checkout@v4
+      - name: Checkout released production reference
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: reference
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compare existence result and same-run speed
+        run: REFERENCE_DIR="$GITHUB_WORKSPACE/reference" node benchmark_has_legal_move_parity.js
+
   attack-count-parity:
     name: Pro attack-count map parity
     runs-on: ubuntu-latest

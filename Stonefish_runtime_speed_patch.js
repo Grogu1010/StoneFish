@@ -158,30 +158,112 @@ Chess.prototype.fastMoves = function() {
   return legal;
 };
 
-// Mate probes only need to know whether ONE legal reply exists. Avoid creating
-// and filtering the full legal-move array when the first reply already proves
-// the move is not mate. Because mate probes are called after a checking move,
-// the in-check path remains fully verified move-by-move.
+// Existence queries are much hotter than they look: Pro calls them at leaves,
+// terminal checks and mate probes. Do not allocate the entire pseudo-move array
+// only to inspect its first legal member. Generate candidates in the exact same
+// piece/direction order as _pseudoMoves() and return immediately when one legal
+// reply exists. Safe non-king, non-EP, non-pinned moves retain the same proven
+// no-make shortcut as fastMoves(); all sensitive candidates use _testLegalRaw().
 Chess.prototype.fastHasLegalMove = function() {
-  const pseudo = this._pseudoMoves();
+  const b = this.boardState;
+  const us = this.side;
   const safety = stonefishRuntimeKingSafety(this);
 
-  if (safety.inCheck) {
-    for (let i = 0; i < pseudo.length; i += 1) {
-      if (this._testLegalRaw(pseudo[i])) return true;
+  const legalCandidate = (from, to, promotion, flags, pieceType) => {
+    if (
+      !safety.inCheck &&
+      pieceType !== 6 &&
+      !(flags & 2) &&
+      !stonefishRuntimeIsPinned(safety, from)
+    ) return true;
+    return this._testLegalRaw({ from, to, promotion: promotion || 0, flags: flags || 0 });
+  };
+
+  for (let from = 0; from < 64; from += 1) {
+    const piece = b[from];
+    if (!piece || (piece > 0 ? 1 : -1) !== us) continue;
+    const type = Math.abs(piece);
+    const file = from & 7;
+    const rank = from >> 3;
+
+    if (type === 1) {
+      const step = us === 1 ? 8 : -8;
+      const startRank = us === 1 ? 1 : 6;
+      const promoRank = us === 1 ? 7 : 0;
+      const one = from + step;
+
+      if (one >= 0 && one < 64 && !b[one]) {
+        if ((one >> 3) === promoRank) {
+          // Promotion choice cannot change whether our own king is safe.
+          if (legalCandidate(from, one, 5, 0, type)) return true;
+        } else {
+          if (legalCandidate(from, one, 0, 0, type)) return true;
+          const two = from + step * 2;
+          if (rank === startRank && !b[two] && legalCandidate(from, two, 0, 1, type)) return true;
+        }
+      }
+
+      for (let df = -1; df <= 1; df += 2) {
+        const f = file + df;
+        if (f < 0 || f > 7) continue;
+        const to = from + step + df;
+        if (to < 0 || to >= 64) continue;
+        const target = b[to];
+        if (target && (target > 0 ? 1 : -1) === -us) {
+          if ((to >> 3) === promoRank) {
+            if (legalCandidate(from, to, 5, 0, type)) return true;
+          } else if (legalCandidate(from, to, 0, 0, type)) return true;
+        } else if (to === this.ep && legalCandidate(from, to, 0, 2, type)) {
+          return true;
+        }
+      }
+      continue;
     }
-    return false;
+
+    if (type === 2) {
+      for (let i = 0; i < 8; i += 1) {
+        const f = file + SF_KNIGHT_DF[i];
+        const r = rank + SF_KNIGHT_DR[i];
+        if (f < 0 || f > 7 || r < 0 || r > 7) continue;
+        const to = r * 8 + f;
+        const target = b[to];
+        if ((!target || (target > 0 ? 1 : -1) === -us) && legalCandidate(from, to, 0, 0, type)) return true;
+      }
+      continue;
+    }
+
+    const dirs = type === 3 ? SF_DIAG_DIRS : type === 4 ? SF_ORTH_DIRS : SF_ALL_DIRS;
+    for (let i = 0; i < dirs.length; i += 2) {
+      const df = dirs[i];
+      const dr = dirs[i + 1];
+      let f = file + df;
+      let r = rank + dr;
+      while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+        const to = r * 8 + f;
+        const target = b[to];
+        if (!target) {
+          if (legalCandidate(from, to, 0, 0, type)) return true;
+        } else {
+          if ((target > 0 ? 1 : -1) === -us && legalCandidate(from, to, 0, 0, type)) return true;
+          break;
+        }
+        if (type === 6) break;
+        f += df;
+        r += dr;
+      }
+    }
+
+    if (type === 6) {
+      if (us === 1 && from === 4) {
+        if ((this.castling & 1) && b[7] === 4 && !b[5] && !b[6] && !this._isAttacked(4,-1) && !this._isAttacked(5,-1) && !this._isAttacked(6,-1)) return true;
+        if ((this.castling & 2) && b[0] === 4 && !b[1] && !b[2] && !b[3] && !this._isAttacked(4,-1) && !this._isAttacked(3,-1) && !this._isAttacked(2,-1)) return true;
+      } else if (us === -1 && from === 60) {
+        if ((this.castling & 4) && b[63] === -4 && !b[61] && !b[62] && !this._isAttacked(60,1) && !this._isAttacked(61,1) && !this._isAttacked(62,1)) return true;
+        if ((this.castling & 8) && b[56] === -4 && !b[57] && !b[58] && !b[59] && !this._isAttacked(60,1) && !this._isAttacked(59,1) && !this._isAttacked(58,1)) return true;
+      }
+    }
   }
 
-  for (let i = 0; i < pseudo.length; i += 1) {
-    const move = pseudo[i];
-    if (
-      move.piece !== 6 &&
-      !(move.flags & 2) &&
-      !stonefishRuntimeIsPinned(safety, move.from)
-    ) return true;
-    if (this._testLegalRaw(move)) return true;
-  }
   return false;
 };
 
