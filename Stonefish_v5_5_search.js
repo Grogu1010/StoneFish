@@ -357,6 +357,8 @@ function stonefishV55SortFinalScores(game, ranked) {
   return ranked;
 }
 
+// Same tactical gain arithmetic as final v5, but check status is computed once
+// per response instead of once for mate detection and again for the check bonus.
 function stonefishV55BestResponseGain(game, responses) {
   let best = 0;
   for (let i = 0; i < responses.length; i += 1) {
@@ -377,6 +379,9 @@ function stonefishV55BestResponseGain(game, responses) {
   return best;
 }
 
+// Final-v5-equivalent tactical scorer. It folds the base three-ply pass and the
+// later mate/repetition wrapper into one traversal, so the root move and checking
+// replies are not repeatedly applied just to answer the same questions.
 function stonefishV55TacticalScore(game, raw) {
   const historyDepth = game.historyStack.length;
   let immediate = STONEFISH_V5_PIECE[raw.captured] || 0;
@@ -385,29 +390,92 @@ function stonefishV55TacticalScore(game, raw) {
   try {
     game.fastApply(raw);
     const replies = game.fastMoves();
-    if (!replies.length) return game.in_check() ? STONEFISH_V5_MATE : 0;
+    const rootChecking = game.in_check();
+    if (!replies.length && rootChecking) return STONEFISH_V5_MATE * 2;
 
-    let worst = Infinity;
-    for (let i = 0; i < replies.length; i += 1) {
-      const reply = replies[i];
-      const givesCheck = Boolean(game.fastGivesCheck && game.fastGivesCheck(reply));
-      let opponentGain = STONEFISH_V5_PIECE[reply.captured] || 0;
-      if (reply.promotion) opponentGain += (STONEFISH_V5_PIECE[reply.promotion] || 0) - 100;
-      if (givesCheck) opponentGain += 14;
+    let score = 0;
+    if (replies.length) {
+      let worst = Infinity;
+      for (let i = 0; i < replies.length; i += 1) {
+        const reply = replies[i];
+        const givesCheck = Boolean(game.fastGivesCheck && game.fastGivesCheck(reply));
+        let opponentGain = STONEFISH_V5_PIECE[reply.captured] || 0;
+        if (reply.promotion) opponentGain += (STONEFISH_V5_PIECE[reply.promotion] || 0) - 100;
+        if (givesCheck) opponentGain += 14;
 
-      game.fastApply(reply);
-      const responses = game.fastMoves();
-      if (givesCheck && !responses.length) {
+        game.fastApply(reply);
+        const responses = game.fastMoves();
+        if (givesCheck && !responses.length) return -STONEFISH_V5_MATE;
+        const ourGain = stonefishV55BestResponseGain(game, responses);
         game.fastUndo();
-        return -STONEFISH_V5_MATE;
-      }
-      const ourGain = stonefishV55BestResponseGain(game, responses);
-      game.fastUndo();
 
-      const branch = immediate - opponentGain + ourGain;
-      if (branch < worst) worst = branch;
+        const branch = immediate - opponentGain + ourGain;
+        if (branch < worst) worst = branch;
+      }
+      score = worst;
     }
-    return worst;
+
+    if (score >= STONEFISH_V5_MATE) score = STONEFISH_V5_MATE * 0.5;
+    if (score <= -STONEFISH_V5_MATE) return -STONEFISH_V5_MATE;
+
+    const rootVisits = game.positionCounts.get(game.fastPositionKey()) || 0;
+    if (rootVisits > 0) {
+      score -= rootVisits * 1200000;
+      score = Math.max(score, STONEFISH_V5_DRAW_FLOOR);
+    }
+
+    for (let i = 0; i < replies.length; i += 1) {
+      game.fastApply(replies[i]);
+      const priorVisits = game.positionCounts.get(game.fastPositionKey()) || 0;
+      game.fastUndo();
+      if (priorVisits >= 2) {
+        score = Math.min(score, STONEFISH_V5_DRAW_FLOOR);
+        break;
+      }
+    }
+    return score;
+  } finally {
+    while (game.historyStack.length > historyDepth) game.fastUndo();
+  }
+}
+
+function stonefishV55ConversionUrgencyFromLead(game, raw, lead) {
+  if (game.halfmove < 45) return 0;
+  if (lead < 120) return 0;
+  const reset = raw.piece === 1 || raw.captured;
+  const urgency = Math.max(0, game.halfmove - 45);
+  if (reset) return 1800 + urgency * 210;
+  if (game.halfmove >= 70) return -urgency * 85;
+  return 0;
+}
+
+// Exact v5 Pro scout formula with conversion urgency supplied by the root pass.
+// A checking move is applied once for both mate detection and passer/repetition
+// screening, rather than fastIsMateMove applying it and the scout applying it again.
+function stonefishV55FastScoutScore(game, raw, bookMove, heritageMove, perspective, conversion) {
+  const historyDepth = game.historyStack.length;
+  let score = 0;
+  const capture = STONEFISH_V5_PIECE[raw.captured] || 0;
+  score += capture * 15 - (STONEFISH_V5_PIECE[raw.piece] || 0) * (raw.captured ? 0.15 : 0);
+  if (raw.promotion) score += ((STONEFISH_V5_PIECE[raw.promotion] || 0) - 100) * 18 + 2400;
+  if (raw.flags & (4 | 8)) score += 260;
+  if (bookMove && stonefishV5SameMove(raw, bookMove)) score += 3600;
+  if (heritageMove && stonefishV5SameMove(raw, heritageMove)) score += 3000;
+  score += conversion;
+
+  const givesCheck = Boolean(game.fastGivesCheck && game.fastGivesCheck(raw));
+  if (givesCheck) score += 900;
+
+  try {
+    game.fastApply(raw);
+    if (givesCheck && game.fastMoves().length === 0) return STONEFISH_V5_PRO_MATE * 4;
+
+    const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
+    if (enemyThreat >= 300) score -= enemyThreat * 9;
+    else if (enemyThreat >= 120) score -= enemyThreat * 3;
+    const visits = game.positionCounts.get(game.fastPositionKey()) || 0;
+    if (visits > 0) score -= visits * 240000;
+    return score;
   } finally {
     while (game.historyStack.length > historyDepth) game.fastUndo();
   }
@@ -438,18 +506,24 @@ function stonefishV55FastCandidates(game) {
   const perspective = game.side;
   const bookMove = stonefishV45BookMove(game, 1, legal);
   const heritageMove = stonefishV5HeritageMove(game);
-  const scored = legal.map(raw => ({
-    raw,
-    uci: stonefishV45RawUci(game, raw),
-    tactical: null,
-    knowledge: 0,
-    conversion: 0,
-    heritageMatch: !!heritageMove && stonefishV5SameMove(raw, heritageMove),
-    scout: stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective),
-    preliminary: -Infinity,
-    deep: null,
-    score: -Infinity,
-  }));
+  const conversionLead = game.halfmove >= 45
+    ? stonefishV5Material(game, perspective) - stonefishV5Material(game, -perspective)
+    : 0;
+  const scored = legal.map(raw => {
+    const conversion = stonefishV55ConversionUrgencyFromLead(game, raw, conversionLead);
+    return {
+      raw,
+      uci: stonefishV45RawUci(game, raw),
+      tactical: null,
+      knowledge: 0,
+      conversion,
+      heritageMatch: !!heritageMove && stonefishV5SameMove(raw, heritageMove),
+      scout: stonefishV55FastScoutScore(game, raw, bookMove, heritageMove, perspective, conversion),
+      preliminary: -Infinity,
+      deep: null,
+      score: -Infinity,
+    };
+  });
   scored.v55Context = { legal, perspective, bookMove, heritageMove };
 
   const n = Math.min(STONEFISH_V5_5_SEARCH.semifinalists, scored.length);
@@ -465,7 +539,6 @@ function stonefishV55FastCandidates(game) {
     const heritageBoost = entry.heritageMatch
       ? STONEFISH_V5_WEIGHTS.heritage * STONEFISH_V5_5_SEARCH.heritageMultiplier
       : 0;
-    entry.conversion = stonefishV5ProConversionUrgency(game, entry.raw, perspective);
     entry.preliminary = entry.tactical * STONEFISH_V5_5_SEARCH.tacticalWeight
       + entry.scout * STONEFISH_V5_5_SEARCH.scoutWeight
       + heritageBoost
