@@ -14,7 +14,7 @@ const STONEFISH_V5_5_SEARCH = Object.freeze({
   rootProbeKeep: 2,
   branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
-  lmrAfterMove: 1,
+  lmrAfterMove: 2,
   pvsEpsilon: 1e-6,
   tacticalWeight: 1.10,
   scoutWeight: 0.20,
@@ -123,14 +123,15 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
 
   for (let i = 0; i < ordered.length; i += 1) {
     const move = ordered[i].move;
-    const tactical = stonefishV55IsTactical(game, move);
+    const canReduce = depth >= STONEFISH_V5_5_SEARCH.lmrMinDepth
+      && i >= STONEFISH_V5_5_SEARCH.lmrAfterMove;
+    const tactical = canReduce ? stonefishV55IsTactical(game, move) : false;
     game.fastApply(move);
     let value;
 
     if (i === 0) {
       value = stonefishV55Minimax(game, depth - 1, perspective, alpha, beta, plyFromRoot + 1, null);
-    } else if (depth >= STONEFISH_V5_5_SEARCH.lmrMinDepth
-      && i >= STONEFISH_V5_5_SEARCH.lmrAfterMove && !tactical) {
+    } else if (canReduce && !tactical) {
       if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.reductions += 1;
       value = stonefishV55Minimax(game, Math.max(0, depth - 2), perspective, alpha, beta, plyFromRoot + 1, null);
       const challenges = maximizing ? value > alpha : value < beta;
