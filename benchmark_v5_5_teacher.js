@@ -101,44 +101,50 @@ function positionAfter(opening) {
   return game;
 }
 
-function collectFeatureRow(position) {
+function collectFeatureRow(position, index) {
+  // Both halves of the teacher comparison must be deterministic. Pro was already
+  // seeded, but the cheap v5.5 feature pass calls stonefishV5HeritageMove(), whose
+  // final tie-break can use Math.random. Seed the whole feature collection per row
+  // so identical code/positions produce identical teacher metrics across CI runs.
   clearSharedEngineCaches();
   const proGame = cloneGame(position);
-  const proScored = withSeed(0x5511, () => stonefishV5ProScoreAllMoves(proGame));
+  const proScored = withSeed((0x55110000 + index * 977) >>> 0, () => stonefishV5ProScoreAllMoves(proGame));
   if (!proScored.length) return null;
   const teacherKey = rawKey(proScored[0].raw);
 
   clearSharedEngineCaches();
-  const game = cloneGame(position);
-  const legal = game.fastMoves();
-  if (!legal.length) return null;
-  const perspective = game.side;
-  const bookMove = stonefishV45BookMove(game, 1, legal);
-  const heritageMove = stonefishV5HeritageMove(game);
+  return withSeed((0xA55C0000 + index * 1597) >>> 0, () => {
+    const game = cloneGame(position);
+    const legal = game.fastMoves();
+    if (!legal.length) return null;
+    const perspective = game.side;
+    const bookMove = stonefishV45BookMove(game, 1, legal);
+    const heritageMove = stonefishV5HeritageMove(game);
 
-  const entries = legal.map(raw => ({
-    raw,
-    key: rawKey(raw),
-    heritage: Boolean(heritageMove && stonefishV5SameMove(raw, heritageMove)),
-    scout: stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective),
-    tactical: 0,
-    conversion: 0,
-    forcing: false,
-  }));
+    const entries = legal.map(raw => ({
+      raw,
+      key: rawKey(raw),
+      heritage: Boolean(heritageMove && stonefishV5SameMove(raw, heritageMove)),
+      scout: stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective),
+      tactical: 0,
+      conversion: 0,
+      forcing: false,
+    }));
 
-  entries.sort((a, b) => {
-    if (Math.abs(b.scout - a.scout) > 1e-9) return b.scout - a.scout;
-    return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
+    entries.sort((a, b) => {
+      if (Math.abs(b.scout - a.scout) > 1e-9) return b.scout - a.scout;
+      return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
+    });
+
+    const featureCap = Math.min(8, entries.length);
+    for (let i = 0; i < featureCap; i += 1) {
+      entries[i].tactical = stonefishV5TacticalScore(game, entries[i].raw);
+      entries[i].conversion = stonefishV5ProConversionUrgency(game, entries[i].raw, perspective);
+      entries[i].forcing = Boolean(entries[i].raw.captured || entries[i].raw.promotion || game.fastGivesCheck(entries[i].raw));
+    }
+
+    return { teacherKey, entries: entries.slice(0, featureCap) };
   });
-
-  const featureCap = Math.min(8, entries.length);
-  for (let i = 0; i < featureCap; i += 1) {
-    entries[i].tactical = stonefishV5TacticalScore(game, entries[i].raw);
-    entries[i].conversion = stonefishV5ProConversionUrgency(game, entries[i].raw, perspective);
-    entries[i].forcing = Boolean(entries[i].raw.captured || entries[i].raw.promotion || game.fastGivesCheck(entries[i].raw));
-  }
-
-  return { teacherKey, entries: entries.slice(0, featureCap) };
 }
 
 function scoreConfig(row, cfg) {
@@ -159,7 +165,7 @@ const count = Math.max(20, Number.parseInt(process.env.TEACHER_POSITIONS || '80'
 const rows = [];
 for (let i = 0; i < count; i += 1) {
   const plies = 4 + (i % 13);
-  const row = collectFeatureRow(positionAfter(generateOpening(i, plies)));
+  const row = collectFeatureRow(positionAfter(generateOpening(i, plies)), i);
   if (row) rows.push(row);
 }
 
