@@ -140,10 +140,54 @@ function compactGateDecision(decision) {
   const output = { allowed: Boolean(decision.allowed), reason: decision.reason || null };
   const fields = [
     'hostGap', 'deepSacrifice', 'challengerEvidence', 'challengerConfidence',
-    'adaptedLead', 'challengerSignal', 'provisionalSignal'
+    'adaptedLead', 'challengerSignal', 'provisionalSignal', 'decisionGain'
   ];
   for (const field of fields) if (Number.isFinite(Number(decision[field]))) output[field] = Number(decision[field]);
   return output;
+}
+
+function armxDecisionScore(report, review) {
+  if (!report) return -Infinity;
+  const hostScore = Number(report.hostScore);
+  if (!Number.isFinite(hostScore)) return -Infinity;
+  const adjustment = Number(report.adjustment) || 0;
+  const gain = Number(review && review.decisionGain) || 1;
+  return hostScore + adjustment * gain;
+}
+
+function closestNearMiss(review, context) {
+  const reports = review && Array.isArray(review.reports) ? review.reports : [];
+  const provisional = reports.find(report => report && review.provisionalRaw
+    && stonefishV5SameMove(report.raw, review.provisionalRaw));
+  if (!provisional) return null;
+  const provisionalScore = armxDecisionScore(provisional, review);
+  let best = null;
+  for (const report of reports) {
+    if (!report || stonefishV5SameMove(report.raw, review.provisionalRaw)) continue;
+    const lead = armxDecisionScore(report, review) - provisionalScore;
+    // Positive leads are already proposals and therefore appear in override or
+    // rejection traces. Near misses are alternatives that remained just behind.
+    if (lead > 0) continue;
+    if (!best || lead > best.decisionLead) {
+      best = {
+        game: context.gameIndex + 1,
+        pair: context.pair + 1,
+        side: context.armxIsWhite ? 'W' : 'B',
+        ply: context.plies,
+        result: null,
+        observedPlies: Number(review.observedPlies) || 0,
+        decisionGain: Number(review.decisionGain) || 1,
+        decisionLead: lead,
+        decisionDeficit: -lead,
+        hostGap: Number(provisional.hostScore) - Number(report.hostScore),
+        deepSacrifice: Number(provisional.hostDeep) - Number(report.hostDeep),
+        provisional: compactReport(provisional),
+        alternative: compactReport(report),
+        notes: Array.isArray(review.notes) ? review.notes.slice() : [],
+      };
+    }
+  }
+  return best;
 }
 
 function observeReview(stats, review, context) {
@@ -260,6 +304,7 @@ function summarize(stats) {
 function simulate(label, games, opponentFn) {
   const stats = freshStats();
   const outcomes = { win: 0, loss: 0, draw: 0 };
+  const nearMisses = [];
   for (let i = 0; i < games; i += 1) {
     const pair = Math.floor(i / 2);
     const game = positionAfter(generateOpening(pair, 10));
@@ -269,18 +314,20 @@ function simulate(label, games, opponentFn) {
     const overrideStart = stats.overrideEvents.length;
     const rejectionStart = stats.rejectionEvents.length;
     let gameOutcome = 'draw';
+    let bestNearMiss = null;
 
     withSeed((0xD550000 + pair * 1103 + i) >>> 0, () => {
       while (!game.game_over() && plies < 360) {
         const armxTurn = (game.side === 1) === armxIsWhite;
         const move = armxTurn ? getStonefishV55Testunit1Move(game) : opponentFn(game);
         if (armxTurn) {
-          observeReview(stats, stonefishV55Testunit1LastARMX(), {
-            gameIndex: i,
-            pair,
-            armxIsWhite,
-            plies,
-          });
+          const review = stonefishV55Testunit1LastARMX();
+          const context = { gameIndex: i, pair, armxIsWhite, plies };
+          observeReview(stats, review, context);
+          const nearMiss = closestNearMiss(review, context);
+          if (nearMiss && (!bestNearMiss || nearMiss.decisionLead > bestNearMiss.decisionLead)) {
+            bestNearMiss = nearMiss;
+          }
         }
         if (!play(game, move)) {
           gameOutcome = armxTurn ? 'loss' : 'win';
@@ -305,8 +352,12 @@ function simulate(label, games, opponentFn) {
     for (let event = rejectionStart; event < stats.rejectionEvents.length; event += 1) {
       stats.rejectionEvents[event].result = gameOutcome;
     }
+    if (bestNearMiss) {
+      bestNearMiss.result = gameOutcome;
+      nearMisses.push(bestNearMiss);
+    }
   }
-  return { label, outcomes, adaptation: summarize(stats) };
+  return { label, outcomes, adaptation: Object.assign(summarize(stats), { nearMisses }) };
 }
 
 const games = Math.max(4, Number.parseInt(process.env.ARMX_DIAG_GAMES || '8', 10) || 8);
