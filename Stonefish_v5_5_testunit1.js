@@ -17,6 +17,8 @@ const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   armx: 'ARMX-preview opponent adaptation model',
 });
 
+const STONEFISH_V5_5_ARMX_MIN_POSITIVE_SIGNAL = 0.10;
+const STONEFISH_V5_5_ARMX_STRONG_AVOID_SIGNAL = -0.45;
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
 function stonefishV55Testunit1HostSearch(game) {
@@ -38,17 +40,56 @@ function stonefishV55FindARMXReport(reports, raw) {
   return reports.find(report => report && raw && stonefishV5SameMove(report.raw, raw)) || null;
 }
 
-function stonefishV55ARMXChangeAllowed(provisional, challenger, provisionalReport, challengerReport) {
+function stonefishV55ARMXMateScale(entry) {
+  if (!entry) return false;
+  const mate = typeof STONEFISH_V5_PRO_MATE === 'number' ? STONEFISH_V5_PRO_MATE : STONEFISH_V5_MATE;
+  return (Number.isFinite(entry.deep) && Math.abs(entry.deep) >= mate * 0.9)
+    || (Number.isFinite(entry.score) && Math.abs(entry.score) >= mate * 0.9);
+}
+
+function stonefishV55ARMXChangeAllowed(
+  provisional,
+  challenger,
+  provisionalReport,
+  challengerReport,
+  observedPlies = 0
+) {
   if (!provisional || !challenger || !provisionalReport || !challengerReport) return false;
+
+  // Native search owns forced tactical truth. ARMX must never re-rank a mate-scale
+  // decision just because its behavioral multipliers prefer another mating line.
+  if (stonefishV55ARMXMateScale(provisional) || stonefishV55ARMXMateScale(challenger)) return false;
+
   const hostGap = provisional.armxOriginalScore - challenger.armxOriginalScore;
   if (hostGap > ARMX_PREVIEW.maxHostGap) return false;
   if (Number.isFinite(provisional.deep) && Number.isFinite(challenger.deep)
     && challenger.deep < provisional.deep - ARMX_PREVIEW.maxDeepSacrifice) return false;
-  const confidence = Math.max(provisionalReport.confidence || 0, challengerReport.confidence || 0);
-  const evidence = Math.max(provisionalReport.evidence || 0, challengerReport.evidence || 0);
-  if (evidence < ARMX_PREVIEW.minEvidence || confidence < 0.20) return false;
-  if (challengerReport.adaptedScore <= provisionalReport.adaptedScore) return false;
-  return true;
+
+  const challengerConfidence = Number(challengerReport.confidence) || 0;
+  const challengerEvidence = Number(challengerReport.evidence) || 0;
+  if (challengerEvidence < ARMX_PREVIEW.minOverrideEvidence
+    || challengerConfidence < ARMX_PREVIEW.minOverrideConfidence) return false;
+
+  // Early observations are especially noisy: the bad adapt2 trace flipped a move
+  // after only a few observed choices with sub-0.4 challenger confidence. ARMX may
+  // still learn immediately, but it only gets voting power this early when the
+  // evidence is already overwhelming.
+  if (observedPlies < ARMX_PREVIEW.earlyOverridePlies
+    && (challengerEvidence < ARMX_PREVIEW.earlyOverrideEvidence
+      || challengerConfidence < ARMX_PREVIEW.earlyOverrideConfidence)) return false;
+
+  const adaptedLead = challengerReport.adaptedScore - provisionalReport.adaptedScore;
+  if (adaptedLead < ARMX_PREVIEW.minAdaptedLead) return false;
+
+  // Do not change a sound native choice merely because two negative ARMX signals
+  // differ by a few points. A flip needs either a positively learned challenger
+  // or a genuinely strong learned reason to avoid the provisional move.
+  const challengerSignal = Number(challengerReport.signal) || 0;
+  const provisionalSignal = Number(provisionalReport.signal) || 0;
+  if (challengerSignal < STONEFISH_V5_5_ARMX_MIN_POSITIVE_SIGNAL
+    && provisionalSignal > STONEFISH_V5_5_ARMX_STRONG_AVOID_SIGNAL) return false;
+
+  return challengerReport.adaptedScore > provisionalReport.adaptedScore;
 }
 
 function stonefishV55Testunit1ScoreAllMoves(game) {
@@ -100,7 +141,8 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
         provisional,
         proposed,
         provisionalReport,
-        proposedReport
+        proposedReport,
+        review && Number(review.observedPlies) || 0
       );
       adaptationRejected = !allowChange;
     }
