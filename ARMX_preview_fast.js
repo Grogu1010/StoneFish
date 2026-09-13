@@ -7,16 +7,16 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-v55-fast2',
+  version: 'preview-v55-fast3',
   base: 'Stonefish v5.5 host',
   basePly: 3,
   maxPly: 4,
-  maxCandidates: 1,
+  maxCandidates: 2,
   maxReplies: 4,
   maxContinuations: 2,
   maxFourthPlyReplies: 1,
   maxCriticalReplies: 1,
-  maxNodes: 96,
+  maxNodes: 140,
 });
 
 function armxPreviewPieceValue(type) {
