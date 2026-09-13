@@ -81,7 +81,7 @@ function stonefishTimedRenderRoundRobin(stats, selectedKeys, completed, total, d
     return `<div class="matchup-row"><strong>${models[m.a].name} vs ${models[m.b].name}</strong><span>${m.games}/${m.targetGames} games</span><span>${models[m.a].name}: ${m.aWins}W · ${aLosses}L · ${m.draws}D — W ${percent(m.aWins, m.games)} · D ${percent(m.draws, m.games)}</span><span>${aPerformance.text}</span><span>${models[m.b].name}: ${m.bWins}W · ${bLosses}L · ${m.draws}D — W ${percent(m.bWins, m.games)} · D ${percent(m.draws, m.games)}</span><span>${bPerformance.text}</span></div>`;
   }).join('');
 
-  testResults.innerHTML = `<div class="test-progress-heading">${done ? 'Final' : 'Running'} — ${completed} / ${total} total games</div><div class="developer-note">Timing is engine-only: opponent think time is excluded. Engine time/game = average time/move × average moves/game.</div><div class="results-section-title">Overall</div>${overallRows}<div class="results-section-title">Matchups</div>${matchupRows}`;
+  testResults.innerHTML = `<div class="test-progress-heading">${done ? 'Final' : 'Running'} — ${completed} / ${total} total games</div><div class="developer-note">Games use mirrored varied openings: each opening is replayed with colors swapped before moving to the next seed. Timing is engine-only: opponent think time is excluded. Engine time/game = average time/move × average moves/game.</div><div class="results-section-title">Overall</div>${overallRows}<div class="results-section-title">Matchups</div>${matchupRows}`;
 }
 
 createStats = stonefishTimedCreateStats;
@@ -102,6 +102,17 @@ function stonefishCloseParallelWorkers() {
   stonefishParallelWorkerPool = [];
 }
 
+function stonefishAssignMirroredOpenings(schedule) {
+  const counts = new Map();
+  for (const job of schedule) {
+    const key = pairKey(job.a, job.b);
+    const gameIndex = counts.get(key) || 0;
+    job.openingIndex = Math.floor(gameIndex / 2);
+    counts.set(key, gameIndex + 1);
+  }
+  return schedule;
+}
+
 async function stonefishParallelRoundRobinTest() {
   if (testing) return;
   const selectedKeys = getSelectedTestModels();
@@ -116,7 +127,7 @@ async function stonefishParallelRoundRobinTest() {
   testCountInput.value = totalGames;
 
   const stats = createStats(selectedKeys);
-  const schedule = buildSchedule(selectedKeys, totalGames, stats);
+  const schedule = stonefishAssignMirroredOpenings(buildSchedule(selectedKeys, totalGames, stats));
   const workerCount = stonefishParallelWorkerCount(schedule.length);
   let nextJobIndex = 0;
   let completed = 0;
@@ -139,7 +150,8 @@ async function stonefishParallelRoundRobinTest() {
           jobId: scheduleIndex + 1,
           whiteModelKey: job.whiteModelKey,
           blackModelKey: job.blackModelKey,
-          maxPlies: 1000
+          maxPlies: 1000,
+          openingIndex: job.openingIndex
         });
 
         applyResult(stats, job, result);
