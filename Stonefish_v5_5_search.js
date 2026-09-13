@@ -1,13 +1,15 @@
 // Stonefish v5.5 native search core — ARMX-guided Guarded PVS.
 //
 // v5.5 keeps v5 Pro's evaluation/knowledge but spends the expensive five-ply
-// budget on only two root finalists. The host uses a compact selective tree,
-// then ARMX audits the actual provisional winner and may inject one missed
+// budget on only two root finalists. A cheap knowledge gate reviews the best four
+// preliminary candidates with Pro's richer root knowledge before those two are
+// chosen. ARMX then audits the actual provisional winner and may inject one missed
 // opponent reply for a targeted re-search.
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'ARMX-guided Guarded PVS',
   semifinalists: 5,
+  knowledgeCandidates: 4,
   rootCandidates: 2,
   branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
@@ -69,7 +71,6 @@ function stonefishV55Ordered(game, legal, depth, injectedMove) {
   if (!injectedMove) return selected;
   const injectedIndex = ordered.findIndex(entry => stonefishV55SameRaw(entry.move, injectedMove));
   if (injectedIndex < 0 || injectedIndex < width) return selected;
-
   selected.push(ordered[injectedIndex]);
   return selected;
 }
@@ -171,7 +172,8 @@ function stonefishV55FastCandidates(game) {
   const scored = legal.map(raw => ({
     raw,
     tactical: null,
-    knowledge: 0,
+    knowledge: null,
+    knowledgeReady: false,
     heritageMatch: !!heritageMove && stonefishV5SameMove(raw, heritageMove),
     scout: stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective),
     preliminary: -Infinity,
@@ -202,6 +204,27 @@ function stonefishV55FastCandidates(game) {
     if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
     return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
   });
+
+  // Native v5.5 feature: use rich positional/root knowledge as a cheap gate before
+  // committing the expensive five-ply budget. Four candidates receive knowledge;
+  // only the best two after this reranking are searched deeply.
+  const knowledgeCount = Math.min(STONEFISH_V5_5_SEARCH.knowledgeCandidates, n);
+  for (let i = 0; i < knowledgeCount; i += 1) {
+    const entry = scored[i];
+    entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
+      ? 0
+      : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
+    entry.knowledgeReady = true;
+    entry.preliminary = entry.tactical + entry.knowledge
+      + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+    entry.score = entry.preliminary;
+  }
+  for (let i = knowledgeCount; i < scored.length; i += 1) scored[i].score = -Infinity;
+
+  scored.sort((a, b) => {
+    if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
+    return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
+  });
   return scored;
 }
 
@@ -215,11 +238,14 @@ function stonefishV55FinishCandidates(game, ranked) {
 
   for (let i = 0; i < finalists; i += 1) {
     const entry = ranked[i];
-    entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
-      ? 0
-      : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
-    entry.preliminary = entry.tactical + entry.knowledge
-      + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+    if (!entry.knowledgeReady) {
+      entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
+        ? 0
+        : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
+      entry.knowledgeReady = true;
+      entry.preliminary = entry.tactical + entry.knowledge
+        + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+    }
     entry.armxCriticalReply = null;
     entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
     entry.score = stonefishV55RecomputeFinalScore(entry);
