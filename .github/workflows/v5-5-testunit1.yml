@@ -5,6 +5,8 @@ on:
     paths:
       - 'ARMX_preview_fast.js'
       - 'Stonefish_v5_5_testunit1.js'
+      - 'Stonefish_v5_5_testunit1_dev_ui.js'
+      - 'test-worker.js'
       - 'benchmark_v5_5_testunit1.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
@@ -25,6 +27,6 @@ jobs:
         run: node --check Stonefish_v5_5_testunit1.js
       - name: Run v5.5 dev benchmark
         env:
-          SAMPLES: '8'
-          GAMES: '2'
+          SAMPLES: '12'
+          GAMES: '12'
         run: node benchmark_v5_5_testunit1.js
