@@ -3,7 +3,7 @@
 //   1) v5.5 + ARMX vs v5 Pro
 //   2) v5.5 No ARMX vs v5 Pro
 //   3) v5.5 + ARMX vs v5.5 No ARMX
-// This makes the host-engine gain and ARMX's isolated contribution visible.
+// Required hierarchy: v5 Pro < v5.5 No ARMX < v5.5 + ARMX.
 
 const fs = require('fs');
 const vm = require('vm');
@@ -262,6 +262,12 @@ const matchups = games ? {
   armxVsNoArmx: variedHeadToHead(games, 'ARMX-vs-NoARMX', getStonefishV55Testunit1Move, getStonefishV55Testunit1NoARMXMove),
 } : null;
 
+const hierarchy = matchups ? {
+  hostBeatsPro: matchups.noArmxVsPro.score > 0.5,
+  armxBeatsHost: matchups.armxVsNoArmx.score > 0.5,
+  armxOutscoresHostVsPro: matchups.armxVsPro.score > matchups.noArmxVsPro.score,
+} : null;
+
 const result = {
   testUnit: STONEFISH_V5_5_TESTUNIT1.name,
   knowledgeBase: STONEFISH_V5_5_TESTUNIT1.knowledgeBase,
@@ -270,11 +276,25 @@ const result = {
   armx: ARMX_PREVIEW,
   latency,
   matchups,
-  targets: { winsPer100VsPro: 65, speedupVsPro: 3 }
+  hierarchy,
+  targets: {
+    hierarchy: 'v5 Pro < v5.5 No ARMX < v5.5 + ARMX',
+    winsPer100VsPro: 65,
+    speedupVsPro: 3
+  }
 };
 console.log('\nSTONEFISH_V5_5_TESTUNIT1 ' + JSON.stringify(result));
 
 if (process.env.RELEASE_GATE === '1' && games >= 100) {
+  if (!hierarchy.hostBeatsPro) {
+    throw new Error(`v5.5 host gate failed: score vs Pro ${matchups.noArmxVsPro.score.toFixed(3)}; need >0.500`);
+  }
+  if (!hierarchy.armxBeatsHost) {
+    throw new Error(`ARMX gate failed: score vs No-ARMX host ${matchups.armxVsNoArmx.score.toFixed(3)}; need >0.500`);
+  }
+  if (!hierarchy.armxOutscoresHostVsPro) {
+    throw new Error(`ARMX hierarchy gate failed: ARMX-vs-Pro ${matchups.armxVsPro.score.toFixed(3)} must exceed NoARMX-vs-Pro ${matchups.noArmxVsPro.score.toFixed(3)}`);
+  }
   if (matchups.armxVsPro.win < 65) {
     throw new Error(`v5.5 strength gate failed: ${matchups.armxVsPro.win} wins; need >=65`);
   }
