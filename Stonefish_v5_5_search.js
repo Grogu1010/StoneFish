@@ -1,13 +1,13 @@
 // Stonefish v5.5 native search core — ARMX-guided Guarded PVS.
 //
 // v5.5 keeps v5 Pro's evaluation/knowledge, but does NOT pay for Pro's full
-// four-finalist search. It preserves Pro's proven cheap semifinal ranking, then
-// spends full five-ply work on only two finalists with a much smaller Guarded-PVS
-// tree. ARMX can inject an opponent reply that the narrow beam would otherwise miss.
+// four-finalist search. It preserves Pro-style cheap semifinal ranking over a
+// smaller pool, then spends full five-ply work on only two finalists with a much
+// smaller Guarded-PVS tree. ARMX may add one opponent reply beyond that normal beam.
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'ARMX-guided Guarded PVS',
-  semifinalists: 8,
+  semifinalists: 5,
   rootCandidates: 2,
   branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
@@ -64,14 +64,15 @@ function stonefishV55Ordered(game, legal, depth, injectedMove) {
   const ordered = legal
     .map((move, index) => ({ move, index, order: stonefishV5ProSpeedMoveOrder(game, move) }))
     .sort((a, b) => (b.order - a.order) || (a.index - b.index));
+  const selected = ordered.slice(0, width);
 
-  if (!injectedMove) return ordered.slice(0, width);
+  if (!injectedMove) return selected;
   const injectedIndex = ordered.findIndex(entry => stonefishV55SameRaw(entry.move, injectedMove));
-  if (injectedIndex < 0 || injectedIndex < width) return ordered.slice(0, width);
+  if (injectedIndex < 0 || injectedIndex < width) return selected;
 
-  const injected = ordered[injectedIndex];
-  const selected = ordered.slice(0, Math.max(0, width - 1));
-  selected.push(injected);
+  // ARMX is additive: never throw away a normal beam move just to hear the critic.
+  // Preview can contribute at most one extra opponent reply at the root response layer.
+  selected.push(ordered[injectedIndex]);
   return selected;
 }
 
@@ -146,10 +147,6 @@ function stonefishV55FivePlyScore(game, raw, perspective, criticalReply = null) 
   }
 }
 
-// Teacher-aligned cheap ranking. This deliberately mirrors the successful v5 Pro
-// semifinal selection so the two expensive v5.5 slots are spent on moves Pro itself
-// considers serious. The distinction comes after this stage: v5.5 searches fewer
-// roots with Guarded PVS and receives ARMX oversight.
 function stonefishV55FastCandidates(game) {
   const legal = game.fastMoves();
   if (!legal.length) return [];
