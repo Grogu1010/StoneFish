@@ -58,6 +58,10 @@ function play(game, move) {
   return move ? game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' }) : null;
 }
 
+function rawKey(raw) {
+  return raw ? `${raw.from}:${raw.to}:${raw.promotion || 0}` : null;
+}
+
 function generateOpening(pairIndex, plies = 10) {
   const game = new Chess();
   const pick = seededRandom((0xA551000 + pairIndex * 977) >>> 0);
@@ -98,6 +102,7 @@ function freshStats() {
     adaptationApplied: 0,
     adaptationRejected: 0,
     overrides: 0,
+    overrideEvents: [],
     guardEligible: 0,
     guardVerified: 0,
     guardLowered: 0,
@@ -112,7 +117,23 @@ function increment(map, key) {
   map[key] = (map[key] || 0) + 1;
 }
 
-function observeReview(stats, review) {
+function compactReport(report) {
+  if (!report) return null;
+  return {
+    move: rawKey(report.raw),
+    hostScore: Number(report.hostScore),
+    hostDeep: Number(report.hostDeep),
+    adaptedScore: Number(report.adaptedScore),
+    adjustment: Number(report.adjustment),
+    signal: Number(report.signal),
+    confidence: Number(report.confidence),
+    evidence: Number(report.evidence),
+    features: Array.isArray(report.features) ? report.features.slice() : [],
+    reasons: Array.isArray(report.reasons) ? report.reasons.slice() : [],
+  };
+}
+
+function observeReview(stats, review, context) {
   if (!review) return;
   stats.turns += 1;
   const observed = Number(review.observedPlies) || 0;
@@ -120,7 +141,27 @@ function observeReview(stats, review) {
   stats.observedPliesMax = Math.max(stats.observedPliesMax, observed);
   if (review.adaptationApplied) stats.adaptationApplied += 1;
   if (review.adaptationRejected) stats.adaptationRejected += 1;
-  if (review.override) stats.overrides += 1;
+  if (review.override) {
+    stats.overrides += 1;
+    const reports = Array.isArray(review.reports) ? review.reports : [];
+    const provisional = reports.find(report => report && review.provisionalRaw
+      && stonefishV5SameMove(report.raw, review.provisionalRaw));
+    const winner = reports.find(report => report && review.recommendedRaw
+      && stonefishV5SameMove(report.raw, review.recommendedRaw));
+    stats.overrideEvents.push({
+      game: context.gameIndex + 1,
+      pair: context.pair + 1,
+      side: context.armxIsWhite ? 'W' : 'B',
+      ply: context.plies,
+      result: null,
+      hostMove: rawKey(review.provisionalRaw),
+      armxMove: rawKey(review.recommendedRaw),
+      hostScoreGap: Number(review.hostScoreGap),
+      provisional: compactReport(provisional),
+      chosen: compactReport(winner),
+      notes: Array.isArray(review.notes) ? review.notes.slice() : [],
+    });
+  }
 
   const guard = review.refutationGuard;
   if (guard && guard.eligible) stats.guardEligible += 1;
@@ -166,6 +207,7 @@ function summarize(stats) {
     adaptationAppliedRate: stats.turns ? stats.adaptationApplied / stats.turns : 0,
     adaptationRejectedRate: stats.turns ? stats.adaptationRejected / stats.turns : 0,
     overrideRate: stats.turns ? stats.overrides / stats.turns : 0,
+    overrideEvents: stats.overrideEvents,
     guardEligibleRate: stats.turns ? stats.guardEligible / stats.turns : 0,
     guardVerificationRate: stats.turns ? stats.guardVerified / stats.turns : 0,
     guardLowerRate: stats.turns ? stats.guardLowered / stats.turns : 0,
@@ -184,23 +226,41 @@ function simulate(label, games, opponentFn) {
     const armxIsWhite = i % 2 === 0;
     stats.games += 1;
     let plies = game.historyStack.length;
+    const overrideStart = stats.overrideEvents.length;
+    let gameOutcome = 'draw';
 
     withSeed((0xD550000 + pair * 1103 + i) >>> 0, () => {
       while (!game.game_over() && plies < 360) {
         const armxTurn = (game.side === 1) === armxIsWhite;
         const move = armxTurn ? getStonefishV55Testunit1Move(game) : opponentFn(game);
-        if (armxTurn) observeReview(stats, stonefishV55Testunit1LastARMX());
+        if (armxTurn) {
+          observeReview(stats, stonefishV55Testunit1LastARMX(), {
+            gameIndex: i,
+            pair,
+            armxIsWhite,
+            plies,
+          });
+        }
         if (!play(game, move)) {
-          outcomes[armxTurn ? 'loss' : 'win'] += 1;
+          gameOutcome = armxTurn ? 'loss' : 'win';
+          outcomes[gameOutcome] += 1;
           return;
         }
         plies += 1;
       }
       if (game.in_checkmate()) {
         const winnerIsWhite = game.side === -1;
-        outcomes[winnerIsWhite === armxIsWhite ? 'win' : 'loss'] += 1;
-      } else outcomes.draw += 1;
+        gameOutcome = winnerIsWhite === armxIsWhite ? 'win' : 'loss';
+        outcomes[gameOutcome] += 1;
+      } else {
+        gameOutcome = 'draw';
+        outcomes.draw += 1;
+      }
     });
+
+    for (let event = overrideStart; event < stats.overrideEvents.length; event += 1) {
+      stats.overrideEvents[event].result = gameOutcome;
+    }
   }
   return { label, outcomes, adaptation: summarize(stats) };
 }
