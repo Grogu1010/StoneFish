@@ -143,6 +143,7 @@ function timedMove(seed, fn) {
 function latencyAndBehavior(samples) {
   let proMs = 0, noArmxMs = 0, armxMs = 0;
   let armxVsProChanges = 0, armxVsHostChanges = 0, overrides = 0, nodes = 0;
+  let eligible = 0, reviewed = 0, challengers = 0;
 
   if (samples.length) {
     clearSharedEngineCaches();
@@ -167,10 +168,17 @@ function latencyAndBehavior(samples) {
     if (moveKey(proResult.move) !== moveKey(armxResult.move)) armxVsProChanges += 1;
     if (moveKey(noArmxResult.move) !== moveKey(armxResult.move)) armxVsHostChanges += 1;
 
-    if (!review || !review.connected) throw new Error('ARMX-preview was not connected');
-    if (review.nodes > ARMX_PREVIEW.maxNodes) throw new Error(`ARMX node budget exceeded: ${review.nodes}`);
+    if (!review) throw new Error('v5.5 did not publish ARMX audit metadata');
+    if (review.eligible) eligible += 1;
+    if (review.challengerSearched) challengers += 1;
+    if (review.connected) {
+      reviewed += 1;
+      if (review.nodes > ARMX_PREVIEW.maxNodes) throw new Error(`ARMX node budget exceeded: ${review.nodes}`);
+      nodes += review.nodes || 0;
+    } else if (review.eligible && typeof armxPreviewReview === 'function') {
+      throw new Error('ARMX-preview was eligible but was not connected');
+    }
     if (review.override) overrides += 1;
-    nodes += review.nodes;
   }
 
   return {
@@ -178,13 +186,17 @@ function latencyAndBehavior(samples) {
     armxVsProChangedMoves: armxVsProChanges,
     armxVsHostChangedMoves: armxVsHostChanges,
     armxOverrides: overrides,
+    armxEligibleRate: samples.length ? eligible / samples.length : 0,
+    armxReviewRate: samples.length ? reviewed / samples.length : 0,
+    challengerSearchRate: samples.length ? challengers / samples.length : 0,
     proAverageMs: samples.length ? proMs / samples.length : 0,
     noArmxAverageMs: samples.length ? noArmxMs / samples.length : 0,
     armxAverageMs: samples.length ? armxMs / samples.length : 0,
     noArmxSpeedupVsPro: noArmxMs ? proMs / noArmxMs : 0,
     armxSpeedupVsPro: armxMs ? proMs / armxMs : 0,
     armxOverheadVsHost: noArmxMs ? armxMs / noArmxMs : 0,
-    armxAverageNodes: samples.length ? nodes / samples.length : 0
+    armxAverageNodes: samples.length ? nodes / samples.length : 0,
+    armxAverageNodesPerReview: reviewed ? nodes / reviewed : 0
   };
 }
 
@@ -241,6 +253,7 @@ const result = {
   testUnit: STONEFISH_V5_5_TESTUNIT1.name,
   knowledgeBase: STONEFISH_V5_5_TESTUNIT1.knowledgeBase,
   search: STONEFISH_V5_5_SEARCH,
+  host: STONEFISH_V5_5_TESTUNIT1,
   armx: ARMX_PREVIEW,
   latency,
   matchups,
