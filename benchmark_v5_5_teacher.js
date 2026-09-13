@@ -219,10 +219,10 @@ function adaptiveThirdDiagnostics(cfg) {
 
 const currentConfig = {
   semifinalists: STONEFISH_V5_5_SEARCH.semifinalists,
-  tacticalWeight: 1.00,
-  scoutWeight: 0.34,
-  heritageMultiplier: 1.25,
-  conversionWeight: 1.00,
+  tacticalWeight: STONEFISH_V5_5_SEARCH.tacticalWeight,
+  scoutWeight: STONEFISH_V5_5_SEARCH.scoutWeight,
+  heritageMultiplier: STONEFISH_V5_5_SEARCH.heritageMultiplier,
+  conversionWeight: STONEFISH_V5_5_SEARCH.conversionWeight,
 };
 const current = evaluate(currentConfig);
 
