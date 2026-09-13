@@ -1,0 +1,27 @@
+name: Stonefish model latency
+
+on:
+  push:
+    branches:
+      - 'chatgpt/stonefish-speed-pass-9'
+    paths:
+      - 'benchmark_model_latency.js'
+      - '.github/workflows/stonefish-model-latency.yml'
+      - 'Stonefish*.js'
+  pull_request:
+    paths:
+      - 'benchmark_model_latency.js'
+      - '.github/workflows/stonefish-model-latency.yml'
+      - 'Stonefish*.js'
+
+jobs:
+  latency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Measure v1 through v5 Pro latency
+        run: node benchmark_model_latency.js
