@@ -1,5 +1,5 @@
 // Development benchmark for Stonefish v5.5 testunit1.
-// Reports three controlled comparisons on the same varied opening set:
+// Reports three controlled comparisons on the exact same varied opening/seed set:
 //   1) v5.5 + ARMX vs v5 Pro
 //   2) v5.5 No ARMX vs v5 Pro
 //   3) v5.5 + ARMX vs v5.5 No ARMX
@@ -206,7 +206,7 @@ function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, 
   });
 }
 
-function variedHeadToHead(games, label, contenderFn, opponentFn, seedSalt) {
+function variedHeadToHead(games, label, contenderFn, opponentFn) {
   const totals = { win: 0, loss: 0, draw: 0 };
   for (let i = 0; i < games; i += 1) {
     const pair = Math.floor(i / 2);
@@ -215,7 +215,7 @@ function variedHeadToHead(games, label, contenderFn, opponentFn, seedSalt) {
     const result = simulateGame(
       contenderIsWhite,
       opening,
-      (0xC550000 + seedSalt + pair * 977 + i) >>> 0,
+      (0xC550000 + pair * 977 + i) >>> 0,
       contenderFn,
       opponentFn
     );
@@ -232,9 +232,9 @@ const latency = latencyAndBehavior(buildSamplePositions(sampleCount));
 const games = Math.max(0, Number.parseInt(process.env.GAMES || '12', 10) || 0);
 
 const matchups = games ? {
-  armxVsPro: variedHeadToHead(games, 'ARMX-vs-Pro', getStonefishV55Testunit1Move, getStonefishV5ProMove, 0),
-  noArmxVsPro: variedHeadToHead(games, 'NoARMX-vs-Pro', getStonefishV55Testunit1NoARMXMove, getStonefishV5ProMove, 0x10000),
-  armxVsNoArmx: variedHeadToHead(games, 'ARMX-vs-NoARMX', getStonefishV55Testunit1Move, getStonefishV55Testunit1NoARMXMove, 0x20000),
+  armxVsPro: variedHeadToHead(games, 'ARMX-vs-Pro', getStonefishV55Testunit1Move, getStonefishV5ProMove),
+  noArmxVsPro: variedHeadToHead(games, 'NoARMX-vs-Pro', getStonefishV55Testunit1NoARMXMove, getStonefishV5ProMove),
+  armxVsNoArmx: variedHeadToHead(games, 'ARMX-vs-NoARMX', getStonefishV55Testunit1Move, getStonefishV55Testunit1NoARMXMove),
 } : null;
 
 const result = {
