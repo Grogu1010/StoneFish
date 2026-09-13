@@ -76,18 +76,43 @@ function stonefishV55Leaf(game, perspective, alpha, beta, plyFromRoot) {
   return stonefishV5ProLeaf(game, perspective);
 }
 
+function stonefishV55OrderedEntryBefore(a, b) {
+  if (a.order > b.order) return true;
+  if (a.order < b.order) return false;
+  return a.index < b.index;
+}
+
+// Exact replacement for full sort + slice when the selective beam is tiny.
+// It evaluates the same ordering score for every legal move and keeps the same
+// order/tie-break, but only maintains the top K entries instead of sorting N.
+function stonefishV55TopOrdered(game, legal, width, injectedMove = null) {
+  const selected = [];
+  let injectedEntry = null;
+
+  for (let index = 0; index < legal.length; index += 1) {
+    const move = legal[index];
+    const entry = { move, index, order: stonefishV5ProSpeedMoveOrder(game, move) };
+    if (injectedMove && stonefishV55SameRaw(move, injectedMove)) injectedEntry = entry;
+
+    if (width <= 0) continue;
+    const worst = selected.length ? selected[selected.length - 1] : null;
+    if (selected.length >= width && worst && !stonefishV55OrderedEntryBefore(entry, worst)) continue;
+
+    let at = selected.length;
+    while (at > 0 && stonefishV55OrderedEntryBefore(entry, selected[at - 1])) at -= 1;
+    selected.splice(at, 0, entry);
+    if (selected.length > width) selected.pop();
+  }
+
+  if (!injectedEntry) return selected;
+  if (selected.some(entry => entry.index === injectedEntry.index)) return selected;
+  selected.push(injectedEntry);
+  return selected;
+}
+
 function stonefishV55Ordered(game, legal, depth, injectedMove) {
   const width = stonefishV55SearchWidth(game, depth, legal);
-  const ordered = legal
-    .map((move, index) => ({ move, index, order: stonefishV5ProSpeedMoveOrder(game, move) }))
-    .sort((a, b) => (b.order - a.order) || (a.index - b.index));
-  const selected = ordered.slice(0, width);
-
-  if (!injectedMove) return selected;
-  const injectedIndex = ordered.findIndex(entry => stonefishV55SameRaw(entry.move, injectedMove));
-  if (injectedIndex < 0 || injectedIndex < width) return selected;
-  selected.push(ordered[injectedIndex]);
-  return selected;
+  return stonefishV55TopOrdered(game, legal, width, injectedMove);
 }
 
 function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot, injectedMove = null) {
@@ -406,6 +431,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.stonefishV55Minimax = stonefishV55Minimax;
   globalThis.stonefishV55FivePlyScore = stonefishV55FivePlyScore;
   globalThis.stonefishV55FivePlyWindowScore = stonefishV55FivePlyWindowScore;
+  globalThis.stonefishV55TopOrdered = stonefishV55TopOrdered;
   globalThis.stonefishV55FastCandidates = stonefishV55FastCandidates;
   globalThis.stonefishV55FinishCandidates = stonefishV55FinishCandidates;
   globalThis.stonefishV55VerifyInjectedReply = stonefishV55VerifyInjectedReply;
