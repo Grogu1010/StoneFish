@@ -225,6 +225,55 @@ function adaptiveThirdDiagnostics(cfg) {
   });
 }
 
+// Measure a cheap pool-rescue policy before changing gameplay. Native v5.5
+// normally tactical-scores the top seven scout moves. Candidate eight is admitted
+// only when it is forcing or its scout score is close enough to candidate seven.
+// Report both rescues and regressions in the final-four teacher set, because a
+// rescue policy is useful only if the extra candidate improves net retention.
+function selectiveEighthDiagnostics(cfg) {
+  const margins = [0, 50, 100, 150, 200, 300, 450, 650, 900, 1200, 1800];
+  return margins.map(margin => {
+    let triggered = 0;
+    let baseTop4 = 0;
+    let selectiveTop4 = 0;
+    let rescues = 0;
+    let regressions = 0;
+    let eighthWasTeacher = 0;
+
+    for (const row of rows) {
+      const baseRanked = scoreConfig(row, cfg);
+      const baseHit = baseRanked.slice(0, 4).some(entry => entry.key === row.teacherKey);
+      if (baseHit) baseTop4 += 1;
+
+      const seventh = row.entries[6];
+      const eighth = row.entries[7];
+      const gap = seventh && eighth ? seventh.scout - eighth.scout : Infinity;
+      const useEighth = Boolean(eighth && (eighth.forcing || gap <= margin));
+      if (useEighth) triggered += 1;
+      if (eighth && eighth.key === row.teacherKey) eighthWasTeacher += 1;
+
+      let selectiveHit = baseHit;
+      if (useEighth) {
+        const expanded = scoreConfig(row, Object.assign({}, cfg, { semifinalists: 8 }));
+        selectiveHit = expanded.slice(0, 4).some(entry => entry.key === row.teacherKey);
+      }
+      if (selectiveHit) selectiveTop4 += 1;
+      if (!baseHit && selectiveHit) rescues += 1;
+      if (baseHit && !selectiveHit) regressions += 1;
+    }
+
+    return {
+      margin,
+      triggerRate: rows.length ? triggered / rows.length : 0,
+      baseTop4: rows.length ? baseTop4 / rows.length : 0,
+      selectiveTop4: rows.length ? selectiveTop4 / rows.length : 0,
+      rescues,
+      regressions,
+      eighthWasTeacher,
+    };
+  });
+}
+
 const currentConfig = {
   semifinalists: STONEFISH_V5_5_SEARCH.semifinalists,
   tacticalWeight: STONEFISH_V5_5_SEARCH.tacticalWeight,
@@ -248,6 +297,7 @@ const output = {
   finalistCutoff: STONEFISH_V5_5_SEARCH.rootCandidates,
   current,
   adaptiveThird: adaptiveThirdDiagnostics(currentConfig),
+  selectiveEighth: selectiveEighthDiagnostics(currentConfig),
   best: rankedConfigs[0],
   topConfigs: rankedConfigs.slice(0, 10),
 };
