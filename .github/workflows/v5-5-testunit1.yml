@@ -27,6 +27,6 @@ jobs:
         run: node --check Stonefish_v5_5_testunit1.js
       - name: Run v5.5 dev benchmark
         env:
-          SAMPLES: '12'
-          GAMES: '12'
+          SAMPLES: '20'
+          GAMES: '40'
         run: node benchmark_v5_5_testunit1.js
