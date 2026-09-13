@@ -2,21 +2,21 @@
 //
 // Preview is intentionally NOT a full engine. It scans replies the v5.5 Guarded
 // PVS beam may miss, then follows only a few suspicious branches to a 3-ply base /
-// selective 4-ply horizon. Later ARMX releases can become deeper and more strategic;
-// this preview prioritises speed and useful disagreement.
+// selective 4-ply horizon. fast5 reviews the top two host finalists so ARMX can
+// compare relative risk instead of blindly punishing only the provisional winner.
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-v55-fast4',
+  version: 'preview-v55-fast5',
   base: 'Stonefish v5.5 host',
   basePly: 3,
   maxPly: 4,
-  maxCandidates: 1,
+  maxCandidates: 2,
   maxReplies: 4,
   maxContinuations: 2,
   maxFourthPlyReplies: 1,
   maxCriticalReplies: 1,
-  maxNodes: 96,
+  maxNodes: 128,
   riskThresholdForcing: 40,
   riskThresholdQuiet: 80,
   riskScale: 0.9,
@@ -244,7 +244,7 @@ function armxPreviewCriticAdjustment(hostDeep, armxScore, forcing) {
 
 function armxPreviewReview(game, candidates, perspective) {
   const finalists = candidates
-    .filter(entry => Number.isFinite(entry.score))
+    .filter(entry => entry && Number.isFinite(entry.score))
     .slice(0, ARMX_PREVIEW.maxCandidates);
   const state = { nodes: 0, maxNodes: ARMX_PREVIEW.maxNodes };
   const reports = [];
@@ -261,6 +261,7 @@ function armxPreviewReview(game, candidates, perspective) {
       risk: critic.risk,
       riskThreshold: critic.threshold,
       adjustment: critic.adjustment,
+      projectedScore: entry.score + critic.adjustment,
       confidence: critic.confidence,
       criticalReply: result.criticalReply,
       criticalReplies: result.criticalReplies,
@@ -272,6 +273,7 @@ function armxPreviewReview(game, candidates, perspective) {
       nodes: state.nodes - before,
     });
   }
+  reports.sort((a, b) => b.projectedScore - a.projectedScore);
   return {
     model: ARMX_PREVIEW.name,
     version: ARMX_PREVIEW.version,
