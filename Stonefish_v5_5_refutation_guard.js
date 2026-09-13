@@ -57,11 +57,17 @@ function stonefishV55GuardNovelReplies(game, rootMove, perspective) {
     const legal = game.fastMoves();
     if (!legal.length) return { legal: 0, beam: 0, replies: [] };
 
+    // Search width and move ordering consume the same enemy-passer geometry.
+    // Compute it once here and feed it into both exact native helpers rather than
+    // rescanning all 64 squares once per legal reply.
+    const enemyPassers = typeof stonefishV5PassedPawnInfo === 'function'
+      ? stonefishV5PassedPawnInfo(game, -game.side)
+      : null;
     const beam = typeof stonefishV55SearchWidth === 'function'
-      ? stonefishV55SearchWidth(game, 4, legal)
+      ? stonefishV55SearchWidth(game, 4, legal, enemyPassers)
       : Math.min(4, legal.length);
     const orderedBeam = typeof stonefishV55TopOrdered === 'function'
-      ? stonefishV55TopOrdered(game, legal, beam, null)
+      ? stonefishV55TopOrdered(game, legal, beam, null, enemyPassers)
       : legal
         .map((move, index) => ({ move, index, order: stonefishV5ProSpeedMoveOrder(game, move) }))
         .sort((a, b) => (b.order - a.order) || (a.index - b.index))
