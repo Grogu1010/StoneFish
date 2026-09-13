@@ -77,9 +77,7 @@ function stonefishV55Leaf(game, perspective, alpha, beta, plyFromRoot) {
     if (!legal.length) return game.side === perspective
       ? -STONEFISH_V5_PRO_MATE + plyFromRoot
       : STONEFISH_V5_PRO_MATE - plyFromRoot;
-    if (typeof stonefishV5ProCheckedLeaf === 'function') {
-      return stonefishV5ProCheckedLeaf(game, perspective, alpha, beta, legal, plyFromRoot);
-    }
+    return stonefishV55CheckedLeaf(game, perspective, alpha, beta, legal, plyFromRoot);
   }
   if (!game.fastHasLegalMove()) return 0;
   if (game.halfmove >= 100 || game._insufficientMaterial()) return 0;
@@ -93,28 +91,39 @@ function stonefishV55OrderedEntryBefore(a, b) {
   return a.index < b.index;
 }
 
-// v5 Pro's speed ordering scans the same enemy passer list once per legal move.
-// v5.5 already needs that list to choose its beam width, so reuse it here. The
-// score is intentionally algebraically identical to stonefishV5ProSpeedMoveOrder.
-function stonefishV55MoveOrder(game, move, enemyPassers = null) {
-  if (!enemyPassers || typeof stonefishV5ProMoveOrder !== 'function'
-    || typeof stonefishV5PasserDanger !== 'function') {
-    return stonefishV5ProSpeedMoveOrder(game, move);
+// Exact v5 Pro speed-order score plus the already-computed gives-check bit.
+// Keeping the check result on the entry lets LMR reuse it instead of applying
+// the move a second time just to ask the same tactical question.
+function stonefishV55MoveOrderInfo(game, move, enemyPassers = null) {
+  const givesCheck = Boolean(game.fastGivesCheck && game.fastGivesCheck(move));
+  if (typeof STONEFISH_V5_PIECE === 'undefined') {
+    return { order: stonefishV5ProSpeedMoveOrder(game, move), givesCheck };
   }
 
-  let score = stonefishV5ProMoveOrder(game, move);
-  const enemy = -game.side;
-  for (let i = 0; i < enemyPassers.length; i += 1) {
-    const passer = enemyPassers[i];
-    if (passer.distance > 3) continue;
-    const danger = stonefishV5PasserDanger(passer.distance);
-    const nextSq = passer.sq + enemy * 8;
-    const promotionSq = (enemy === 1 ? 7 : 0) * 8 + passer.file;
-    if (move.to === passer.sq && move.captured === 1) score += danger * 8;
-    if (move.to === nextSq) score += danger * 4;
-    if (move.to === promotionSq) score += danger * 6;
+  let score = (STONEFISH_V5_PIECE[move.captured] || 0) * 16
+    - (STONEFISH_V5_PIECE[move.piece] || 0);
+  if (move.promotion) score += (STONEFISH_V5_PIECE[move.promotion] || 0) * 9;
+  if (givesCheck) score += 1800;
+  if (move.flags & (4 | 8)) score += 80;
+
+  if (enemyPassers && typeof stonefishV5PasserDanger === 'function') {
+    const enemy = -game.side;
+    for (let i = 0; i < enemyPassers.length; i += 1) {
+      const passer = enemyPassers[i];
+      if (passer.distance > 3) continue;
+      const danger = stonefishV5PasserDanger(passer.distance);
+      const nextSq = passer.sq + enemy * 8;
+      const promotionSq = (enemy === 1 ? 7 : 0) * 8 + passer.file;
+      if (move.to === passer.sq && move.captured === 1) score += danger * 8;
+      if (move.to === nextSq) score += danger * 4;
+      if (move.to === promotionSq) score += danger * 6;
+    }
+  } else if (typeof stonefishV5ProSpeedMoveOrder === 'function') {
+    // Compatibility fallback for unusual harnesses that omit the passer helpers.
+    score = stonefishV5ProSpeedMoveOrder(game, move);
   }
-  return score;
+
+  return { order: score, givesCheck };
 }
 
 // Exact replacement for full sort + slice when the selective beam is tiny.
@@ -126,7 +135,8 @@ function stonefishV55TopOrdered(game, legal, width, injectedMove = null, enemyPa
 
   for (let index = 0; index < legal.length; index += 1) {
     const move = legal[index];
-    const entry = { move, index, order: stonefishV55MoveOrder(game, move, enemyPassers) };
+    const info = stonefishV55MoveOrderInfo(game, move, enemyPassers);
+    const entry = { move, index, order: info.order, givesCheck: info.givesCheck };
     if (injectedMove && stonefishV55SameRaw(move, injectedMove)) injectedEntry = entry;
 
     if (width <= 0) continue;
@@ -143,6 +153,46 @@ function stonefishV55TopOrdered(game, legal, width, injectedMove = null, enemyPa
   if (selected.some(entry => entry.index === injectedEntry.index)) return selected;
   selected.push(injectedEntry);
   return selected;
+}
+
+function stonefishV55CheckedLeaf(game, perspective, alpha, beta, legal, plyFromRoot) {
+  const maximizing = game.side === perspective;
+  const enemyPassers = typeof stonefishV5PassedPawnInfo === 'function'
+    ? stonefishV5PassedPawnInfo(game, -game.side)
+    : null;
+  const ordered = stonefishV55TopOrdered(
+    game,
+    legal,
+    Math.min(6, legal.length),
+    null,
+    enemyPassers
+  );
+  let best = maximizing ? -Infinity : Infinity;
+
+  for (let i = 0; i < ordered.length; i += 1) {
+    game.fastApply(ordered[i].move);
+    let value;
+    if (!game.fastHasLegalMove()) {
+      value = game.in_check()
+        ? (game.side === perspective
+          ? -STONEFISH_V5_PRO_MATE + plyFromRoot + 1
+          : STONEFISH_V5_PRO_MATE - plyFromRoot - 1)
+        : 0;
+    } else {
+      value = stonefishV5ProLeaf(game, perspective);
+    }
+    game.fastUndo();
+
+    if (maximizing) {
+      if (value > best) best = value;
+      if (best > alpha) alpha = best;
+    } else {
+      if (value < best) best = value;
+      if (best < beta) beta = best;
+    }
+    if (beta <= alpha) break;
+  }
+  return best;
 }
 
 function stonefishV55Ordered(game, legal, depth, injectedMove) {
@@ -188,7 +238,9 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
     const move = ordered[i].move;
     const canReduce = depth >= STONEFISH_V5_5_SEARCH.lmrMinDepth
       && i >= STONEFISH_V5_5_SEARCH.lmrAfterMove;
-    const tactical = canReduce ? stonefishV55IsTactical(game, move) : false;
+    const tactical = canReduce
+      ? Boolean(move.captured || move.promotion || ordered[i].givesCheck)
+      : false;
     game.fastApply(move);
     let value;
 
