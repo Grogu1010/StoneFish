@@ -199,3 +199,108 @@ if (typeof globalThis !== 'undefined') {
   globalThis.stonefishV55ApplyRefutationGuard = stonefishV55ApplyRefutationGuard;
   globalThis.stonefishV55LastRefutationGuard = stonefishV55LastRefutationGuard;
 }
+
+// Shared v5.5 fast-path refinements. These are defined after the native search
+// core is loaded so they can replace duplicate board probes without changing any
+// scoring constants, candidate widths, or evaluation semantics.
+stonefishV55BestResponseGain = function(game, responses) {
+  let best = 0;
+  for (let i = 0; i < responses.length; i += 1) {
+    const response = responses[i];
+    const givesCheck = Boolean(game.fastGivesCheck && game.fastGivesCheck(response));
+    if (givesCheck) {
+      game.fastApply(response);
+      const mate = !game.fastHasLegalMove();
+      game.fastUndo();
+      if (mate) return STONEFISH_V5_MATE;
+    }
+
+    let gain = STONEFISH_V5_PIECE[response.captured] || 0;
+    if (response.promotion) gain += (STONEFISH_V5_PIECE[response.promotion] || 0) - 100;
+    if (givesCheck) gain += 18;
+    if (gain > best) best = gain;
+  }
+  return best;
+};
+
+stonefishV55TacticalScore = function(game, raw) {
+  const historyDepth = game.historyStack.length;
+  let immediate = STONEFISH_V5_PIECE[raw.captured] || 0;
+  if (raw.promotion) immediate += (STONEFISH_V5_PIECE[raw.promotion] || 0) - 100;
+
+  try {
+    game.fastApply(raw);
+    const replies = game.fastMoves();
+    const rootChecking = game.in_check();
+    if (!replies.length && rootChecking) return STONEFISH_V5_MATE * 2;
+
+    const rootVisits = game.positionCounts.get(game.fastPositionKey()) || 0;
+    let repeatedReply = false;
+    let score = 0;
+
+    if (replies.length) {
+      let worst = Infinity;
+      for (let i = 0; i < replies.length; i += 1) {
+        const reply = replies[i];
+        let opponentGain = STONEFISH_V5_PIECE[reply.captured] || 0;
+        if (reply.promotion) opponentGain += (STONEFISH_V5_PIECE[reply.promotion] || 0) - 100;
+
+        game.fastApply(reply);
+        const givesCheck = game.in_check();
+        if (givesCheck) opponentGain += 14;
+        if ((game.positionCounts.get(game.fastPositionKey()) || 0) >= 2) repeatedReply = true;
+
+        const responses = game.fastMoves();
+        if (givesCheck && !responses.length) return -STONEFISH_V5_MATE;
+        const ourGain = stonefishV55BestResponseGain(game, responses);
+        game.fastUndo();
+
+        const branch = immediate - opponentGain + ourGain;
+        if (branch < worst) worst = branch;
+      }
+      score = worst;
+    }
+
+    if (score >= STONEFISH_V5_MATE) score = STONEFISH_V5_MATE * 0.5;
+    if (score <= -STONEFISH_V5_MATE) return -STONEFISH_V5_MATE;
+
+    if (rootVisits > 0) {
+      score -= rootVisits * 1200000;
+      score = Math.max(score, STONEFISH_V5_DRAW_FLOOR);
+    }
+    if (repeatedReply) score = Math.min(score, STONEFISH_V5_DRAW_FLOOR);
+    return score;
+  } finally {
+    while (game.historyStack.length > historyDepth) game.fastUndo();
+  }
+};
+
+stonefishV55FastScoutScore = function(game, raw, bookMove, heritageMove, perspective, conversion) {
+  const historyDepth = game.historyStack.length;
+  let score = 0;
+  const capture = STONEFISH_V5_PIECE[raw.captured] || 0;
+  score += capture * 15 - (STONEFISH_V5_PIECE[raw.piece] || 0) * (raw.captured ? 0.15 : 0);
+  if (raw.promotion) score += ((STONEFISH_V5_PIECE[raw.promotion] || 0) - 100) * 18 + 2400;
+  if (raw.flags & (4 | 8)) score += 260;
+  if (bookMove && stonefishV5SameMove(raw, bookMove)) score += 3600;
+  if (heritageMove && stonefishV5SameMove(raw, heritageMove)) score += 3000;
+  score += conversion;
+
+  try {
+    game.fastApply(raw);
+    const givesCheck = game.in_check();
+    if (givesCheck) {
+      score += 900;
+      if (!game.fastHasLegalMove()) return STONEFISH_V5_PRO_MATE * 4;
+    }
+
+    const enemyThreat = stonefishV5EnemyPasserThreat(game, perspective);
+    if (enemyThreat >= 300) score -= enemyThreat * 9;
+    else if (enemyThreat >= 120) score -= enemyThreat * 3;
+    const visits = game.positionCounts.get(game.fastPositionKey()) || 0;
+    if (visits > 0) score -= visits * 240000;
+    return score;
+  } finally {
+    while (game.historyStack.length > historyDepth) game.fastUndo();
+  }
+};
