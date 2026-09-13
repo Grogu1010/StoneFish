@@ -11,7 +11,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-pro3-fast',
+  version: 'preview-pro3-fast2',
   base: 'Stonefish v5 Pro',
   basePly: 3,
   maxPly: 4,
@@ -20,7 +20,7 @@ const ARMX_PREVIEW = Object.freeze({
   maxContinuations: 3,
   maxFourthPlyReplies: 2,
   maxCriticalReplies: 2,
-  maxNodes: 220,
+  maxNodes: 320,
 });
 
 function armxPreviewPieceValue(type) {
@@ -66,8 +66,6 @@ function armxPreviewEvaluate(game, perspective) {
     ? stonefishV5ProAdaptivePosition(game, perspective)
     : armxPreviewMaterial(game, perspective);
 
-  // ARMX-preview is deliberately threat-sensitive. Pro already has a balanced
-  // evaluator; the critic should be biased toward finding reasons a move can fail.
   if (typeof stonefishV5ProCounterplay === 'function') {
     const counterplay = stonefishV5ProCounterplay(game, perspective);
     score += game.side === perspective ? counterplay * 0.12 : -counterplay * 0.82;
@@ -147,8 +145,6 @@ function armxPreviewNovelReplies(game, perspective, state) {
     let score = armxPreviewEvaluate(game, perspective);
     game.fastUndo();
 
-    // Force is useful evidence, but unlike Pro's move order it is not allowed to
-    // dominate: ARMX's main purpose is discovering quiet missed resources.
     if (forcing) score -= 18;
     screened.push({ reply, score, index: i });
   }
