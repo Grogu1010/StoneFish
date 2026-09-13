@@ -7,7 +7,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-v55-fast2',
+  version: 'preview-v55-fast3',
   base: 'Stonefish v5.5 host',
   basePly: 3,
   maxPly: 4,
@@ -17,6 +17,10 @@ const ARMX_PREVIEW = Object.freeze({
   maxFourthPlyReplies: 1,
   maxCriticalReplies: 1,
   maxNodes: 96,
+  riskThresholdForcing: 140,
+  riskThresholdQuiet: 260,
+  riskScale: 0.5,
+  maxAdjustment: 360,
 });
 
 function armxPreviewPieceValue(type) {
@@ -127,17 +131,36 @@ function armxPreviewSearchCandidate(game, raw, perspective, state) {
   if (!screened.legalCount) {
     const terminal = game.in_check() ? STONEFISH_V5_PRO_MATE - 1 : 0;
     game.fastUndo();
-    return { score: terminal, criticalReply: null, criticalReplies: [], line: [], legalReplies: 0, hostBeamReplies: 0, novelReplies: 0 };
+    return {
+      score: terminal,
+      criticalReply: null,
+      criticalReplies: [],
+      criticalForcing: false,
+      line: [],
+      legalReplies: 0,
+      hostBeamReplies: 0,
+      novelReplies: 0,
+    };
   }
   if (!screened.replies.length) {
     const score = armxPreviewBaseEval(game, perspective);
     game.fastUndo();
-    return { score, criticalReply: null, criticalReplies: [], line: [], legalReplies: screened.legalCount, hostBeamReplies: screened.hostBeamCount, novelReplies: 0 };
+    return {
+      score,
+      criticalReply: null,
+      criticalReplies: [],
+      criticalForcing: false,
+      line: [],
+      legalReplies: screened.legalCount,
+      hostBeamReplies: screened.hostBeamCount,
+      novelReplies: 0,
+    };
   }
 
   const results = [];
   for (const reply of screened.replies) {
     if (state.nodes >= state.maxNodes) break;
+    const replyForcing = armxPreviewIsForcing(game, reply);
     game.fastApply(reply);
     state.nodes += 1;
     const legal = game.fastMoves();
@@ -171,11 +194,19 @@ function armxPreviewSearchCandidate(game, raw, perspective, state) {
         }
 
         game.fastUndo();
-        if (value > best) { best = value; bestMove = entry.move; }
+        if (value > best) {
+          best = value;
+          bestMove = entry.move;
+        }
       }
     }
     game.fastUndo();
-    results.push({ reply, score: best, line: bestMove ? [reply, bestMove] : [reply] });
+    results.push({
+      reply,
+      score: best,
+      forcing: replyForcing,
+      line: bestMove ? [reply, bestMove] : [reply],
+    });
   }
 
   game.fastUndo();
@@ -186,11 +217,29 @@ function armxPreviewSearchCandidate(game, raw, perspective, state) {
     score: critical ? critical.score : 0,
     criticalReply: critical ? critical.reply : null,
     criticalReplies,
+    criticalForcing: Boolean(critical && critical.forcing),
     line: critical ? critical.line : [],
     legalReplies: screened.legalCount,
     hostBeamReplies: screened.hostBeamCount,
     novelReplies: Math.max(0, screened.legalCount - screened.hostBeamCount),
   };
+}
+
+function armxPreviewCriticAdjustment(hostDeep, armxScore, forcing) {
+  if (!Number.isFinite(hostDeep) || !Number.isFinite(armxScore)) {
+    return { risk: 0, threshold: Infinity, adjustment: 0, confidence: 0 };
+  }
+  const risk = Math.max(0, hostDeep - armxScore);
+  const threshold = forcing
+    ? ARMX_PREVIEW.riskThresholdForcing
+    : ARMX_PREVIEW.riskThresholdQuiet;
+  if (risk <= threshold) {
+    return { risk, threshold, adjustment: 0, confidence: 0 };
+  }
+  const excess = risk - threshold;
+  const adjustment = -Math.min(ARMX_PREVIEW.maxAdjustment, excess * ARMX_PREVIEW.riskScale);
+  const confidence = Math.min(1, excess / Math.max(1, ARMX_PREVIEW.maxAdjustment));
+  return { risk, threshold, adjustment, confidence };
 }
 
 function armxPreviewReview(game, candidates, perspective) {
@@ -203,13 +252,19 @@ function armxPreviewReview(game, candidates, perspective) {
     if (state.nodes >= state.maxNodes) break;
     const before = state.nodes;
     const result = armxPreviewSearchCandidate(game, entry.raw, perspective, state);
+    const critic = armxPreviewCriticAdjustment(entry.deep, result.score, result.criticalForcing);
     reports.push({
       raw: entry.raw,
       hostScore: entry.score,
       hostDeep: entry.deep,
       armxScore: result.score,
+      risk: critic.risk,
+      riskThreshold: critic.threshold,
+      adjustment: critic.adjustment,
+      confidence: critic.confidence,
       criticalReply: result.criticalReply,
       criticalReplies: result.criticalReplies,
+      criticalForcing: result.criticalForcing,
       line: result.line,
       legalReplies: result.legalReplies,
       hostBeamReplies: result.hostBeamReplies,
