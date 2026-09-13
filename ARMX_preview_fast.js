@@ -137,10 +137,12 @@ function armxPreviewFreshStats() {
 }
 
 function armxPreviewNewProfile(perspective) {
+  const replay = new Chess();
   return {
     perspective,
     processedPlies: 0,
-    replay: new Chess(),
+    replay,
+    currentEval: armxPreviewModelEval(replay, perspective),
     pending: [],
     ourEffects: armxPreviewFreshStats(),
     opponentEffects: armxPreviewFreshStats(),
@@ -162,9 +164,11 @@ function armxPreviewRecordImpact(bucket, features, impact, weight) {
   }
 }
 
-function armxPreviewResolvePending(profile, currentPly) {
+function armxPreviewResolvePending(profile, currentPly, currentEval = profile.currentEval) {
   if (!profile.pending.length) return;
-  const now = armxPreviewModelEval(profile.replay, profile.perspective);
+  const now = Number.isFinite(currentEval)
+    ? currentEval
+    : armxPreviewModelEval(profile.replay, profile.perspective);
   const keep = [];
   for (const event of profile.pending) {
     if (currentPly < event.resolveAt) {
@@ -210,7 +214,7 @@ function armxPreviewSyncProfile(game, perspective) {
     const move = state && state.move;
     if (!move) break;
     const actor = profile.replay.side;
-    const before = armxPreviewModelEval(profile.replay, perspective);
+    const before = profile.currentEval;
     const features = armxPreviewFeatureSet(profile.replay, move);
 
     if (actor === -perspective) armxPreviewObserveOpponentOpportunity(profile, profile.replay, move);
@@ -231,11 +235,12 @@ function armxPreviewSyncProfile(game, perspective) {
     });
 
     profile.replay.fastApply(move);
+    profile.currentEval = armxPreviewModelEval(profile.replay, perspective);
     profile.processedPlies += 1;
-    armxPreviewResolvePending(profile, profile.processedPlies);
+    armxPreviewResolvePending(profile, profile.processedPlies, profile.currentEval);
   }
 
-  armxPreviewResolvePending(profile, profile.processedPlies);
+  armxPreviewResolvePending(profile, profile.processedPlies, profile.currentEval);
   return profile;
 }
 
