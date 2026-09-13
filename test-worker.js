@@ -15,6 +15,7 @@ importScripts(
   './Stonefish_runtime_speed_patch.js',
   './Stonefish_fast_moves_experiment.js',
   './Stonefish_v5_5_search.js',
+  './Stonefish_v5_5_refutation_guard.js',
   './ARMX_preview_fast.js',
   './Stonefish_v5_5_testunit1.js'
 );
