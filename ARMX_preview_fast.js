@@ -5,22 +5,22 @@
 // opponent replies outside Pro's normal reply beam. It returns concrete missed
 // replies for Stonefish to verify with Pro's own five-ply search.
 //
-// This keeps ARMX complementary to Pro instead of duplicating work. Preview is
-// intentionally bounded so later ARMX releases can add depth, richer strategy,
-// more reply coverage, and stronger learned prioritisation.
+// Preview deliberately challenges only Pro's current leader. If that move is
+// refuted, v5.5 falls back to Pro's already-verified runner-up. Later ARMX releases
+// can broaden candidate coverage; preview prioritises speed and a clean experiment.
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-pro3-fast2',
+  version: 'preview-pro3-fast3',
   base: 'Stonefish v5 Pro',
   basePly: 3,
   maxPly: 4,
-  maxCandidates: 2,
+  maxCandidates: 1,
   maxReplies: 6,
   maxContinuations: 3,
   maxFourthPlyReplies: 2,
   maxCriticalReplies: 2,
-  maxNodes: 320,
+  maxNodes: 160,
 });
 
 function armxPreviewPieceValue(type) {
