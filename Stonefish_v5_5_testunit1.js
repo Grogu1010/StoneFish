@@ -1,41 +1,100 @@
 // Stonefish v5.5 testunit1 — v5 Pro knowledge + native v5.5 search + ARMX-preview.
 //
-// v5.5 inherits v5 Pro's chess knowledge, but uses a faster two-root Guarded-PVS
-// search with late-move reductions and exact transposition reuse. The host first
-// chooses a provisional winner on its own. Only then does ARMX-preview inspect that
-// actual intended move for an opponent reply outside the host beam. Stonefish
-// re-searches that concrete reply before deciding.
+// v5.5 inherits v5 Pro's chess knowledge and uses a fast Guarded-PVS core with
+// late-move reductions and exact transposition reuse. Two roots are searched by
+// the native core, then the third preliminary candidate gets one concrete five-ply
+// challenger search. ARMX audits the actual provisional winner only when the fully
+// searched host result is close or the position carries exceptional passer danger.
 
 const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   name: 'Stonefish v5.5 testunit1',
   base: 'Stonefish v5 Pro',
   knowledgeBase: 'Stonefish v5 Pro',
   search: 'Guarded PVS',
-  nativeFeature: 'PVS + TT two-root search',
-  armx: 'ARMX-preview',
+  nativeFeature: 'PVS + TT two-root search + third-root challenger',
+  armx: 'ARMX-preview selective audit',
+  thirdRootChallenger: true,
+  armxScoreGap: 450,
 });
 
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
-function stonefishV55Testunit1ScoreAllMoves(game) {
+function stonefishV55Testunit1SearchChallenger(game, finished, challengerRaw, perspective) {
+  if (!challengerRaw) return false;
+  const entry = finished.find(item => stonefishV55SameRaw(item.raw, challengerRaw));
+  if (!entry || !Number.isFinite(entry.tactical)) return false;
+
+  const legal = game.fastMoves();
+  const bookMove = stonefishV45BookMove(game, 1, legal);
+  const heritageMove = stonefishV5HeritageMove(game);
+  entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
+    ? 0
+    : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
+  entry.preliminary = entry.tactical + entry.knowledge
+    + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+  entry.armxCriticalReply = null;
+  entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
+  entry.score = stonefishV55RecomputeFinalScore(entry);
+  stonefishV55SortFinalScores(game, finished);
+  return true;
+}
+
+function stonefishV55Testunit1ShouldAskARMX(game, finished, perspective) {
+  const winner = finished[0] || null;
+  const runnerUp = finished[1] || null;
+  if (!winner) return false;
+  if (!runnerUp || !Number.isFinite(runnerUp.score)) return true;
+
+  const scoreGap = Math.max(0, winner.score - runnerUp.score);
+  if (scoreGap <= STONEFISH_V5_5_TESTUNIT1.armxScoreGap) return true;
+  if (game.in_check()) return true;
+
+  if (typeof stonefishV5EnemyPasserThreat === 'function') {
+    const danger = stonefishV5EnemyPasserThreat(game, perspective);
+    if (danger >= 2200) return true;
+  }
+  return false;
+}
+
+function stonefishV55Testunit1HostSearch(game) {
   const ranked = stonefishV55FastCandidates(game);
-  if (!ranked.length) {
+  if (!ranked.length) return { finished: [], fastLeader: null, challengerSearched: false };
+
+  const perspective = game.side;
+  const fastLeader = ranked[0] ? ranked[0].raw : null;
+  const challengerRaw = ranked[2] ? ranked[2].raw : null;
+  const finished = stonefishV55FinishCandidates(game, ranked);
+  const challengerSearched = stonefishV55Testunit1SearchChallenger(
+    game,
+    finished,
+    challengerRaw,
+    perspective
+  );
+  return { finished, fastLeader, challengerSearched };
+}
+
+function stonefishV55Testunit1ScoreAllMoves(game) {
+  const perspective = game.side;
+  const host = stonefishV55Testunit1HostSearch(game);
+  const finished = host.finished;
+  if (!finished.length) {
     STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
     return [];
   }
 
-  const perspective = game.side;
-  const fastLeader = ranked[0] ? ranked[0].raw : null;
-
-  // Native v5.5 decides first. This exact same result is what the No-ARMX control
-  // returns, so any later move change can be attributed specifically to ARMX.
-  const finished = stonefishV55FinishCandidates(game, ranked);
+  // Native v5.5 decides first. The No-ARMX control runs this exact same host path,
+  // so any later move change can be attributed specifically to ARMX.
   const provisional = finished[0] || null;
   const provisionalRaw = provisional ? provisional.raw : null;
+  const runnerUp = finished[1] || null;
+  const hostScoreGap = provisional && runnerUp && Number.isFinite(runnerUp.score)
+    ? provisional.score - runnerUp.score
+    : Infinity;
   let review = null;
   let audited = false;
+  const shouldAskARMX = stonefishV55Testunit1ShouldAskARMX(game, finished, perspective);
 
-  if (provisional && typeof armxPreviewReview === 'function') {
+  if (provisional && shouldAskARMX && typeof armxPreviewReview === 'function') {
     review = armxPreviewReview(game, [provisional], perspective);
     const report = review && Array.isArray(review.reports) ? review.reports[0] : null;
     if (report && report.criticalReply) {
@@ -51,11 +110,12 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
     winner && provisionalRaw && !stonefishV5SameMove(winner.raw, provisionalRaw)
   );
   const changedFromFastLeader = Boolean(
-    winner && fastLeader && !stonefishV5SameMove(winner.raw, fastLeader)
+    winner && host.fastLeader && !stonefishV5SameMove(winner.raw, host.fastLeader)
   );
 
   STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review || {}, {
     connected: Boolean(review),
+    eligible: shouldAskARMX,
     hostCandidatesReviewed: reports.length,
     injectedReplies: reports.filter(report => report && report.criticalReply).length,
     audited,
@@ -63,8 +123,10 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
     changedMove: changedByARMX,
     recommendedRaw: winner ? winner.raw : null,
     provisionalRaw,
-    fastLeaderRaw: fastLeader,
+    fastLeaderRaw: host.fastLeader,
     hostSearchChangedMove: changedFromFastLeader,
+    challengerSearched: host.challengerSearched,
+    hostScoreGap,
     search: STONEFISH_V5_5_SEARCH.name,
   });
 
@@ -72,11 +134,10 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
 }
 
 // A/B control for the developer test lab. This is the exact same v5.5 host search,
-// evaluation, candidate ranking and speed architecture, but ARMX is never consulted.
+// evaluation, candidate ranking, third-root challenger and speed architecture, but
+// ARMX is never consulted.
 function stonefishV55Testunit1NoARMXScoreAllMoves(game) {
-  const ranked = stonefishV55FastCandidates(game);
-  if (!ranked.length) return [];
-  return stonefishV55FinishCandidates(game, ranked);
+  return stonefishV55Testunit1HostSearch(game).finished;
 }
 
 function getStonefishV55Testunit1Move(game) {
