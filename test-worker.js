@@ -32,6 +32,45 @@ const workerModels = {
   v5pro: getStonefishV5ProMove
 };
 
+function seededRandom(seed) {
+  let x = seed >>> 0;
+  return function random() {
+    x += 0x6D2B79F5;
+    let t = x;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function withSeed(seed, fn) {
+  const old = Math.random;
+  Math.random = seededRandom(seed);
+  try { return fn(); } finally { Math.random = old; }
+}
+
+// Match the CI benchmark's varied-opening generator. Each opening index is used
+// for a color-swapped pair, so both engines see the exact same starting history
+// from opposite colors instead of replaying one deterministic initial-position game.
+function applyVariedOpening(game, openingIndex = 0) {
+  const index = Math.max(0, Number(openingIndex) || 0);
+  const plies = 4 + (index % 13);
+  const pick = seededRandom((0xD551000 + index * 1597) >>> 0);
+
+  withSeed((0xE771000 + index * 211) >>> 0, () => {
+    for (let ply = 0; ply < plies && !game.game_over(); ply += 1) {
+      const scored = stonefishV5ScoreAllMoves(game);
+      if (!scored.length) break;
+      const width = Math.min(5, scored.length);
+      const r = pick();
+      const rank = Math.min(width - 1, r < 0.40 ? 0 : r < 0.67 ? 1 : r < 0.84 ? 2 : r < 0.95 ? 3 : 4);
+      const entry = scored[rank];
+      if (!entry || !entry.raw) break;
+      game._applyRaw(entry.raw, true);
+    }
+  });
+}
+
 function commitChosenMove(game, move) {
   if (move && move._raw) {
     game._applyRaw(move._raw, true);
@@ -52,8 +91,9 @@ function cheapDrawReached(game) {
   return (game.positionCounts.get(game.fastPositionKey()) || 0) >= 3;
 }
 
-function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
+function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000, openingIndex = 0) {
   const game = new Chess();
+  applyVariedOpening(game, openingIndex);
   let plies = 0;
   const metrics = {
     [whiteModelKey]: { moves: 0, thinkMs: 0 },
@@ -72,7 +112,8 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
       return {
         outcome: game.in_check() ? (game.turn() === 'w' ? 'black' : 'white') : 'draw',
         metrics,
-        plies
+        plies,
+        openingIndex
       };
     }
 
@@ -80,17 +121,22 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
     metrics[modelKey].thinkMs += elapsed;
     commitChosenMove(game, move);
     plies += 1;
-    if (cheapDrawReached(game)) return { outcome: 'draw', metrics, plies };
+    if (cheapDrawReached(game)) return { outcome: 'draw', metrics, plies, openingIndex };
   }
 
-  return { outcome: 'draw', metrics, plies };
+  return { outcome: 'draw', metrics, plies, openingIndex };
 }
 
 self.onmessage = event => {
-  const { jobId, whiteModelKey, blackModelKey, maxPlies } = event.data;
+  const { jobId, whiteModelKey, blackModelKey, maxPlies, openingIndex } = event.data;
 
   try {
-    const result = playTestGame(whiteModelKey, blackModelKey, maxPlies || 1000);
+    const result = playTestGame(
+      whiteModelKey,
+      blackModelKey,
+      maxPlies || 1000,
+      Number.isFinite(Number(openingIndex)) ? Number(openingIndex) : 0
+    );
     self.postMessage({ jobId, result });
   } catch (error) {
     self.postMessage({
