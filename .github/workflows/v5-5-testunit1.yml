@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'ARMX_preview_fast.js'
+      - 'ARMX-preview.js'
       - 'Stonefish_v5_5_search.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
@@ -19,7 +19,7 @@ on:
       - '.github/workflows/v5-5-testunit1.yml'
   pull_request:
     paths:
-      - 'ARMX_preview_fast.js'
+      - 'ARMX-preview.js'
       - 'Stonefish_v5_5_search.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
@@ -43,7 +43,7 @@ jobs:
         with:
           node-version: '20'
       - name: Syntax check ARMX-preview
-        run: node --check ARMX_preview_fast.js
+        run: node --check ARMX-preview.js
       - name: Syntax check v5.5 native search
         run: node --check Stonefish_v5_5_search.js
       - name: Syntax check Refutation Guard
@@ -56,13 +56,13 @@ jobs:
         run: node --check Stonefish_parallel_tests.js
       - name: Syntax check v5.5 teacher benchmark
         run: node --check benchmark_v5_5_teacher.js
-      - name: Syntax check ARMX in-game diagnostics
+      - name: Syntax check ARMX-preview in-game diagnostics
         run: node --check benchmark_armx_preview.js
       - name: Run v5.5 teacher benchmark
         env:
           TEACHER_POSITIONS: '80'
         run: node benchmark_v5_5_teacher.js
-      - name: Run ARMX in-game diagnostics
+      - name: Run ARMX-preview in-game diagnostics
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
