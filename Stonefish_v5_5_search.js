@@ -1,15 +1,15 @@
 // Stonefish v5.5 native search core — ARMX-guided Guarded PVS.
 //
-// v5.5 keeps v5 Pro's evaluation/knowledge but reallocates the search budget.
-// It preserves Pro's eight-move semifinal pool and four serious root candidates,
-// while searching a much narrower five-ply tree. ARMX audits the provisional
-// winner afterward and may inject one missed opponent reply for a targeted re-search.
+// v5.5 keeps v5 Pro's evaluation/knowledge but spends the expensive five-ply
+// budget on only two root finalists. The host uses a compact selective tree,
+// then ARMX audits the actual provisional winner and may inject one missed
+// opponent reply for a targeted re-search.
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'ARMX-guided Guarded PVS',
-  semifinalists: 8,
-  rootCandidates: 4,
-  branch: [0, 1, 1, 2, 3],
+  semifinalists: 5,
+  rootCandidates: 2,
+  branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
   lmrAfterMove: 2,
 });
@@ -70,8 +70,6 @@ function stonefishV55Ordered(game, legal, depth, injectedMove) {
   const injectedIndex = ordered.findIndex(entry => stonefishV55SameRaw(entry.move, injectedMove));
   if (injectedIndex < 0 || injectedIndex < width) return selected;
 
-  // ARMX is additive: the critic contributes a missed reply without evicting the
-  // host's normal beam. This only happens on the targeted audited root move.
   selected.push(ordered[injectedIndex]);
   return selected;
 }
