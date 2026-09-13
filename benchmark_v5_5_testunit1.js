@@ -17,7 +17,6 @@ const engineFiles = [
   'Stonefish_v5.js'
 ];
 
-// Keep both sides on the same optional runtime layer if it is present.
 if (fs.existsSync('Stonefish_runtime_speed_patch.js')) engineFiles.push('Stonefish_runtime_speed_patch.js');
 if (fs.existsSync('Stonefish_fast_moves_experiment.js')) engineFiles.push('Stonefish_fast_moves_experiment.js');
 
@@ -37,6 +36,27 @@ function seededRandom(seed) {
   };
 }
 
+function withSeed(seed, fn) {
+  const originalRandom = Math.random;
+  Math.random = seededRandom(seed);
+  try { return fn(); }
+  finally { Math.random = originalRandom; }
+}
+
+function cloneGame(source) {
+  const game = new Chess();
+  game.boardState = new Int8Array(source.boardState);
+  game.side = source.side;
+  game.castling = source.castling;
+  game.ep = source.ep;
+  game.halfmove = source.halfmove;
+  game.fullmove = source.fullmove;
+  game.kingSq = { 1: source.kingSq[1], '-1': source.kingSq[-1] };
+  game.historyStack = [];
+  game.positionCounts = new Map(source.positionCounts);
+  return game;
+}
+
 function playPublicMove(game, move) {
   if (!move) return null;
   return game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
@@ -54,12 +74,11 @@ function assertPreviewContract() {
 }
 
 function assertV5FallbackParity() {
-  const game = new Chess();
   const saved = globalThis.armxPreviewReview;
   try {
     globalThis.armxPreviewReview = undefined;
-    const v5 = getStonefishV5Move(game);
-    const v55 = getStonefishV55Testunit1Move(game);
+    const v5 = withSeed(0x5150, () => getStonefishV5Move(new Chess()));
+    const v55 = withSeed(0x5150, () => getStonefishV55Testunit1Move(new Chess()));
     if (moveKey(v5) !== moveKey(v55)) {
       throw new Error(`Without ARMX, v5.5 must equal v5: ${moveKey(v5)} vs ${moveKey(v55)}`);
     }
@@ -71,17 +90,15 @@ function assertV5FallbackParity() {
 function buildSamplePositions(count = 10) {
   const positions = [];
   const game = new Chess();
-  const originalRandom = Math.random;
-  Math.random = seededRandom(0x55A11CE);
-  try {
+
+  withSeed(0x55A11CE, () => {
     for (let ply = 0; ply < count * 4 && !game.game_over(); ply += 1) {
-      if (ply % 4 === 0) positions.push(game.fen());
+      if (ply % 4 === 0) positions.push(cloneGame(game));
       const move = getStonefishV5Move(game);
       if (!playPublicMove(game, move)) break;
     }
-  } finally {
-    Math.random = originalRandom;
-  }
+  });
+
   return positions;
 }
 
@@ -92,16 +109,19 @@ function latencyAndBehavior(samples) {
   let armxNodes = 0;
   let armxReviews = 0;
 
-  for (const fen of samples) {
-    const gameV5 = new Chess(fen);
-    const gameV55 = new Chess(fen);
+  for (let i = 0; i < samples.length; i += 1) {
+    const gameV5 = cloneGame(samples[i]);
+    const gameV55 = cloneGame(samples[i]);
+    const seed = 0x9000 + i;
 
+    let v5Move;
     let start = performance.now();
-    const v5Move = getStonefishV5Move(gameV5);
+    withSeed(seed, () => { v5Move = getStonefishV5Move(gameV5); });
     v5Ms += performance.now() - start;
 
+    let v55Move;
     start = performance.now();
-    const v55Move = getStonefishV55Testunit1Move(gameV55);
+    withSeed(seed, () => { v55Move = getStonefishV55Testunit1Move(gameV55); });
     v55Ms += performance.now() - start;
 
     if (moveKey(v5Move) !== moveKey(v55Move)) changed += 1;
@@ -127,11 +147,9 @@ function latencyAndBehavior(samples) {
 
 function simulateGame(v55IsWhite, seed, maxPlies = 240) {
   const game = new Chess();
-  const originalRandom = Math.random;
-  Math.random = seededRandom(seed);
   let plies = 0;
 
-  try {
+  return withSeed(seed, () => {
     while (!game.game_over() && plies < maxPlies) {
       const v55Turn = (game.side === 1) === v55IsWhite;
       const move = v55Turn ? getStonefishV55Testunit1Move(game) : getStonefishV5Move(game);
@@ -144,9 +162,7 @@ function simulateGame(v55IsWhite, seed, maxPlies = 240) {
       return { result: winnerIsWhite === v55IsWhite ? 'win' : 'loss', reason: 'checkmate', plies };
     }
     return { result: 'draw', reason: game.game_over() ? 'draw-rule' : 'max-plies', plies };
-  } finally {
-    Math.random = originalRandom;
-  }
+  });
 }
 
 function smokeHeadToHead(games = 4) {
