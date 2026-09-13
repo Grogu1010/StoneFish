@@ -4,7 +4,9 @@
 //   2) v5.5 No ARMX vs v5 Pro
 //   3) v5.5 + ARMX vs v5.5 No ARMX
 // Required hierarchy: v5 Pro < v5.5 No ARMX < v5.5 + ARMX.
-// Game-performance metrics are engine-only: opponent think time is excluded.
+// Release targets per 100 games: 65 No-ARMX wins vs Pro, 85 ARMX wins vs
+// Pro, and 65 ARMX wins vs No-ARMX. Both v5.5 variants must also average at
+// least 3x less engine think-time per move than v5 Pro in their direct games.
 
 const fs = require('fs');
 const vm = require('vm');
@@ -25,7 +27,12 @@ const engineFiles = [
 if (fs.existsSync('Stonefish_v5_pro_geometry_patch.js')) engineFiles.push('Stonefish_v5_pro_geometry_patch.js');
 if (fs.existsSync('Stonefish_runtime_speed_patch.js')) engineFiles.push('Stonefish_runtime_speed_patch.js');
 if (fs.existsSync('Stonefish_fast_moves_experiment.js')) engineFiles.push('Stonefish_fast_moves_experiment.js');
-engineFiles.push('Stonefish_v5_5_search.js', 'ARMX_preview_fast.js', 'Stonefish_v5_5_testunit1.js');
+engineFiles.push(
+  'Stonefish_v5_5_search.js',
+  'Stonefish_v5_5_refutation_guard.js',
+  'ARMX_preview_fast.js',
+  'Stonefish_v5_5_testunit1.js'
+);
 
 vm.runInThisContext(engineFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n'), {
   filename: 'stonefish-v5-5-testunit1-bundle.js'
@@ -88,11 +95,18 @@ function assertContract() {
   if (STONEFISH_V5_5_TESTUNIT1.search !== 'Guarded PVS') {
     throw new Error(`Wrong v5.5 search core: ${STONEFISH_V5_5_TESTUNIT1.search}`);
   }
-  if (ARMX_PREVIEW.basePly !== 3 || ARMX_PREVIEW.maxPly !== 4) {
-    throw new Error('ARMX-preview must remain 3-ply base / 4-ply max');
+  if (!STONEFISH_V5_5_REFUTATION_GUARD || STONEFISH_V5_5_REFUTATION_GUARD.name !== 'Refutation Guard') {
+    throw new Error('v5.5 must include native Refutation Guard');
   }
-  if (ARMX_PREVIEW.maxNodes > 160) throw new Error(`ARMX-preview node budget too high: ${ARMX_PREVIEW.maxNodes}`);
-  if (STONEFISH_V5_5_SEARCH.rootCandidates > 4) throw new Error('Preview v5.5 must keep at most four full-depth root candidates');
+  if (STONEFISH_V5_5_REFUTATION_GUARD.ply !== 5) {
+    throw new Error(`Current v5.5 Refutation Guard must use the five-ply horizon; got ${STONEFISH_V5_5_REFUTATION_GUARD.ply}`);
+  }
+  if (ARMX_PREVIEW.kind !== 'opponent-adaptation' || ARMX_PREVIEW.reset !== 'per-game') {
+    throw new Error('ARMX-preview must be the separate per-game opponent adaptation model');
+  }
+  if (STONEFISH_V5_5_SEARCH.rootCandidates > 4) {
+    throw new Error('Preview v5.5 must keep at most four full-depth root candidates');
+  }
 }
 
 function assertNoARMXControlWorks() {
@@ -100,6 +114,18 @@ function assertNoARMXControlWorks() {
   const game = new Chess();
   const move = withSeed(0x5150, () => getStonefishV55Testunit1NoARMXMove(game));
   if (!move || !play(game, move)) throw new Error('v5.5 No-ARMX control must return a legal move');
+}
+
+function assertARMXResetsByGame() {
+  const gameA = new Chess();
+  const gameB = new Chess();
+  const first = stonefishV55Testunit1HostSearch(gameA).finished.slice(0, 2);
+  const second = stonefishV55Testunit1HostSearch(gameB).finished.slice(0, 2);
+  const reviewA = armxPreviewReview(gameA, first, gameA.side);
+  const reviewB = armxPreviewReview(gameB, second, gameB.side);
+  if (reviewA.observedPlies !== 0 || reviewB.observedPlies !== 0) {
+    throw new Error('Fresh ARMX-preview games must start with an empty opponent profile');
+  }
 }
 
 function generateOpening(pairIndex, plies = 10) {
@@ -143,9 +169,9 @@ function timedMove(seed, fn) {
 
 function latencyAndBehavior(samples) {
   let proMs = 0, noArmxMs = 0, armxMs = 0;
-  let armxVsProChanges = 0, armxVsHostChanges = 0, overrides = 0, nodes = 0;
-  let eligible = 0, reviewed = 0, challengers = 0;
-  let criticApplied = 0, criticRiskSum = 0, criticRiskMax = 0, criticPenaltySum = 0;
+  let armxVsProChanges = 0, armxVsHostChanges = 0, overrides = 0;
+  let adaptationApplied = 0, adaptationRejected = 0, observedPlies = 0;
+  let guardEligible = 0, guardVerified = 0, guardLowered = 0;
 
   if (samples.length) {
     clearSharedEngineCaches();
@@ -170,25 +196,15 @@ function latencyAndBehavior(samples) {
     if (moveKey(proResult.move) !== moveKey(armxResult.move)) armxVsProChanges += 1;
     if (moveKey(noArmxResult.move) !== moveKey(armxResult.move)) armxVsHostChanges += 1;
 
-    if (!review) throw new Error('v5.5 did not publish ARMX audit metadata');
-    if (review.eligible) eligible += 1;
-    if (review.challengerSearched) challengers += 1;
-    if (review.connected) {
-      reviewed += 1;
-      if (review.nodes > ARMX_PREVIEW.maxNodes) throw new Error(`ARMX node budget exceeded: ${review.nodes}`);
-      nodes += review.nodes || 0;
-    } else if (review.eligible && typeof armxPreviewReview === 'function') {
-      throw new Error('ARMX-preview was eligible but was not connected');
-    }
+    if (!review || !review.connected) throw new Error('v5.5 did not publish ARMX adaptation metadata');
     if (review.override) overrides += 1;
-    if (review.criticApplied) criticApplied += 1;
-    if (Number.isFinite(review.criticRisk)) {
-      criticRiskSum += review.criticRisk;
-      criticRiskMax = Math.max(criticRiskMax, review.criticRisk);
-    }
-    if (Number.isFinite(review.criticAdjustment) && review.criticAdjustment < 0) {
-      criticPenaltySum += -review.criticAdjustment;
-    }
+    if (review.adaptationApplied) adaptationApplied += 1;
+    if (review.adaptationRejected) adaptationRejected += 1;
+    observedPlies += review.observedPlies || 0;
+    const guard = review.refutationGuard;
+    if (guard && guard.eligible) guardEligible += 1;
+    if (guard && guard.verified) guardVerified += 1;
+    if (guard && guard.lowered) guardLowered += 1;
   }
 
   return {
@@ -196,21 +212,18 @@ function latencyAndBehavior(samples) {
     armxVsProChangedMoves: armxVsProChanges,
     armxVsHostChangedMoves: armxVsHostChanges,
     armxOverrides: overrides,
-    armxEligibleRate: samples.length ? eligible / samples.length : 0,
-    armxReviewRate: samples.length ? reviewed / samples.length : 0,
-    armxCriticAppliedRate: samples.length ? criticApplied / samples.length : 0,
-    armxAverageRisk: reviewed ? criticRiskSum / reviewed : 0,
-    armxMaxRisk: criticRiskMax,
-    armxAveragePenaltyPerApplied: criticApplied ? criticPenaltySum / criticApplied : 0,
-    challengerSearchRate: samples.length ? challengers / samples.length : 0,
+    armxAdaptationAppliedRate: samples.length ? adaptationApplied / samples.length : 0,
+    armxAdaptationRejectedRate: samples.length ? adaptationRejected / samples.length : 0,
+    armxAverageObservedPlies: samples.length ? observedPlies / samples.length : 0,
+    refutationGuardEligibleRate: samples.length ? guardEligible / samples.length : 0,
+    refutationGuardVerificationRate: samples.length ? guardVerified / samples.length : 0,
+    refutationGuardLowerRate: samples.length ? guardLowered / samples.length : 0,
     proAverageMs: samples.length ? proMs / samples.length : 0,
     noArmxAverageMs: samples.length ? noArmxMs / samples.length : 0,
     armxAverageMs: samples.length ? armxMs / samples.length : 0,
-    noArmxSpeedupVsPro: noArmxMs ? proMs / noArmxMs : 0,
-    armxSpeedupVsPro: armxMs ? proMs / armxMs : 0,
-    armxOverheadVsHost: noArmxMs ? armxMs / noArmxMs : 0,
-    armxAverageNodes: samples.length ? nodes / samples.length : 0,
-    armxAverageNodesPerReview: reviewed ? nodes / reviewed : 0
+    noArmxIsolatedSpeedupVsPro: noArmxMs ? proMs / noArmxMs : 0,
+    armxIsolatedSpeedupVsPro: armxMs ? proMs / armxMs : 0,
+    armxOverheadVsHost: noArmxMs ? armxMs / noArmxMs : 0
   };
 }
 
@@ -318,8 +331,16 @@ function variedHeadToHead(games, label, contenderFn, opponentFn) {
   };
 }
 
+function directGameSpeedup(matchup) {
+  if (!matchup || !matchup.performance) return 0;
+  const contender = matchup.performance.contender.averageTimePerMoveMs;
+  const opponent = matchup.performance.opponent.averageTimePerMoveMs;
+  return contender > 0 ? opponent / contender : 0;
+}
+
 assertContract();
 assertNoARMXControlWorks();
+assertARMXResetsByGame();
 const sampleCount = Math.max(4, Number.parseInt(process.env.SAMPLES || '12', 10) || 12);
 const latency = latencyAndBehavior(buildSamplePositions(sampleCount));
 const games = Math.max(0, Number.parseInt(process.env.GAMES || '12', 10) || 0);
@@ -351,38 +372,53 @@ const gamePerformanceByModel = matchups ? {
   ])
 } : null;
 
+const realGameSpeedups = matchups ? {
+  noArmxVsPro: directGameSpeedup(matchups.noArmxVsPro),
+  armxVsPro: directGameSpeedup(matchups.armxVsPro)
+} : null;
+
+const targets = {
+  hierarchy: 'v5 Pro < v5.5 No ARMX < v5.5 + ARMX',
+  noArmxWinsPer100VsPro: 65,
+  armxWinsPer100VsPro: 85,
+  armxWinsPer100VsNoArmx: 65,
+  realGameSpeedupVsPro: 3
+};
+
 const result = {
   testUnit: STONEFISH_V5_5_TESTUNIT1.name,
   knowledgeBase: STONEFISH_V5_5_TESTUNIT1.knowledgeBase,
   search: STONEFISH_V5_5_SEARCH,
+  refutationGuard: STONEFISH_V5_5_REFUTATION_GUARD,
   host: STONEFISH_V5_5_TESTUNIT1,
   armx: ARMX_PREVIEW,
   latency,
   gamePerformanceByModel,
+  realGameSpeedups,
   matchups,
   hierarchy,
-  targets: {
-    hierarchy: 'v5 Pro < v5.5 No ARMX < v5.5 + ARMX',
-    winsPer100VsPro: 65,
-    speedupVsPro: 3
-  }
+  targets
 };
 console.log('\nSTONEFISH_V5_5_TESTUNIT1 ' + JSON.stringify(result));
 
 if (process.env.RELEASE_GATE === '1' && games >= 100) {
-  if (!hierarchy.hostBeatsPro) {
-    throw new Error(`v5.5 host gate failed: score vs Pro ${matchups.noArmxVsPro.score.toFixed(3)}; need >0.500`);
+  const noArmxWinTarget = Math.ceil(games * targets.noArmxWinsPer100VsPro / 100);
+  const armxProWinTarget = Math.ceil(games * targets.armxWinsPer100VsPro / 100);
+  const armxHostWinTarget = Math.ceil(games * targets.armxWinsPer100VsNoArmx / 100);
+
+  if (matchups.noArmxVsPro.win < noArmxWinTarget) {
+    throw new Error(`v5.5 No-ARMX strength gate failed: ${matchups.noArmxVsPro.win} wins; need >=${noArmxWinTarget}/${games}`);
   }
-  if (!hierarchy.armxBeatsHost) {
-    throw new Error(`ARMX gate failed: score vs No-ARMX host ${matchups.armxVsNoArmx.score.toFixed(3)}; need >0.500`);
+  if (matchups.armxVsPro.win < armxProWinTarget) {
+    throw new Error(`v5.5 + ARMX vs Pro gate failed: ${matchups.armxVsPro.win} wins; need >=${armxProWinTarget}/${games}`);
   }
-  if (!hierarchy.armxOutscoresHostVsPro) {
-    throw new Error(`ARMX hierarchy gate failed: ARMX-vs-Pro ${matchups.armxVsPro.score.toFixed(3)} must exceed NoARMX-vs-Pro ${matchups.noArmxVsPro.score.toFixed(3)}`);
+  if (matchups.armxVsNoArmx.win < armxHostWinTarget) {
+    throw new Error(`ARMX contribution gate failed: ${matchups.armxVsNoArmx.win} wins; need >=${armxHostWinTarget}/${games}`);
   }
-  if (matchups.armxVsPro.win < 65) {
-    throw new Error(`v5.5 strength gate failed: ${matchups.armxVsPro.win} wins; need >=65`);
+  if (realGameSpeedups.noArmxVsPro < targets.realGameSpeedupVsPro) {
+    throw new Error(`v5.5 No-ARMX real-game speed gate failed: ${realGameSpeedups.noArmxVsPro.toFixed(3)}x; need >=3x`);
   }
-  if (latency.armxSpeedupVsPro < 3) {
-    throw new Error(`v5.5 speed gate failed: ${latency.armxSpeedupVsPro.toFixed(3)}x; need >=3x`);
+  if (realGameSpeedups.armxVsPro < targets.realGameSpeedupVsPro) {
+    throw new Error(`v5.5 + ARMX real-game speed gate failed: ${realGameSpeedups.armxVsPro.toFixed(3)}x; need >=3x`);
   }
 }
