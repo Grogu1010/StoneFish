@@ -1,9 +1,9 @@
 // Stonefish v5.5 testunit1 — Stonefish v5 Pro + ARMX-preview, and nothing else.
 //
-// Development-only test unit. v5 Pro runs normally first. ARMX-preview is a separate
-// broad 3/4-ply model whose job is to surface candidates Pro's narrow finalist beam may
-// have missed. Stonefish then verifies ARMX's challenge with its own normal five-ply
-// search before ARMX is allowed to change the final move.
+// v5 Pro runs normally first. ARMX-preview stays a separate 3/4-ply model and
+// nominates one move outside Pro's normal four-finalist beam. Stonefish then gives
+// that nomination the SAME five-ply finalist treatment Pro gives its own finalists.
+// ARMX therefore expands search coverage without lowering Pro's decision standard.
 
 const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   name: 'Stonefish v5.5 testunit1',
@@ -11,12 +11,10 @@ const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   armx: 'ARMX-preview',
 });
 
-const STONEFISH_V5_5_ARMX_CHALLENGE_GAIN = 20;
-const STONEFISH_V5_5_PRO_VERIFY_MARGIN = 35;
-const STONEFISH_V5_5_MAX_VERIFICATIONS = 2;
+const STONEFISH_V5_5_MAX_VERIFICATIONS = 1;
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
-function stonefishV55VerifyWithPro(game, raw, perspective) {
+function stonefishV55DeepSearch(game, raw, perspective) {
   const oldTT = STONEFISH_V5_PRO_ACTIVE_TT;
   const oldStats = STONEFISH_V5_PRO_LAST_SEARCH_STATS;
   STONEFISH_V5_PRO_ACTIVE_TT = new Map();
@@ -28,6 +26,47 @@ function stonefishV55VerifyWithPro(game, raw, perspective) {
     STONEFISH_V5_PRO_ACTIVE_TT = oldTT;
     STONEFISH_V5_PRO_LAST_SEARCH_STATS = oldStats;
   }
+}
+
+function stonefishV55ScoreAsProFinalist(game, entry, perspective) {
+  const raw = entry.raw;
+  const tactical = Number.isFinite(entry.tactical)
+    ? entry.tactical
+    : stonefishV5TacticalScore(game, raw);
+
+  // The v4.5 book choice is already stored per game by the base Pro call, so asking
+  // again returns the same active repertoire branch rather than rerolling it.
+  const bookMove = stonefishV45BookMove(game, 1, game.fastMoves());
+  // We only need to preserve whether this candidate was the heritage move. Passing
+  // the candidate itself when heritageMatch=true recreates that exact root bonus.
+  const heritageMove = entry.heritageMatch ? raw : null;
+  const knowledge = Math.abs(tactical) >= STONEFISH_V5_MATE * 1.5
+    ? 0
+    : stonefishV5ProRootKnowledge(game, raw, heritageMove, bookMove, perspective, tactical);
+  const preliminary = tactical + knowledge + stonefishV5ProConversionUrgency(game, raw, perspective);
+  const verification = stonefishV55DeepSearch(game, raw, perspective);
+  const deep = verification.deep;
+
+  let score;
+  if (Math.abs(deep) >= STONEFISH_V5_PRO_MATE * 0.9) {
+    score = deep;
+  } else {
+    const selective = deep * 1.28 + preliminary * 0.46;
+    const heritageFloor = entry.heritageMatch
+      ? preliminary * STONEFISH_V5_PRO_HERITAGE_FLOOR
+      : -Infinity;
+    score = Math.max(selective, heritageFloor);
+  }
+
+  return {
+    raw,
+    tactical,
+    knowledge,
+    preliminary,
+    deep,
+    score,
+    stats: verification.stats,
+  };
 }
 
 function stonefishV55Testunit1ScoreAllMoves(game) {
@@ -51,61 +90,40 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   const perspective = game.side;
   const review = armxPreviewReview(game, baseScored, perspective);
   const proTop = baseScored[0];
-  const proDeep = Number.isFinite(proTop.deep) ? proTop.deep : null;
-  const proReport = review && Array.isArray(review.reports)
-    ? review.reports.find(report => stonefishV5SameMove(report.raw, proTop.raw))
-    : null;
-
   const verified = [];
   let winner = null;
 
-  // ARMX is most valuable when it finds a move Pro did NOT put in its deep-search
-  // finalist set. Do not use shallow ARMX to overrule two moves Pro already compared
-  // at five ply; use ARMX to rescue candidates that Pro's beam excluded.
-  if (review && proReport && proDeep !== null) {
+  if (review && Array.isArray(review.reports)) {
+    // Reports are already ordered by ARMX score. Only nominate moves that Pro did
+    // not deep-search (their Pro score is -Infinity). ARMX gets one nomination in
+    // preview, keeping the extra work bounded and leaving room for later versions.
     const challenges = review.reports
       .filter(report => !Number.isFinite(report.proScore))
-      .filter(report => report.armxScore - proReport.armxScore >= STONEFISH_V5_5_ARMX_CHALLENGE_GAIN)
       .slice(0, STONEFISH_V5_5_MAX_VERIFICATIONS);
 
     for (const challenge of challenges) {
-      const verification = stonefishV55VerifyWithPro(game, challenge.raw, perspective);
-      const gain = verification.deep - proDeep;
-      const item = {
-        raw: challenge.raw,
-        armxScore: challenge.armxScore,
-        armxGain: challenge.armxScore - proReport.armxScore,
-        proDeep: verification.deep,
-        proDeepGain: gain,
-        stats: verification.stats,
-      };
-      verified.push(item);
+      const entry = baseScored.find(item => stonefishV5SameMove(item.raw, challenge.raw));
+      if (!entry) continue;
+      const finalist = stonefishV55ScoreAsProFinalist(game, entry, perspective);
+      finalist.armxScore = challenge.armxScore;
+      finalist.armxLine = challenge.line;
+      verified.push(finalist);
 
-      if (gain >= STONEFISH_V5_5_PRO_VERIFY_MARGIN && (!winner || verification.deep > winner.proDeep)) {
-        winner = item;
-      }
+      // This is the key safety property: ARMX cannot win merely because its own
+      // shallower score likes a move. The nominated move must beat the actual Pro
+      // winner on Pro's own complete finalist score after a normal five-ply search.
+      if (finalist.score > proTop.score + 1e-9) winner = finalist;
     }
   }
 
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({
+  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review || {}, {
     connected: true,
-    proposedOverride: Boolean(review && review.override),
     verifiedChallenges: verified,
     override: Boolean(winner),
     recommendedRaw: winner ? winner.raw : proTop.raw,
-    verifiedGain: winner ? winner.proDeepGain : 0,
-    verifyMargin: STONEFISH_V5_5_PRO_VERIFY_MARGIN,
-  }, review || {});
-
-  // Object.assign above lets the original review fields overwrite the final decision;
-  // explicitly restore the verified decision fields as the authoritative v5.5 result.
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX.connected = true;
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX.proposedOverride = Boolean(review && review.override);
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX.verifiedChallenges = verified;
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX.override = Boolean(winner);
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX.recommendedRaw = winner ? winner.raw : proTop.raw;
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX.verifiedGain = winner ? winner.proDeepGain : 0;
-  STONEFISH_V5_5_TESTUNIT1_LAST_ARMX.verifyMargin = STONEFISH_V5_5_PRO_VERIFY_MARGIN;
+    verifiedGain: winner ? winner.score - proTop.score : 0,
+    proTopScore: proTop.score,
+  });
 
   if (!winner) return baseScored;
   const recommendedIndex = baseScored.findIndex(entry => stonefishV5SameMove(entry.raw, winner.raw));
@@ -114,8 +132,8 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   const adjusted = baseScored.slice();
   const [recommended] = adjusted.splice(recommendedIndex, 1);
   recommended.armxOverride = true;
-  recommended.armxVerifiedDeep = winner.proDeep;
-  recommended.armxVerifiedGain = winner.proDeepGain;
+  recommended.armxVerifiedScore = winner.score;
+  recommended.armxVerifiedGain = winner.score - proTop.score;
   adjusted.unshift(recommended);
   return adjusted;
 }
