@@ -9,7 +9,7 @@
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'ARMX-guided Guarded PVS',
-  semifinalists: 5,
+  semifinalists: 8,
   rootCandidates: 4,
   branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
