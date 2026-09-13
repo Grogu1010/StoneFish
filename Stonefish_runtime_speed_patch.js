@@ -294,12 +294,82 @@ if (typeof stonefishV5PassedPawnInfo === 'function') {
   };
 }
 
-// Adaptive Pro scoring repeatedly asks attack-count questions for the same
-// square/side while the board is unchanged. Ray scans are much costlier than
-// this tiny local memo lookup.
+// Pro's adaptive evaluator asks dozens of attack-count questions on one unchanged
+// board. Build every square's count in one piece-centric pass per side, including
+// the first occupied square on sliding rays so defended pieces match the released
+// reverse-ray definition exactly.
+function stonefishRuntimeBuildProAttackMap(game, side) {
+  const b = game.boardState;
+  const attacks = new Uint8Array(64);
+
+  function add(file, rank) {
+    if (file >= 0 && file < 8 && rank >= 0 && rank < 8) attacks[rank * 8 + file] += 1;
+  }
+
+  function ray(file, rank, df, dr) {
+    let f = file + df;
+    let r = rank + dr;
+    while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+      const sq = r * 8 + f;
+      attacks[sq] += 1;
+      if (b[sq]) break;
+      f += df;
+      r += dr;
+    }
+  }
+
+  for (let from = 0; from < 64; from += 1) {
+    const piece = b[from];
+    if (!piece || (piece > 0 ? 1 : -1) !== side) continue;
+    const type = Math.abs(piece);
+    const file = from & 7;
+    const rank = from >> 3;
+
+    if (type === 1) {
+      add(file - 1, rank + side);
+      add(file + 1, rank + side);
+      continue;
+    }
+
+    if (type === 2) {
+      for (let i = 0; i < STONEFISH_V5_PRO_KNIGHT.length; i += 1) {
+        add(file + STONEFISH_V5_PRO_KNIGHT[i][0], rank + STONEFISH_V5_PRO_KNIGHT[i][1]);
+      }
+      continue;
+    }
+
+    if (type === 6) {
+      for (let i = 0; i < STONEFISH_V5_PRO_DIRS_BISHOP.length; i += 1) {
+        add(file + STONEFISH_V5_PRO_DIRS_BISHOP[i][0], rank + STONEFISH_V5_PRO_DIRS_BISHOP[i][1]);
+      }
+      for (let i = 0; i < STONEFISH_V5_PRO_DIRS_ROOK.length; i += 1) {
+        add(file + STONEFISH_V5_PRO_DIRS_ROOK[i][0], rank + STONEFISH_V5_PRO_DIRS_ROOK[i][1]);
+      }
+      continue;
+    }
+
+    if (type === 3 || type === 5) {
+      for (let i = 0; i < STONEFISH_V5_PRO_DIRS_BISHOP.length; i += 1) {
+        ray(file, rank, STONEFISH_V5_PRO_DIRS_BISHOP[i][0], STONEFISH_V5_PRO_DIRS_BISHOP[i][1]);
+      }
+    }
+    if (type === 4 || type === 5) {
+      for (let i = 0; i < STONEFISH_V5_PRO_DIRS_ROOK.length; i += 1) {
+        ray(file, rank, STONEFISH_V5_PRO_DIRS_ROOK[i][0], STONEFISH_V5_PRO_DIRS_ROOK[i][1]);
+      }
+    }
+  }
+
+  return attacks;
+}
+
 if (typeof stonefishV5ProAttackCount === 'function') {
-  const base = stonefishV5ProAttackCount;
   stonefishV5ProAttackCount = function(game, sq, side) {
-    return stonefishRuntimeMemo(game, 'pac:' + sq + ':' + side, () => base(game, sq, side));
+    const map = stonefishRuntimeMemo(
+      game,
+      'pmap:' + side,
+      () => stonefishRuntimeBuildProAttackMap(game, side)
+    );
+    return map[sq];
   };
 }
