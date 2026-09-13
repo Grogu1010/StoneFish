@@ -1,16 +1,16 @@
 // Stonefish v5.5 testunit1 — v5 Pro knowledge + native v5.5 search + ARMX-preview.
 //
-// v5.5 inherits v5 Pro's chess knowledge, but uses its own narrower four-root
-// five-ply search. The host first chooses a provisional winner on its own. Only
-// then does ARMX-preview inspect that actual intended move for an opponent reply
-// outside the host beam. Stonefish re-searches that concrete reply before deciding.
+// v5.5 inherits v5 Pro's chess knowledge, but uses a faster knowledge-gated
+// two-root five-ply search. The host first chooses a provisional winner on its own.
+// Only then does ARMX-preview inspect that actual intended move for an opponent
+// reply outside the host beam. Stonefish re-searches that reply before deciding.
 
 const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   name: 'Stonefish v5.5 testunit1',
   base: 'Stonefish v5 Pro',
   knowledgeBase: 'Stonefish v5 Pro',
   search: 'Guarded PVS',
-  nativeFeature: 'four-root narrow search',
+  nativeFeature: 'knowledge-gated two-root search',
   armx: 'ARMX-preview',
 });
 
