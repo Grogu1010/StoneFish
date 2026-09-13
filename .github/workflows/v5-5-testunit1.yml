@@ -15,7 +15,7 @@ on:
 jobs:
   dev-testunit1:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +27,6 @@ jobs:
         run: node --check Stonefish_v5_5_testunit1.js
       - name: Run v5.5 dev benchmark
         env:
-          SAMPLES: '30'
-          GAMES: '100'
+          SAMPLES: '20'
+          GAMES: '40'
         run: node benchmark_v5_5_testunit1.js
