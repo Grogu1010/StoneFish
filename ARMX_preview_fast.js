@@ -1,292 +1,367 @@
-// ARMX-preview — fast adversarial threat scanner for Stonefish v5.5 testunit1.
+// ARMX-preview — per-game opponent adaptation model for Stonefish v5.5.
 //
-// Preview is intentionally NOT a full engine. It scans replies the v5.5 Guarded
-// PVS beam may miss, then follows only a few suspicious branches to a 3-ply base /
-// selective 4-ply horizon. fast5 reviews the top two host finalists so ARMX can
-// compare relative risk instead of blindly punishing only the provisional winner.
+// ARMX is intentionally a separate model from Stonefish. It does not search the
+// move tree and it does not reuse Stonefish evaluation. Instead it watches the
+// actual game, builds a small profile of this opponent's choices and of what has
+// worked (or failed) against them, then applies bounded evidence-based multipliers
+// to Stonefish's already-searched candidates. The profile lives in a WeakMap keyed
+// by the game object, so it automatically resets between games/rounds.
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-v55-fast5',
-  base: 'Stonefish v5.5 host',
-  basePly: 3,
-  maxPly: 4,
-  maxCandidates: 2,
-  maxReplies: 4,
-  maxContinuations: 2,
-  maxFourthPlyReplies: 1,
-  maxCriticalReplies: 1,
-  maxNodes: 128,
-  riskThresholdForcing: 40,
-  riskThresholdQuiet: 80,
-  riskScale: 0.9,
-  maxAdjustment: 420,
+  version: 'preview-adapt1',
+  kind: 'opponent-adaptation',
+  reset: 'per-game',
+  candidateLimit: 2,
+  minEvidence: 1.5,
+  fullConfidenceEvidence: 7,
+  maxMultiplierDelta: 0.075,
+  effectScale: 360,
+  maxHostGap: 420,
+  maxDeepSacrifice: 85,
+  shortHorizonPlies: 2,
+  longHorizonPlies: 4,
 });
 
-function armxPreviewPieceValue(type) {
-  if (type === 1) return 100;
-  if (type === 2) return 320;
-  if (type === 3) return 335;
-  if (type === 4) return 510;
-  if (type === 5) return 930;
-  if (type === 6) return 20000;
-  return 0;
+const ARMX_PREVIEW_GAME_PROFILES = new WeakMap();
+const ARMX_PREVIEW_FEATURES = Object.freeze([
+  'capture', 'trade', 'rookTrade', 'queenTrade', 'minorTrade', 'simplify',
+  'check', 'kingAttack', 'pawnPush', 'castle', 'quiet', 'advance', 'retreat'
+]);
+const ARMX_PREVIEW_REPLY_FEATURES = Object.freeze([
+  'capture', 'trade', 'rookTrade', 'queenTrade', 'simplify'
+]);
+const ARMX_PREVIEW_PIECE_VALUES = Object.freeze([0, 100, 320, 335, 510, 930, 0]);
+
+function armxPreviewClamp(value, low, high) {
+  return Math.max(low, Math.min(high, value));
 }
 
-function armxPreviewMoveOrder(game, move) {
-  let score = (armxPreviewPieceValue(move.captured) || 0) * 18;
-  if (move.promotion) score += armxPreviewPieceValue(move.promotion) * 12 + 2200;
-  if (game.fastGivesCheck && game.fastGivesCheck(move)) score += 2500;
-  if (move.flags & (4 | 8)) score += 120;
-  return score;
+function armxPreviewSquareDistance(a, b) {
+  const af = a & 7, ar = a >> 3, bf = b & 7, br = b >> 3;
+  return Math.max(Math.abs(af - bf), Math.abs(ar - br));
 }
 
-function armxPreviewIsForcing(game, move) {
-  return Boolean(move.captured || move.promotion || (game.fastGivesCheck && game.fastGivesCheck(move)));
-}
+function armxPreviewModelEval(game, perspective) {
+  // Independent, intentionally small ARMX evaluation. It is not Stonefish's
+  // evaluator: material + activity + king-zone presence + pawn advancement.
+  let score = 0;
+  const board = game.boardState;
+  const enemyKing = game.kingSq[-perspective];
+  const ourKing = game.kingSq[perspective];
 
-function armxPreviewBaseEval(game, perspective) {
-  let score = typeof stonefishV5ProCachedPositionScore === 'function'
-    ? stonefishV5ProCachedPositionScore(game, perspective)
-    : stonefishV5PositionScore(game, perspective);
-  if (typeof stonefishV5EnemyPasserThreat === 'function') {
-    const danger = stonefishV5EnemyPasserThreat(game, perspective);
-    if (danger >= 2200) score -= danger * 1.25;
-    else if (danger >= 900) score -= danger * 0.56;
-    else if (danger >= 300) score -= danger * 0.20;
-  }
-  if (game.in_check()) score += game.side === perspective ? -240 : 160;
-  return score;
-}
+  for (let sq = 0; sq < 64; sq += 1) {
+    const piece = board[sq];
+    if (!piece) continue;
+    const side = piece > 0 ? 1 : -1;
+    const type = Math.abs(piece);
+    const sign = side === perspective ? 1 : -1;
+    score += sign * ARMX_PREVIEW_PIECE_VALUES[type];
 
-function armxPreviewRichEval(game, perspective) {
-  let score = armxPreviewBaseEval(game, perspective);
-  if (typeof stonefishV5ProKingZonePressure === 'function') {
-    score += (stonefishV5ProKingZonePressure(game, perspective)
-      - stonefishV5ProKingZonePressure(game, -perspective)) * 15;
-  }
-  if (typeof stonefishV5ProRayTactics === 'function') {
-    score += stonefishV5ProRayTactics(game, perspective) * 0.25;
-  }
-  return score;
-}
-
-function armxPreviewTerminal(game, perspective, plyFromRoot, legal) {
-  if (legal.length) return null;
-  if (!game.in_check()) return 0;
-  return game.side === perspective
-    ? -STONEFISH_V5_PRO_MATE + plyFromRoot
-    : STONEFISH_V5_PRO_MATE - plyFromRoot;
-}
-
-function armxPreviewHostReplyWidth(game, legal) {
-  if (typeof stonefishV55SearchWidth === 'function') {
-    return stonefishV55SearchWidth(game, 4, legal);
-  }
-  let width = (typeof STONEFISH_V5_PRO_SPEED_BRANCH !== 'undefined'
-    ? STONEFISH_V5_PRO_SPEED_BRANCH[4]
-    : 5) || 5;
-  if (game.in_check()) width = Math.max(width, 6);
-  return Math.min(width, legal.length);
-}
-
-function armxPreviewNovelReplies(game, perspective, state) {
-  const legal = game.fastMoves();
-  if (!legal.length) return { legalCount: 0, hostBeamCount: 0, replies: [] };
-  const hostOrder = typeof stonefishV5ProSpeedMoveOrder === 'function'
-    ? stonefishV5ProSpeedMoveOrder
-    : armxPreviewMoveOrder;
-  const orderedForHost = legal
-    .map((move, index) => ({ move, index, order: hostOrder(game, move) }))
-    .sort((a, b) => (b.order - a.order) || (a.index - b.index));
-  const hostBeamCount = armxPreviewHostReplyWidth(game, legal);
-  const hostBeam = new Set(orderedForHost.slice(0, hostBeamCount).map(entry => entry.move));
-  const screened = [];
-
-  for (let i = 0; i < legal.length && state.nodes < state.maxNodes; i += 1) {
-    const reply = legal[i];
-    if (hostBeam.has(reply)) continue;
-    const forcing = armxPreviewIsForcing(game, reply);
-    game.fastApply(reply);
-    state.nodes += 1;
-    let score = armxPreviewBaseEval(game, perspective);
-    game.fastUndo();
-    if (forcing) score -= 20;
-    screened.push({ reply, score, index: i });
-  }
-
-  screened.sort((a, b) => (a.score - b.score) || (a.index - b.index));
-  return {
-    legalCount: legal.length,
-    hostBeamCount,
-    replies: screened.slice(0, ARMX_PREVIEW.maxReplies).map(entry => entry.reply),
-  };
-}
-
-function armxPreviewSearchCandidate(game, raw, perspective, state) {
-  game.fastApply(raw);
-  state.nodes += 1;
-  const screened = armxPreviewNovelReplies(game, perspective, state);
-
-  if (!screened.legalCount) {
-    const terminal = game.in_check() ? STONEFISH_V5_PRO_MATE - 1 : 0;
-    game.fastUndo();
-    return {
-      score: terminal,
-      criticalReply: null,
-      criticalReplies: [],
-      criticalForcing: false,
-      line: [],
-      legalReplies: 0,
-      hostBeamReplies: 0,
-      novelReplies: 0,
-    };
-  }
-  if (!screened.replies.length) {
-    const score = armxPreviewBaseEval(game, perspective);
-    game.fastUndo();
-    return {
-      score,
-      criticalReply: null,
-      criticalReplies: [],
-      criticalForcing: false,
-      line: [],
-      legalReplies: screened.legalCount,
-      hostBeamReplies: screened.hostBeamCount,
-      novelReplies: 0,
-    };
-  }
-
-  const results = [];
-  for (const reply of screened.replies) {
-    if (state.nodes >= state.maxNodes) break;
-    const replyForcing = armxPreviewIsForcing(game, reply);
-    game.fastApply(reply);
-    state.nodes += 1;
-    const legal = game.fastMoves();
-    const terminal = armxPreviewTerminal(game, perspective, 2, legal);
-    let best = terminal !== null ? terminal : -Infinity;
-    let bestMove = null;
-
-    if (terminal === null) {
-      const continuations = legal
-        .map((move, index) => ({ move, index, order: armxPreviewMoveOrder(game, move) }))
-        .sort((a, b) => (b.order - a.order) || (a.index - b.index))
-        .slice(0, ARMX_PREVIEW.maxContinuations);
-      for (const entry of continuations) {
-        if (state.nodes >= state.maxNodes) break;
-        const forcing = armxPreviewIsForcing(game, entry.move);
-        game.fastApply(entry.move);
-        state.nodes += 1;
-        let value = armxPreviewRichEval(game, perspective);
-
-        if (forcing && state.nodes < state.maxNodes) {
-          const fourth = game.fastMoves()
-            .map((move, index) => ({ move, index, order: armxPreviewMoveOrder(game, move) }))
-            .sort((a, b) => (b.order - a.order) || (a.index - b.index))
-            .slice(0, ARMX_PREVIEW.maxFourthPlyReplies);
-          if (fourth.length) {
-            game.fastApply(fourth[0].move);
-            state.nodes += 1;
-            value = Math.min(value, armxPreviewRichEval(game, perspective));
-            game.fastUndo();
-          }
-        }
-
-        game.fastUndo();
-        if (value > best) {
-          best = value;
-          bestMove = entry.move;
-        }
-      }
+    const file = sq & 7;
+    const rank = sq >> 3;
+    const centerDistance = Math.abs(file - 3.5) + Math.abs(rank - 3.5);
+    if (type === 2 || type === 3) score += sign * (18 - centerDistance * 3);
+    if (type === 1) {
+      const advance = side === 1 ? rank - 1 : 6 - rank;
+      score += sign * Math.max(0, advance) * 5;
     }
-    game.fastUndo();
-    results.push({
-      reply,
-      score: best,
-      forcing: replyForcing,
-      line: bestMove ? [reply, bestMove] : [reply],
-    });
-  }
 
-  game.fastUndo();
-  results.sort((a, b) => a.score - b.score);
-  const criticalReplies = results.slice(0, ARMX_PREVIEW.maxCriticalReplies);
-  const critical = criticalReplies[0] || null;
+    if (side === perspective && type !== 6 && armxPreviewSquareDistance(sq, enemyKing) <= 2) score += 12;
+    if (side !== perspective && type !== 6 && armxPreviewSquareDistance(sq, ourKing) <= 2) score -= 12;
+  }
+  return score;
+}
+
+function armxPreviewFeatureSet(game, move) {
+  const features = new Set();
+  if (!move) return features;
+  const piece = move.piece || Math.abs(game.boardState[move.from] || 0);
+  const captured = move.captured || 0;
+  const moveValue = ARMX_PREVIEW_PIECE_VALUES[piece] || 0;
+  const capturedValue = ARMX_PREVIEW_PIECE_VALUES[captured] || 0;
+
+  if (captured) features.add('capture');
+  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) features.add('trade');
+  if (captured && piece === 4 && captured === 4) features.add('rookTrade');
+  if (captured && piece === 5 && captured === 5) features.add('queenTrade');
+  if (captured && (piece === 2 || piece === 3) && (captured === 2 || captured === 3)) features.add('minorTrade');
+  if (captured >= 2) features.add('simplify');
+  if (piece === 1) features.add('pawnPush');
+  if (move.flags & (4 | 8)) features.add('castle');
+
+  let givesCheck = false;
+  if (typeof game.fastGivesCheck === 'function') givesCheck = game.fastGivesCheck(move);
+  if (givesCheck) features.add('check');
+  const enemyKing = game.kingSq[-game.side];
+  if (givesCheck || (piece !== 6 && armxPreviewSquareDistance(move.to, enemyKing) <= 2)) features.add('kingAttack');
+
+  const fromRank = move.from >> 3;
+  const toRank = move.to >> 3;
+  const forward = game.side === 1 ? toRank - fromRank : fromRank - toRank;
+  if (forward > 0) features.add('advance');
+  if (forward < 0) features.add('retreat');
+  if (!captured && !givesCheck && !move.promotion && !(move.flags & (4 | 8))) features.add('quiet');
+  return features;
+}
+
+function armxPreviewCheapFeatureSet(move) {
+  const features = new Set();
+  if (!move) return features;
+  const piece = move.piece || 0;
+  const captured = move.captured || 0;
+  const moveValue = ARMX_PREVIEW_PIECE_VALUES[piece] || 0;
+  const capturedValue = ARMX_PREVIEW_PIECE_VALUES[captured] || 0;
+  if (captured) features.add('capture');
+  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) features.add('trade');
+  if (captured && piece === 4 && captured === 4) features.add('rookTrade');
+  if (captured && piece === 5 && captured === 5) features.add('queenTrade');
+  if (captured >= 2) features.add('simplify');
+  return features;
+}
+
+function armxPreviewFreshStats() {
+  const stats = Object.create(null);
+  for (const feature of ARMX_PREVIEW_FEATURES) {
+    stats[feature] = { weight: 0, impact: 0, positive: 0 };
+  }
+  return stats;
+}
+
+function armxPreviewNewProfile(perspective) {
   return {
-    score: critical ? critical.score : 0,
-    criticalReply: critical ? critical.reply : null,
-    criticalReplies,
-    criticalForcing: Boolean(critical && critical.forcing),
-    line: critical ? critical.line : [],
-    legalReplies: screened.legalCount,
-    hostBeamReplies: screened.hostBeamCount,
-    novelReplies: Math.max(0, screened.legalCount - screened.hostBeamCount),
+    perspective,
+    processedPlies: 0,
+    replay: new Chess(),
+    pending: [],
+    ourEffects: armxPreviewFreshStats(),
+    opponentEffects: armxPreviewFreshStats(),
+    opponentMoves: 0,
+    opponentChoices: Object.create(null),
+    opponentOpportunities: Object.create(null),
+    notes: [],
   };
 }
 
-function armxPreviewCriticAdjustment(hostDeep, armxScore, forcing) {
-  if (!Number.isFinite(hostDeep) || !Number.isFinite(armxScore)) {
-    return { risk: 0, threshold: Infinity, adjustment: 0, confidence: 0 };
+function armxPreviewRecordImpact(bucket, features, impact, weight) {
+  const normalized = armxPreviewClamp(impact / ARMX_PREVIEW.effectScale, -1, 1);
+  for (const feature of features) {
+    const row = bucket[feature];
+    if (!row) continue;
+    row.weight += weight;
+    row.impact += normalized * weight;
+    if (normalized > 0) row.positive += weight;
   }
-  const risk = Math.max(0, hostDeep - armxScore);
-  const threshold = forcing
-    ? ARMX_PREVIEW.riskThresholdForcing
-    : ARMX_PREVIEW.riskThresholdQuiet;
-  if (risk <= threshold) {
-    return { risk, threshold, adjustment: 0, confidence: 0 };
-  }
-  const excess = risk - threshold;
-  const adjustment = -Math.min(ARMX_PREVIEW.maxAdjustment, excess * ARMX_PREVIEW.riskScale);
-  const confidence = Math.min(1, excess / Math.max(1, ARMX_PREVIEW.maxAdjustment));
-  return { risk, threshold, adjustment, confidence };
 }
 
-function armxPreviewReview(game, candidates, perspective) {
+function armxPreviewResolvePending(profile, currentPly) {
+  if (!profile.pending.length) return;
+  const now = armxPreviewModelEval(profile.replay, profile.perspective);
+  const keep = [];
+  for (const event of profile.pending) {
+    if (currentPly < event.resolveAt) {
+      keep.push(event);
+      continue;
+    }
+    const impact = now - event.before;
+    const bucket = event.actor === profile.perspective ? profile.ourEffects : profile.opponentEffects;
+    armxPreviewRecordImpact(bucket, event.features, impact, event.weight);
+  }
+  profile.pending = keep;
+}
+
+function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
+  const legal = game.fastMoves();
+  const available = new Set();
+  for (const move of legal) {
+    const features = armxPreviewCheapFeatureSet(move);
+    for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (features.has(feature)) available.add(feature);
+  }
+  const chosen = armxPreviewCheapFeatureSet(chosenMove);
+  profile.opponentMoves += 1;
+  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
+    if (available.has(feature)) {
+      profile.opponentOpportunities[feature] = (profile.opponentOpportunities[feature] || 0) + 1;
+      if (chosen.has(feature)) profile.opponentChoices[feature] = (profile.opponentChoices[feature] || 0) + 1;
+    }
+  }
+}
+
+function armxPreviewSyncProfile(game, perspective) {
+  let profile = ARMX_PREVIEW_GAME_PROFILES.get(game);
+  const historyLength = game.historyStack ? game.historyStack.length : 0;
+  if (!profile || profile.perspective !== perspective || historyLength < profile.processedPlies) {
+    profile = armxPreviewNewProfile(perspective);
+    ARMX_PREVIEW_GAME_PROFILES.set(game, profile);
+  }
+
+  const history = game.historyStack || [];
+  while (profile.processedPlies < history.length) {
+    const index = profile.processedPlies;
+    const state = history[index];
+    const move = state && state.move;
+    if (!move) break;
+    const actor = profile.replay.side;
+    const before = armxPreviewModelEval(profile.replay, perspective);
+    const features = armxPreviewFeatureSet(profile.replay, move);
+
+    if (actor === -perspective) armxPreviewObserveOpponentOpportunity(profile, profile.replay, move);
+
+    profile.pending.push({
+      actor,
+      features,
+      before,
+      resolveAt: index + ARMX_PREVIEW.shortHorizonPlies,
+      weight: 0.65,
+    });
+    profile.pending.push({
+      actor,
+      features,
+      before,
+      resolveAt: index + ARMX_PREVIEW.longHorizonPlies,
+      weight: 0.35,
+    });
+
+    profile.replay.fastApply(move);
+    profile.processedPlies += 1;
+    armxPreviewResolvePending(profile, profile.processedPlies);
+  }
+
+  armxPreviewResolvePending(profile, profile.processedPlies);
+  return profile;
+}
+
+function armxPreviewEffect(stats, feature) {
+  const row = stats[feature];
+  if (!row || row.weight < ARMX_PREVIEW.minEvidence) return { value: 0, evidence: row ? row.weight : 0 };
+  return { value: row.impact / row.weight, evidence: row.weight };
+}
+
+function armxPreviewOpponentChoiceRate(profile, feature) {
+  const opportunities = profile.opponentOpportunities[feature] || 0;
+  if (!opportunities) return { rate: 0, evidence: 0 };
+  return {
+    rate: (profile.opponentChoices[feature] || 0) / opportunities,
+    evidence: opportunities,
+  };
+}
+
+function armxPreviewCandidateReplyOpportunities(game, raw) {
+  const historyDepth = game.historyStack.length;
+  const available = new Set();
+  try {
+    game.fastApply(raw);
+    for (const reply of game.fastMoves()) {
+      const features = armxPreviewCheapFeatureSet(reply);
+      for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (features.has(feature)) available.add(feature);
+    }
+  } finally {
+    while (game.historyStack.length > historyDepth) game.fastUndo();
+  }
+  return available;
+}
+
+function armxPreviewCandidateReport(game, entry, profile) {
+  const features = armxPreviewFeatureSet(game, entry.raw);
+  const replyOpportunities = armxPreviewCandidateReplyOpportunities(game, entry.raw);
+  let signal = 0;
+  let evidence = 0;
+  const reasons = [];
+
+  for (const feature of features) {
+    const effect = armxPreviewEffect(profile.ourEffects, feature);
+    if (effect.evidence < ARMX_PREVIEW.minEvidence) continue;
+    const weight = feature === 'rookTrade' || feature === 'queenTrade' ? 1.45
+      : feature === 'trade' || feature === 'simplify' ? 1.15 : 0.72;
+    signal += effect.value * weight;
+    evidence += Math.min(3, effect.evidence) * weight;
+    if (Math.abs(effect.value) >= 0.12) reasons.push(`${feature}:${effect.value > 0 ? '+' : ''}${effect.value.toFixed(2)}`);
+  }
+
+  for (const feature of replyOpportunities) {
+    const choice = armxPreviewOpponentChoiceRate(profile, feature);
+    const effect = armxPreviewEffect(profile.opponentEffects, feature);
+    if (choice.evidence < 2 || effect.evidence < ARMX_PREVIEW.minEvidence) continue;
+    // Positive opponent-effect means that when they chose this behavior, our
+    // position subsequently improved. A candidate that offers a behavior they
+    // often choose therefore receives a small evidence-weighted boost.
+    const contribution = choice.rate * effect.value * 0.78;
+    signal += contribution;
+    evidence += Math.min(2.5, choice.evidence * 0.35 + effect.evidence * 0.25);
+    if (Math.abs(contribution) >= 0.08) {
+      reasons.push(`opp-${feature}:${Math.round(choice.rate * 100)}%/${effect.value > 0 ? '+' : ''}${effect.value.toFixed(2)}`);
+    }
+  }
+
+  const confidence = armxPreviewClamp(evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0, 1);
+  const delta = armxPreviewClamp(
+    signal * 0.055 * confidence,
+    -ARMX_PREVIEW.maxMultiplierDelta,
+    ARMX_PREVIEW.maxMultiplierDelta
+  );
+  const multiplier = 1 + delta;
+  const scoreMagnitude = armxPreviewClamp(Math.abs(entry.score || 0), 140, 1400);
+  const adjustment = scoreMagnitude * delta;
+  return {
+    raw: entry.raw,
+    hostScore: entry.score,
+    hostDeep: entry.deep,
+    multiplier,
+    adjustment,
+    adaptedScore: entry.score + adjustment,
+    signal,
+    confidence,
+    evidence,
+    features: Array.from(features),
+    reasons,
+  };
+}
+
+function armxPreviewProfileNotes(profile) {
+  const notes = [];
+  const important = ['rookTrade', 'queenTrade', 'trade', 'simplify', 'capture', 'kingAttack', 'quiet'];
+  for (const feature of important) {
+    const ours = armxPreviewEffect(profile.ourEffects, feature);
+    if (ours.evidence >= ARMX_PREVIEW.minEvidence && Math.abs(ours.value) >= 0.14) {
+      notes.push(`${feature} against opponent has been ${ours.value > 0 ? 'working' : 'hurting us'} (${ours.value > 0 ? '+' : ''}${ours.value.toFixed(2)}, n=${ours.evidence.toFixed(1)})`);
+    }
+    const choice = armxPreviewOpponentChoiceRate(profile, feature);
+    if (choice.evidence >= 3 && (choice.rate >= 0.70 || choice.rate <= 0.25)) {
+      notes.push(`opponent ${choice.rate >= 0.70 ? 'often' : 'rarely'} chooses ${feature} when available (${Math.round(choice.rate * 100)}%)`);
+    }
+  }
+  return notes.slice(0, 6);
+}
+
+function armxPreviewReview(game, candidates, perspective = game.side) {
+  const profile = armxPreviewSyncProfile(game, perspective);
   const finalists = candidates
     .filter(entry => entry && Number.isFinite(entry.score))
-    .slice(0, ARMX_PREVIEW.maxCandidates);
-  const state = { nodes: 0, maxNodes: ARMX_PREVIEW.maxNodes };
-  const reports = [];
-  for (const entry of finalists) {
-    if (state.nodes >= state.maxNodes) break;
-    const before = state.nodes;
-    const result = armxPreviewSearchCandidate(game, entry.raw, perspective, state);
-    const critic = armxPreviewCriticAdjustment(entry.deep, result.score, result.criticalForcing);
-    reports.push({
-      raw: entry.raw,
-      hostScore: entry.score,
-      hostDeep: entry.deep,
-      armxScore: result.score,
-      risk: critic.risk,
-      riskThreshold: critic.threshold,
-      adjustment: critic.adjustment,
-      projectedScore: entry.score + critic.adjustment,
-      confidence: critic.confidence,
-      criticalReply: result.criticalReply,
-      criticalReplies: result.criticalReplies,
-      criticalForcing: result.criticalForcing,
-      line: result.line,
-      legalReplies: result.legalReplies,
-      hostBeamReplies: result.hostBeamReplies,
-      novelReplies: result.novelReplies,
-      nodes: state.nodes - before,
-    });
-  }
-  reports.sort((a, b) => b.projectedScore - a.projectedScore);
+    .slice(0, ARMX_PREVIEW.candidateLimit);
+  const reports = finalists.map(entry => armxPreviewCandidateReport(game, entry, profile));
+  reports.sort((a, b) => b.adaptedScore - a.adaptedScore);
+  profile.notes = armxPreviewProfileNotes(profile);
+
   return {
     model: ARMX_PREVIEW.name,
     version: ARMX_PREVIEW.version,
-    base: ARMX_PREVIEW.base,
-    basePly: ARMX_PREVIEW.basePly,
-    maxPly: ARMX_PREVIEW.maxPly,
-    nodes: state.nodes,
+    kind: ARMX_PREVIEW.kind,
+    reset: ARMX_PREVIEW.reset,
+    observedPlies: profile.processedPlies,
+    opponentMovesObserved: profile.opponentMoves,
+    notes: profile.notes.slice(),
     candidatesReviewed: reports.length,
     reports,
+    nodes: 0,
   };
+}
+
+function armxPreviewResetGame(game) {
+  if (game) ARMX_PREVIEW_GAME_PROFILES.delete(game);
 }
 
 if (typeof globalThis !== 'undefined') {
   globalThis.ARMX_PREVIEW = ARMX_PREVIEW;
   globalThis.armxPreviewReview = armxPreviewReview;
+  globalThis.armxPreviewResetGame = armxPreviewResetGame;
 }
