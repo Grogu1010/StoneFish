@@ -4,6 +4,7 @@
 //   2) v5.5 No ARMX vs v5 Pro
 //   3) v5.5 + ARMX vs v5.5 No ARMX
 // Required hierarchy: v5 Pro < v5.5 No ARMX < v5.5 + ARMX.
+// Game-performance metrics are engine-only: opponent think time is excluded.
 
 const fs = require('fs');
 const vm = require('vm');
@@ -213,26 +214,80 @@ function latencyAndBehavior(samples) {
   };
 }
 
+function enginePerformanceSummary(games, moves, thinkMs) {
+  const averageTimePerMoveMs = moves ? thinkMs / moves : 0;
+  const averageMovesPerGame = games ? moves / games : 0;
+  return {
+    games,
+    moves,
+    thinkMs,
+    averageTimePerMoveMs,
+    averageMovesPerGame,
+    averageEngineTimePerGameMs: averageTimePerMoveMs * averageMovesPerGame
+  };
+}
+
+function combinePerformance(parts) {
+  let games = 0, moves = 0, thinkMs = 0;
+  for (const part of parts) {
+    if (!part) continue;
+    games += part.games || 0;
+    moves += part.moves || 0;
+    thinkMs += part.thinkMs || 0;
+  }
+  return enginePerformanceSummary(games, moves, thinkMs);
+}
+
 function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, maxPlies = 360) {
   const game = positionAfter(opening);
   let plies = opening.length;
+  const enginePerf = {
+    contender: { moves: 0, thinkMs: 0 },
+    opponent: { moves: 0, thinkMs: 0 }
+  };
+
   return withSeed(seed, () => {
     while (!game.game_over() && plies < maxPlies) {
       const contenderTurn = (game.side === 1) === contenderIsWhite;
+      const started = performance.now();
       const move = contenderTurn ? contenderFn(game) : opponentFn(game);
-      if (!play(game, move)) return { result: contenderTurn ? 'loss' : 'win', reason: 'invalid-move', plies };
+      const elapsed = performance.now() - started;
+      if (!play(game, move)) {
+        return { result: contenderTurn ? 'loss' : 'win', reason: 'invalid-move', plies, enginePerf };
+      }
+      const bucket = contenderTurn ? enginePerf.contender : enginePerf.opponent;
+      bucket.moves += 1;
+      bucket.thinkMs += elapsed;
       plies += 1;
     }
     if (game.in_checkmate()) {
       const winnerIsWhite = game.side === -1;
-      return { result: winnerIsWhite === contenderIsWhite ? 'win' : 'loss', reason: 'checkmate', plies };
+      return {
+        result: winnerIsWhite === contenderIsWhite ? 'win' : 'loss',
+        reason: 'checkmate',
+        plies,
+        enginePerf
+      };
     }
-    return { result: 'draw', reason: game.game_over() ? 'draw-rule' : 'max-plies', plies };
+    return {
+      result: 'draw',
+      reason: game.game_over() ? 'draw-rule' : 'max-plies',
+      plies,
+      enginePerf
+    };
   });
 }
 
 function variedHeadToHead(games, label, contenderFn, opponentFn) {
-  const totals = { win: 0, loss: 0, draw: 0 };
+  const totals = {
+    win: 0,
+    loss: 0,
+    draw: 0,
+    contenderMoves: 0,
+    contenderThinkMs: 0,
+    opponentMoves: 0,
+    opponentThinkMs: 0
+  };
   for (let i = 0; i < games; i += 1) {
     const pair = Math.floor(i / 2);
     const opening = generateOpening(pair, 10);
@@ -245,9 +300,22 @@ function variedHeadToHead(games, label, contenderFn, opponentFn) {
       opponentFn
     );
     totals[result.result] += 1;
+    totals.contenderMoves += result.enginePerf.contender.moves;
+    totals.contenderThinkMs += result.enginePerf.contender.thinkMs;
+    totals.opponentMoves += result.enginePerf.opponent.moves;
+    totals.opponentThinkMs += result.enginePerf.opponent.thinkMs;
     console.log(`${label} game ${i + 1}: pair=${pair + 1} side=${contenderIsWhite ? 'W' : 'B'} ${result.result} ${result.reason} ${result.plies} plies`);
   }
-  return Object.assign(totals, { score: games ? (totals.win + totals.draw * 0.5) / games : 0 });
+  return {
+    win: totals.win,
+    loss: totals.loss,
+    draw: totals.draw,
+    score: games ? (totals.win + totals.draw * 0.5) / games : 0,
+    performance: {
+      contender: enginePerformanceSummary(games, totals.contenderMoves, totals.contenderThinkMs),
+      opponent: enginePerformanceSummary(games, totals.opponentMoves, totals.opponentThinkMs)
+    }
+  };
 }
 
 assertContract();
@@ -268,6 +336,21 @@ const hierarchy = matchups ? {
   armxOutscoresHostVsPro: matchups.armxVsPro.score > matchups.noArmxVsPro.score,
 } : null;
 
+const gamePerformanceByModel = matchups ? {
+  v5Pro: combinePerformance([
+    matchups.armxVsPro.performance.opponent,
+    matchups.noArmxVsPro.performance.opponent
+  ]),
+  v55NoARMX: combinePerformance([
+    matchups.noArmxVsPro.performance.contender,
+    matchups.armxVsNoArmx.performance.opponent
+  ]),
+  v55ARMX: combinePerformance([
+    matchups.armxVsPro.performance.contender,
+    matchups.armxVsNoArmx.performance.contender
+  ])
+} : null;
+
 const result = {
   testUnit: STONEFISH_V5_5_TESTUNIT1.name,
   knowledgeBase: STONEFISH_V5_5_TESTUNIT1.knowledgeBase,
@@ -275,6 +358,7 @@ const result = {
   host: STONEFISH_V5_5_TESTUNIT1,
   armx: ARMX_PREVIEW,
   latency,
+  gamePerformanceByModel,
   matchups,
   hierarchy,
   targets: {
