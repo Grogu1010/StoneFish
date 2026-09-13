@@ -9,7 +9,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt5',
+  version: 'preview-adapt5-speed1',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 2,
@@ -53,10 +53,6 @@ function armxPreviewSquareDistance(a, b) {
 }
 
 function armxPreviewStateSnapshot(game, perspective) {
-  // Independent, intentionally small ARMX evaluation. It is not Stonefish's
-  // evaluator: material + activity + king-zone presence + pawn advancement.
-  // Material counts are gathered in the same pass so ARMX can recognize exchange
-  // episodes without adding another board scan per observed ply.
   let score = 0;
   const material = {
     whiteRooks: 0,
@@ -163,9 +159,7 @@ function armxPreviewCheapFeatureSet(move) {
 
 function armxPreviewFreshStats() {
   const stats = Object.create(null);
-  for (const feature of ARMX_PREVIEW_FEATURES) {
-    stats[feature] = { weight: 0, impact: 0, positive: 0 };
-  }
+  for (const feature of ARMX_PREVIEW_FEATURES) stats[feature] = { weight: 0, impact: 0, positive: 0 };
   return stats;
 }
 
@@ -210,7 +204,6 @@ function armxPreviewEpisodeFeatures(baseFeatures, before, after) {
     derived.add('trade');
     derived.add('simplify');
   }
-
   for (const feature of baseFeatures) derived.delete(feature);
   return derived;
 }
@@ -228,18 +221,9 @@ function armxPreviewResolvePending(profile, currentPly, currentSnapshot = profil
     const impact = now - event.before;
     const bucket = event.actor === profile.perspective ? profile.ourEffects : profile.opponentEffects;
     armxPreviewRecordImpact(bucket, event.features, impact, event.weight);
-    const episodeFeatures = armxPreviewEpisodeFeatures(
-      event.features,
-      event.beforeMaterial,
-      snapshot.material
-    );
+    const episodeFeatures = armxPreviewEpisodeFeatures(event.features, event.beforeMaterial, snapshot.material);
     if (episodeFeatures.size) {
-      armxPreviewRecordImpact(
-        bucket,
-        episodeFeatures,
-        impact,
-        event.weight * ARMX_PREVIEW.episodeFeatureWeight
-      );
+      armxPreviewRecordImpact(bucket, episodeFeatures, impact, event.weight * ARMX_PREVIEW.episodeFeatureWeight);
     }
   }
   profile.pending = keep;
@@ -280,25 +264,10 @@ function armxPreviewSyncProfile(game, perspective) {
     const before = profile.currentSnapshot.score;
     const beforeMaterial = profile.currentSnapshot.material;
     const features = armxPreviewFeatureSet(profile.replay, move);
-
     if (actor === -perspective) armxPreviewObserveOpponentOpportunity(profile, profile.replay, move);
 
-    profile.pending.push({
-      actor,
-      features,
-      before,
-      beforeMaterial,
-      resolveAt: index + ARMX_PREVIEW.shortHorizonPlies,
-      weight: 0.65,
-    });
-    profile.pending.push({
-      actor,
-      features,
-      before,
-      beforeMaterial,
-      resolveAt: index + ARMX_PREVIEW.longHorizonPlies,
-      weight: 0.35,
-    });
+    profile.pending.push({ actor, features, before, beforeMaterial, resolveAt: index + ARMX_PREVIEW.shortHorizonPlies, weight: 0.65 });
+    profile.pending.push({ actor, features, before, beforeMaterial, resolveAt: index + ARMX_PREVIEW.longHorizonPlies, weight: 0.35 });
 
     profile.replay.fastApply(move);
     profile.currentSnapshot = armxPreviewStateSnapshot(profile.replay, perspective);
@@ -319,10 +288,19 @@ function armxPreviewEffect(stats, feature) {
 function armxPreviewOpponentChoiceRate(profile, feature) {
   const opportunities = profile.opponentOpportunities[feature] || 0;
   if (!opportunities) return { rate: 0, evidence: 0 };
-  return {
-    rate: (profile.opponentChoices[feature] || 0) / opportunities,
-    evidence: opportunities,
-  };
+  return { rate: (profile.opponentChoices[feature] || 0) / opportunities, evidence: opportunities };
+}
+
+function armxPreviewHasUsefulReplyEvidence(profile) {
+  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
+    const choiceEvidence = profile.opponentOpportunities[feature] || 0;
+    if (choiceEvidence < 2) continue;
+    const opponent = profile.opponentEffects[feature];
+    if (opponent && opponent.weight >= ARMX_PREVIEW.minEvidence) return true;
+    const ours = profile.ourEffects[feature];
+    if (choiceEvidence >= 3 && ours && ours.weight >= ARMX_PREVIEW.minEvidence) return true;
+  }
+  return false;
 }
 
 function armxPreviewCandidateReplyOpportunities(game, raw) {
@@ -342,7 +320,9 @@ function armxPreviewCandidateReplyOpportunities(game, raw) {
 
 function armxPreviewCandidateReport(game, entry, profile) {
   const features = armxPreviewFeatureSet(game, entry.raw);
-  const replyOpportunities = armxPreviewCandidateReplyOpportunities(game, entry.raw);
+  const replyOpportunities = armxPreviewHasUsefulReplyEvidence(profile)
+    ? armxPreviewCandidateReplyOpportunities(game, entry.raw)
+    : new Set();
   let signal = 0;
   let evidence = 0;
   const reasons = [];
@@ -360,47 +340,27 @@ function armxPreviewCandidateReport(game, entry, profile) {
   for (const feature of replyOpportunities) {
     const choice = armxPreviewOpponentChoiceRate(profile, feature);
     const opponentEffect = armxPreviewEffect(profile.opponentEffects, feature);
-
     if (choice.evidence >= 2 && opponentEffect.evidence >= ARMX_PREVIEW.minEvidence) {
-      // What the opponent actually tends to do matters: uncommon responses should
-      // not dominate merely because one historical occurrence had a huge result.
       const propensity = choice.rate * choice.rate;
       const contribution = propensity * opponentEffect.value * ARMX_PREVIEW.opponentSignalWeight;
       signal += contribution;
       evidence += Math.min(2.5, (choice.evidence * 0.35 + opponentEffect.evidence * 0.25) * Math.max(0.25, choice.rate));
-      if (Math.abs(contribution) >= 0.08) {
-        reasons.push(`opp-${feature}:${Math.round(choice.rate * 100)}%/${opponentEffect.value > 0 ? '+' : ''}${opponentEffect.value.toFixed(2)}`);
-      }
+      if (Math.abs(contribution) >= 0.08) reasons.push(`opp-${feature}:${Math.round(choice.rate * 100)}%/${opponentEffect.value > 0 ? '+' : ''}${opponentEffect.value.toFixed(2)}`);
     }
 
-    // Connect earlier exchange outcomes to a new exchange invitation. If ARMX has
-    // learned that *our* rook/trade/simplification episodes work against this
-    // opponent, a candidate that gives them the option to accept such an exchange
-    // receives only the acceptance-rate-weighted expected value. If they rarely
-    // accept it, its influence stays small; if they habitually accept, the learned
-    // result matters. This uses no search tree and adds no board traversal.
     const ourEffect = armxPreviewEffect(profile.ourEffects, feature);
     if (choice.evidence >= 3 && ourEffect.evidence >= ARMX_PREVIEW.minEvidence) {
       const reliability = armxPreviewClamp((choice.evidence - 1) / 6, 0.25, 1);
-      const expectedOutcome = choice.rate * ourEffect.value
-        * ARMX_PREVIEW.responseOutcomeWeight * reliability;
+      const expectedOutcome = choice.rate * ourEffect.value * ARMX_PREVIEW.responseOutcomeWeight * reliability;
       signal += expectedOutcome;
       evidence += Math.min(1.75, ourEffect.evidence * 0.20 + choice.evidence * 0.12) * Math.max(0.2, choice.rate);
-      if (Math.abs(expectedOutcome) >= 0.06) {
-        reasons.push(`offer-${feature}:${Math.round(choice.rate * 100)}%/${ourEffect.value > 0 ? '+' : ''}${ourEffect.value.toFixed(2)}`);
-      }
+      if (Math.abs(expectedOutcome) >= 0.06) reasons.push(`offer-${feature}:${Math.round(choice.rate * 100)}%/${ourEffect.value > 0 ? '+' : ''}${ourEffect.value.toFixed(2)}`);
     }
   }
 
   const confidence = armxPreviewClamp(evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0, 1);
-  const delta = armxPreviewClamp(
-    signal * ARMX_PREVIEW.multiplierSignalScale * confidence,
-    -ARMX_PREVIEW.maxMultiplierDelta,
-    ARMX_PREVIEW.maxMultiplierDelta
-  );
+  const delta = armxPreviewClamp(signal * ARMX_PREVIEW.multiplierSignalScale * confidence, -ARMX_PREVIEW.maxMultiplierDelta, ARMX_PREVIEW.maxMultiplierDelta);
   const multiplier = 1 + delta;
-  // A small floor keeps opponent knowledge relevant in approximately equal
-  // positions, while the native deep-score gate prevents tactically bad flips.
   const scoreMagnitude = armxPreviewClamp(Math.abs(entry.score || 0), 180, 1600);
   const adjustment = scoreMagnitude * delta;
   return {
@@ -436,9 +396,7 @@ function armxPreviewProfileNotes(profile) {
 
 function armxPreviewReview(game, candidates, perspective = game.side) {
   const profile = armxPreviewSyncProfile(game, perspective);
-  const finalists = candidates
-    .filter(entry => entry && Number.isFinite(entry.score))
-    .slice(0, ARMX_PREVIEW.candidateLimit);
+  const finalists = candidates.filter(entry => entry && Number.isFinite(entry.score)).slice(0, ARMX_PREVIEW.candidateLimit);
   const reports = finalists.map(entry => armxPreviewCandidateReport(game, entry, profile));
   reports.sort((a, b) => b.adaptedScore - a.adaptedScore);
   profile.notes = armxPreviewProfileNotes(profile);
