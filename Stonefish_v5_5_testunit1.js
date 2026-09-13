@@ -54,8 +54,22 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   return finished;
 }
 
+// A/B control for the developer test lab. This is the exact same v5.5 host search,
+// evaluation, candidate ranking and speed architecture, but ARMX is never consulted.
+// Keeping this as a separate function makes ARMX's contribution directly measurable.
+function stonefishV55Testunit1NoARMXScoreAllMoves(game) {
+  const ranked = stonefishV55FastCandidates(game);
+  if (!ranked.length) return [];
+  return stonefishV55FinishCandidates(game, ranked, null);
+}
+
 function getStonefishV55Testunit1Move(game) {
   const scored = stonefishV55Testunit1ScoreAllMoves(game);
+  return scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
+}
+
+function getStonefishV55Testunit1NoARMXMove(game) {
+  const scored = stonefishV55Testunit1NoARMXScoreAllMoves(game);
   return scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
 }
 
@@ -66,6 +80,8 @@ function stonefishV55Testunit1LastARMX() {
 if (typeof globalThis !== 'undefined') {
   globalThis.STONEFISH_V5_5_TESTUNIT1 = STONEFISH_V5_5_TESTUNIT1;
   globalThis.getStonefishV55Testunit1Move = getStonefishV55Testunit1Move;
+  globalThis.getStonefishV55Testunit1NoARMXMove = getStonefishV55Testunit1NoARMXMove;
   globalThis.stonefishV55Testunit1ScoreAllMoves = stonefishV55Testunit1ScoreAllMoves;
+  globalThis.stonefishV55Testunit1NoARMXScoreAllMoves = stonefishV55Testunit1NoARMXScoreAllMoves;
   globalThis.stonefishV55Testunit1LastARMX = stonefishV55Testunit1LastARMX;
 }
