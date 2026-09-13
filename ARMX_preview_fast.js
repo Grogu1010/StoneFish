@@ -9,16 +9,18 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt1',
+  version: 'preview-adapt2',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 2,
-  minEvidence: 1.5,
-  fullConfidenceEvidence: 7,
-  maxMultiplierDelta: 0.075,
+  minEvidence: 1.25,
+  fullConfidenceEvidence: 5.5,
+  maxMultiplierDelta: 0.18,
+  multiplierSignalScale: 0.18,
+  opponentSignalWeight: 1.10,
   effectScale: 360,
-  maxHostGap: 420,
-  maxDeepSacrifice: 85,
+  maxHostGap: 260,
+  maxDeepSacrifice: 55,
   shortHorizonPlies: 2,
   longHorizonPlies: 4,
 });
@@ -284,8 +286,8 @@ function armxPreviewCandidateReport(game, entry, profile) {
     if (choice.evidence < 2 || effect.evidence < ARMX_PREVIEW.minEvidence) continue;
     // Positive opponent-effect means that when they chose this behavior, our
     // position subsequently improved. A candidate that offers a behavior they
-    // often choose therefore receives a small evidence-weighted boost.
-    const contribution = choice.rate * effect.value * 0.78;
+    // often choose therefore receives an evidence-weighted boost.
+    const contribution = choice.rate * effect.value * ARMX_PREVIEW.opponentSignalWeight;
     signal += contribution;
     evidence += Math.min(2.5, choice.evidence * 0.35 + effect.evidence * 0.25);
     if (Math.abs(contribution) >= 0.08) {
@@ -295,12 +297,14 @@ function armxPreviewCandidateReport(game, entry, profile) {
 
   const confidence = armxPreviewClamp(evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0, 1);
   const delta = armxPreviewClamp(
-    signal * 0.055 * confidence,
+    signal * ARMX_PREVIEW.multiplierSignalScale * confidence,
     -ARMX_PREVIEW.maxMultiplierDelta,
     ARMX_PREVIEW.maxMultiplierDelta
   );
   const multiplier = 1 + delta;
-  const scoreMagnitude = armxPreviewClamp(Math.abs(entry.score || 0), 140, 1400);
+  // A small floor keeps opponent knowledge relevant in approximately equal
+  // positions, while the native deep-score gate prevents tactically bad flips.
+  const scoreMagnitude = armxPreviewClamp(Math.abs(entry.score || 0), 180, 1600);
   const adjustment = scoreMagnitude * delta;
   return {
     raw: entry.raw,
