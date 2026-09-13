@@ -144,6 +144,7 @@ function latencyAndBehavior(samples) {
   let proMs = 0, noArmxMs = 0, armxMs = 0;
   let armxVsProChanges = 0, armxVsHostChanges = 0, overrides = 0, nodes = 0;
   let eligible = 0, reviewed = 0, challengers = 0;
+  let criticApplied = 0, criticRiskSum = 0, criticRiskMax = 0, criticPenaltySum = 0;
 
   if (samples.length) {
     clearSharedEngineCaches();
@@ -179,6 +180,14 @@ function latencyAndBehavior(samples) {
       throw new Error('ARMX-preview was eligible but was not connected');
     }
     if (review.override) overrides += 1;
+    if (review.criticApplied) criticApplied += 1;
+    if (Number.isFinite(review.criticRisk)) {
+      criticRiskSum += review.criticRisk;
+      criticRiskMax = Math.max(criticRiskMax, review.criticRisk);
+    }
+    if (Number.isFinite(review.criticAdjustment) && review.criticAdjustment < 0) {
+      criticPenaltySum += -review.criticAdjustment;
+    }
   }
 
   return {
@@ -188,6 +197,10 @@ function latencyAndBehavior(samples) {
     armxOverrides: overrides,
     armxEligibleRate: samples.length ? eligible / samples.length : 0,
     armxReviewRate: samples.length ? reviewed / samples.length : 0,
+    armxCriticAppliedRate: samples.length ? criticApplied / samples.length : 0,
+    armxAverageRisk: reviewed ? criticRiskSum / reviewed : 0,
+    armxMaxRisk: criticRiskMax,
+    armxAveragePenaltyPerApplied: criticApplied ? criticPenaltySum / criticApplied : 0,
     challengerSearchRate: samples.length ? challengers / samples.length : 0,
     proAverageMs: samples.length ? proMs / samples.length : 0,
     noArmxAverageMs: samples.length ? noArmxMs / samples.length : 0,
