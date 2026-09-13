@@ -1,9 +1,10 @@
 // Stonefish v5.5 native search core — ARMX-guided Guarded PVS.
 //
 // v5.5 keeps v5 Pro's evaluation/knowledge but spends the expensive five-ply
-// budget on only two root finalists. The host uses a compact selective tree,
-// then ARMX audits the actual provisional winner and may inject one missed
-// opponent reply for a targeted re-search.
+// budget on only two root finalists. The host uses true principal-variation
+// probes, safe exact transposition reuse, and late-move reductions to spend fewer
+// nodes on quiet alternatives. ARMX audits the actual provisional winner and may
+// inject one missed opponent reply for a targeted re-search.
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'ARMX-guided Guarded PVS',
@@ -12,9 +13,11 @@ const STONEFISH_V5_5_SEARCH = Object.freeze({
   branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
   lmrAfterMove: 2,
+  pvsEpsilon: 1e-6,
 });
 
 let STONEFISH_V5_5_LAST_SEARCH_STATS = null;
+let STONEFISH_V5_5_ACTIVE_TT = null;
 
 function stonefishV55IsTactical(game, move) {
   return Boolean(move.captured || move.promotion || (game.fastGivesCheck && game.fastGivesCheck(move)));
@@ -23,6 +26,14 @@ function stonefishV55IsTactical(game, move) {
 function stonefishV55SameRaw(a, b) {
   return Boolean(a && b && a.from === b.from && a.to === b.to
     && (a.promotion || 0) === (b.promotion || 0) && (a.flags || 0) === (b.flags || 0));
+}
+
+function stonefishV55RawKey(move) {
+  return move ? `${move.from}:${move.to}:${move.promotion || 0}:${move.flags || 0}` : '-';
+}
+
+function stonefishV55TTKey(game, depth, perspective, plyFromRoot, injectedMove) {
+  return `${perspective}|${depth}|${plyFromRoot}|${game.halfmove}|${stonefishV55RawKey(injectedMove)}|${game.fastPositionKey()}`;
 }
 
 function stonefishV55SearchWidth(game, depth, legal) {
@@ -77,14 +88,32 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
   if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.nodes += 1;
   if (depth <= 0) return stonefishV55Leaf(game, perspective, alpha, beta, plyFromRoot);
 
+  const tt = STONEFISH_V5_5_ACTIVE_TT;
+  const ttKey = tt ? stonefishV55TTKey(game, depth, perspective, plyFromRoot, injectedMove) : null;
+  if (tt) {
+    const hit = tt.get(ttKey);
+    if (hit !== undefined) {
+      if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.ttHits += 1;
+      return hit;
+    }
+  }
+
   const legal = game.fastMoves();
   const terminal = stonefishV55Terminal(game, perspective, plyFromRoot, legal);
-  if (terminal !== null) return terminal;
-  if (game.halfmove >= 100 || game._insufficientMaterial()) return 0;
+  if (terminal !== null) {
+    if (tt) tt.set(ttKey, terminal);
+    return terminal;
+  }
+  if (game.halfmove >= 100 || game._insufficientMaterial()) {
+    if (tt) tt.set(ttKey, 0);
+    return 0;
+  }
 
   const ordered = stonefishV55Ordered(game, legal, depth, injectedMove);
   const maximizing = game.side === perspective;
   let best = maximizing ? -Infinity : Infinity;
+  let cutoff = false;
+  let exact = true;
 
   for (let i = 0; i < ordered.length; i += 1) {
     const move = ordered[i].move;
@@ -102,9 +131,29 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
       if (challenges) {
         if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.researches += 1;
         value = stonefishV55Minimax(game, depth - 1, perspective, alpha, beta, plyFromRoot + 1, null);
+      } else {
+        // A reduced non-challenger is safe for move choice but is not an exact
+        // full-depth value, so do not cache this parent as exact.
+        exact = false;
       }
     } else {
-      value = stonefishV55Minimax(game, depth - 1, perspective, alpha, beta, plyFromRoot + 1, null);
+      const eps = STONEFISH_V5_5_SEARCH.pvsEpsilon;
+      if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.pvsProbes += 1;
+      if (maximizing) {
+        const probeBeta = Math.min(beta, alpha + eps);
+        value = stonefishV55Minimax(game, depth - 1, perspective, alpha, probeBeta, plyFromRoot + 1, null);
+        if (value > alpha && value < beta) {
+          if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.researches += 1;
+          value = stonefishV55Minimax(game, depth - 1, perspective, alpha, beta, plyFromRoot + 1, null);
+        }
+      } else {
+        const probeAlpha = Math.max(alpha, beta - eps);
+        value = stonefishV55Minimax(game, depth - 1, perspective, probeAlpha, beta, plyFromRoot + 1, null);
+        if (value < beta && value > alpha) {
+          if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.researches += 1;
+          value = stonefishV55Minimax(game, depth - 1, perspective, alpha, beta, plyFromRoot + 1, null);
+        }
+      }
     }
 
     game.fastUndo();
@@ -116,16 +165,26 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
       if (best < beta) beta = best;
     }
     if (beta <= alpha) {
-      if (STONEFISH_V5_5_LAST_SEARCH_STATS) STONEFISH_V5_5_LAST_SEARCH_STATS.cutoffs += 1;
+      cutoff = true;
       break;
     }
   }
+
+  if (tt && !cutoff && exact) tt.set(ttKey, best);
   return best;
 }
 
 function stonefishV55FivePlyScore(game, raw, perspective, criticalReply = null) {
   const historyDepth = game.historyStack.length;
-  STONEFISH_V5_5_LAST_SEARCH_STATS = { nodes: 0, leaves: 0, reductions: 0, researches: 0, cutoffs: 0 };
+  STONEFISH_V5_5_LAST_SEARCH_STATS = {
+    nodes: 0,
+    leaves: 0,
+    reductions: 0,
+    pvsProbes: 0,
+    researches: 0,
+    cutoffs: 0,
+    ttHits: 0,
+  };
   try {
     game.fastApply(raw);
     const legal = game.fastMoves();
@@ -211,17 +270,23 @@ function stonefishV55FinishCandidates(game, ranked) {
   const bookMove = stonefishV45BookMove(game, 1, legal);
   const heritageMove = stonefishV5HeritageMove(game);
   const finalists = Math.min(STONEFISH_V5_5_SEARCH.rootCandidates, ranked.length);
+  const oldTT = STONEFISH_V5_5_ACTIVE_TT;
+  STONEFISH_V5_5_ACTIVE_TT = new Map();
 
-  for (let i = 0; i < finalists; i += 1) {
-    const entry = ranked[i];
-    entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
-      ? 0
-      : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
-    entry.preliminary = entry.tactical + entry.knowledge
-      + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
-    entry.armxCriticalReply = null;
-    entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
-    entry.score = stonefishV55RecomputeFinalScore(entry);
+  try {
+    for (let i = 0; i < finalists; i += 1) {
+      const entry = ranked[i];
+      entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
+        ? 0
+        : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
+      entry.preliminary = entry.tactical + entry.knowledge
+        + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+      entry.armxCriticalReply = null;
+      entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
+      entry.score = stonefishV55RecomputeFinalScore(entry);
+    }
+  } finally {
+    STONEFISH_V5_5_ACTIVE_TT = oldTT;
   }
 
   for (let i = finalists; i < ranked.length; i += 1) ranked[i].score = -Infinity;
@@ -232,7 +297,13 @@ function stonefishV55AuditCandidate(game, entry, perspective, criticalReply) {
   if (!entry || !criticalReply) return entry;
   entry.armxOriginalDeep = entry.deep;
   entry.armxCriticalReply = criticalReply;
-  entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, criticalReply);
+  const oldTT = STONEFISH_V5_5_ACTIVE_TT;
+  STONEFISH_V5_5_ACTIVE_TT = new Map();
+  try {
+    entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, criticalReply);
+  } finally {
+    STONEFISH_V5_5_ACTIVE_TT = oldTT;
+  }
   entry.score = stonefishV55RecomputeFinalScore(entry);
   entry.armxVerifiedDeep = entry.deep;
   return entry;
