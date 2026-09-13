@@ -11,6 +11,7 @@ const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   armx: 'ARMX-preview',
 });
 
+const STONEFISH_V5_5_ARMX_CANDIDATES = 2;
 const STONEFISH_V5_5_MAX_REPLY_VERIFICATIONS = 3;
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
@@ -93,7 +94,12 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   }
 
   const perspective = game.side;
-  const review = armxPreviewReview(game, baseScored, perspective);
+  // Preview only consults ARMX on Pro's two leaders. Most decisions never need
+  // criticism of candidates 3/4, and avoiding that duplicate work materially
+  // lowers latency while still covering the move that can actually be selected
+  // plus its most likely replacement if the leader is refuted.
+  const armxCandidates = baseScored.slice(0, Math.min(STONEFISH_V5_5_ARMX_CANDIDATES, baseScored.length));
+  const review = armxPreviewReview(game, armxCandidates, perspective);
   if (!review || !Array.isArray(review.reports) || !review.reports.length) {
     STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({ connected: true, override: false }, review || {});
     return baseScored;
@@ -104,9 +110,9 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   const verifiedReplyKeys = new Set();
 
   // Only the current leader needs protection. If an ARMX-discovered missed reply
-  // lowers it enough that another Pro candidate becomes best, protect that new
-  // leader next. This avoids spending verification search on moves that cannot
-  // affect the final decision.
+  // lowers it enough that the second Pro candidate becomes best, protect that new
+  // leader next. Preview intentionally stops if a lower-ranked candidate becomes
+  // leader; later ARMX versions can broaden that coverage.
   for (let attempt = 0; attempt < STONEFISH_V5_5_MAX_REPLY_VERIFICATIONS; attempt += 1) {
     stonefishV55SortScored(game, adjusted);
     const leader = adjusted[0];
@@ -160,6 +166,7 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
 
   STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review, {
     connected: true,
+    hostCandidatesReviewed: armxCandidates.length,
     verifications,
     verificationCount: verifications.length,
     override: changedMove,
