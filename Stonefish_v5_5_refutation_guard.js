@@ -203,6 +203,20 @@ if (typeof globalThis !== 'undefined') {
 // Shared v5.5 fast-path refinements. These are defined after the native search
 // core is loaded so they can replace duplicate board probes without changing any
 // scoring constants, candidate widths, or evaluation semantics.
+const STONEFISH_V5_5_REPEAT_HISTORY_CACHE = new WeakMap();
+
+function stonefishV55HistoryHasTwofold(game) {
+  const marker = `${game.historyStack.length}|${game.positionCounts.size}|${game.fullmove}|${game.halfmove}`;
+  const cached = STONEFISH_V5_5_REPEAT_HISTORY_CACHE.get(game);
+  if (cached && cached.marker === marker) return cached.value;
+  let value = false;
+  for (const count of game.positionCounts.values()) {
+    if (count >= 2) { value = true; break; }
+  }
+  STONEFISH_V5_5_REPEAT_HISTORY_CACHE.set(game, { marker, value });
+  return value;
+}
+
 stonefishV55BestResponseGain = function(game, responses) {
   let best = 0;
   for (let i = 0; i < responses.length; i += 1) {
@@ -225,6 +239,7 @@ stonefishV55BestResponseGain = function(game, responses) {
 
 stonefishV55TacticalScore = function(game, raw) {
   const historyDepth = game.historyStack.length;
+  const checkReplyRepetition = stonefishV55HistoryHasTwofold(game);
   let immediate = STONEFISH_V5_PIECE[raw.captured] || 0;
   if (raw.promotion) immediate += (STONEFISH_V5_PIECE[raw.promotion] || 0) - 100;
 
@@ -248,7 +263,7 @@ stonefishV55TacticalScore = function(game, raw) {
         game.fastApply(reply);
         const givesCheck = game.in_check();
         if (givesCheck) opponentGain += 14;
-        if ((game.positionCounts.get(game.fastPositionKey()) || 0) >= 2) repeatedReply = true;
+        if (checkReplyRepetition && (game.positionCounts.get(game.fastPositionKey()) || 0) >= 2) repeatedReply = true;
 
         const responses = game.fastMoves();
         if (givesCheck && !responses.length) return -STONEFISH_V5_MATE;
