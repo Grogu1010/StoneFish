@@ -19,6 +19,7 @@ const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
 
 const STONEFISH_V5_5_ARMX_MIN_POSITIVE_SIGNAL = 0.10;
 const STONEFISH_V5_5_ARMX_STRONG_AVOID_SIGNAL = -0.45;
+const STONEFISH_V5_5_ARMX_DECISION_GAIN = 1.25;
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
 function stonefishV55Testunit1HostSearch(game) {
@@ -38,6 +39,28 @@ function stonefishV55FindEntry(finished, raw) {
 
 function stonefishV55FindARMXReport(reports, raw) {
   return reports.find(report => report && raw && stonefishV5SameMove(report.raw, raw)) || null;
+}
+
+function stonefishV55ARMXDecisionScore(report) {
+  if (!report) return -Infinity;
+  const hostScore = Number(report.hostScore);
+  const adjustment = Number(report.adjustment) || 0;
+  return Number.isFinite(hostScore)
+    ? hostScore + adjustment * STONEFISH_V5_5_ARMX_DECISION_GAIN
+    : -Infinity;
+}
+
+function stonefishV55BestARMXReport(reports) {
+  let best = null;
+  let bestScore = -Infinity;
+  for (const report of reports || []) {
+    const score = stonefishV55ARMXDecisionScore(report);
+    if (score > bestScore) {
+      best = report;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 function stonefishV55ARMXMateScale(entry) {
@@ -97,9 +120,20 @@ function stonefishV55ARMXChangeDecision(
     return { allowed: false, reason: 'early-confidence', hostGap, deepSacrifice, challengerEvidence, challengerConfidence };
   }
 
-  const adaptedLead = challengerReport.adaptedScore - provisionalReport.adaptedScore;
+  const provisionalDecisionScore = stonefishV55ARMXDecisionScore(provisionalReport);
+  const challengerDecisionScore = stonefishV55ARMXDecisionScore(challengerReport);
+  const adaptedLead = challengerDecisionScore - provisionalDecisionScore;
   if (adaptedLead < ARMX_PREVIEW.minAdaptedLead) {
-    return { allowed: false, reason: 'adapted-lead', hostGap, deepSacrifice, challengerEvidence, challengerConfidence, adaptedLead };
+    return {
+      allowed: false,
+      reason: 'adapted-lead',
+      hostGap,
+      deepSacrifice,
+      challengerEvidence,
+      challengerConfidence,
+      adaptedLead,
+      decisionGain: STONEFISH_V5_5_ARMX_DECISION_GAIN,
+    };
   }
 
   // Do not change a sound native choice merely because two negative ARMX signals
@@ -119,10 +153,11 @@ function stonefishV55ARMXChangeDecision(
       adaptedLead,
       challengerSignal,
       provisionalSignal,
+      decisionGain: STONEFISH_V5_5_ARMX_DECISION_GAIN,
     };
   }
 
-  const allowed = challengerReport.adaptedScore > provisionalReport.adaptedScore;
+  const allowed = challengerDecisionScore > provisionalDecisionScore;
   return {
     allowed,
     reason: allowed ? 'allowed' : 'adapted-order',
@@ -133,6 +168,7 @@ function stonefishV55ARMXChangeDecision(
     adaptedLead,
     challengerSignal,
     provisionalSignal,
+    decisionGain: STONEFISH_V5_5_ARMX_DECISION_GAIN,
   };
 }
 
@@ -198,14 +234,14 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
       target.armxMultiplier = report.multiplier;
       target.armxAdjustment = report.adjustment;
       target.armxAdaptedScore = report.adaptedScore;
-      // Keep the native score intact. ARMX owns only the relative decision among
-      // candidates it actually reviewed; an unreviewed third move must never rise
-      // to first merely because both reviewed scores received negative modifiers.
-      target.armxDecisionScore = report.adaptedScore;
+      target.armxDecisionScore = stonefishV55ARMXDecisionScore(report);
       touched.push(target);
     }
 
-    const proposedReport = reports[0] || null;
+    // ARMX's model remains bounded at its native adjustment scale, but the host
+    // gives learned differences 1.25x voting weight when comparing already-safe
+    // searched finalists. Tactical/deep/evidence gates below remain unchanged.
+    const proposedReport = stonefishV55BestARMXReport(reports);
     const proposed = proposedReport ? stonefishV55FindEntry(finished, proposedReport.raw) : null;
     proposedRaw = proposed ? proposed.raw : null;
     const provisionalReport = stonefishV55FindARMXReport(reports, provisionalRaw);
@@ -248,6 +284,7 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
     rejectionReason: adaptationRejected && gateDecision ? gateDecision.reason : null,
     gateDecision,
     proposedRaw,
+    decisionGain: STONEFISH_V5_5_ARMX_DECISION_GAIN,
     totalAdjustment,
     override: changedByARMX,
     changedMove: changedByARMX,
