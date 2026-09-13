@@ -7,6 +7,7 @@ on:
     paths:
       - 'ARMX_preview_fast.js'
       - 'Stonefish_v5_5_search.js'
+      - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
       - 'test-worker.js'
@@ -19,6 +20,7 @@ on:
     paths:
       - 'ARMX_preview_fast.js'
       - 'Stonefish_v5_5_search.js'
+      - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
       - 'test-worker.js'
@@ -42,6 +44,8 @@ jobs:
         run: node --check ARMX_preview_fast.js
       - name: Syntax check v5.5 native search
         run: node --check Stonefish_v5_5_search.js
+      - name: Syntax check Refutation Guard
+        run: node --check Stonefish_v5_5_refutation_guard.js
       - name: Syntax check v5.5 testunit1
         run: node --check Stonefish_v5_5_testunit1.js
       - name: Syntax check browser dev-test worker
