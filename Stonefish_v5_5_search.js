@@ -348,6 +348,68 @@ function stonefishV55SortFinalScores(game, ranked) {
   return ranked;
 }
 
+// Algebraically identical to stonefishV5BestResponseGain, but each response's
+// gives-check result is computed once instead of once inside fastIsMateMove and
+// then a second time for the +18 bonus.
+function stonefishV55BestResponseGain(game, responses) {
+  let best = 0;
+  for (let i = 0; i < responses.length; i += 1) {
+    const response = responses[i];
+    const givesCheck = Boolean(game.fastGivesCheck && game.fastGivesCheck(response));
+    if (givesCheck) {
+      game.fastApply(response);
+      const mate = game.fastMoves().length === 0;
+      game.fastUndo();
+      if (mate) return STONEFISH_V5_MATE;
+    }
+
+    let gain = STONEFISH_V5_PIECE[response.captured] || 0;
+    if (response.promotion) gain += (STONEFISH_V5_PIECE[response.promotion] || 0) - 100;
+    if (givesCheck) gain += 18;
+    if (gain > best) best = gain;
+  }
+  return best;
+}
+
+// Exact v5 three-ply tactical arithmetic with duplicate mate/check probes folded
+// together. v5 Pro keeps its original scorer; only the v5.5 root candidate pass
+// uses this implementation.
+function stonefishV55TacticalScore(game, raw) {
+  const historyDepth = game.historyStack.length;
+  let immediate = STONEFISH_V5_PIECE[raw.captured] || 0;
+  if (raw.promotion) immediate += (STONEFISH_V5_PIECE[raw.promotion] || 0) - 100;
+
+  try {
+    game.fastApply(raw);
+    const replies = game.fastMoves();
+    if (!replies.length) return game.in_check() ? STONEFISH_V5_MATE : 0;
+
+    let worst = Infinity;
+    for (let i = 0; i < replies.length; i += 1) {
+      const reply = replies[i];
+      const givesCheck = Boolean(game.fastGivesCheck && game.fastGivesCheck(reply));
+      let opponentGain = STONEFISH_V5_PIECE[reply.captured] || 0;
+      if (reply.promotion) opponentGain += (STONEFISH_V5_PIECE[reply.promotion] || 0) - 100;
+      if (givesCheck) opponentGain += 14;
+
+      game.fastApply(reply);
+      const responses = game.fastMoves();
+      if (givesCheck && !responses.length) {
+        game.fastUndo();
+        return -STONEFISH_V5_MATE;
+      }
+      const ourGain = stonefishV55BestResponseGain(game, responses);
+      game.fastUndo();
+
+      const branch = immediate - opponentGain + ourGain;
+      if (branch < worst) worst = branch;
+    }
+    return worst;
+  } finally {
+    while (game.historyStack.length > historyDepth) game.fastUndo();
+  }
+}
+
 function stonefishV55FastCandidates(game) {
   const legal = game.fastMoves();
   if (!legal.length) return [];
@@ -375,7 +437,7 @@ function stonefishV55FastCandidates(game) {
   const n = Math.min(STONEFISH_V5_5_SEARCH.semifinalists, scored.length);
   for (let i = 0; i < n; i += 1) {
     const entry = scored[i];
-    entry.tactical = stonefishV5TacticalScore(game, entry.raw);
+    entry.tactical = stonefishV55TacticalScore(game, entry.raw);
     const heritageBoost = entry.heritageMatch
       ? STONEFISH_V5_WEIGHTS.heritage * STONEFISH_V5_5_SEARCH.heritageMultiplier
       : 0;
