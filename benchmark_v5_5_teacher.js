@@ -1,6 +1,6 @@
 // Teacher-guided tuning for Stonefish v5.5 candidate selection.
 // Uses v5 Pro as the teacher only to measure which cheap v5.5 ranking settings
-// retain Pro's preferred move in the two finalists. This does not alter gameplay.
+// retain Pro's preferred move in the finalist set. This does not alter gameplay.
 
 const fs = require('fs');
 const vm = require('vm');
@@ -123,6 +123,7 @@ function collectFeatureRow(position) {
     scout: stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective),
     tactical: 0,
     conversion: 0,
+    forcing: false,
   }));
 
   entries.sort((a, b) => {
@@ -134,6 +135,7 @@ function collectFeatureRow(position) {
   for (let i = 0; i < featureCap; i += 1) {
     entries[i].tactical = stonefishV5TacticalScore(game, entries[i].raw);
     entries[i].conversion = stonefishV5ProConversionUrgency(game, entries[i].raw, perspective);
+    entries[i].forcing = Boolean(entries[i].raw.captured || entries[i].raw.promotion || game.fastGivesCheck(entries[i].raw));
   }
 
   return { teacherKey, entries: entries.slice(0, featureCap) };
@@ -143,6 +145,7 @@ function scoreConfig(row, cfg) {
   const pool = row.entries.slice(0, Math.min(cfg.semifinalists, row.entries.length));
   const ranked = pool.map(entry => ({
     key: entry.key,
+    forcing: entry.forcing,
     score: entry.tactical * cfg.tacticalWeight
       + entry.scout * cfg.scoutWeight
       + (entry.heritage ? STONEFISH_V5_WEIGHTS.heritage * cfg.heritageMultiplier : 0)
@@ -174,32 +177,58 @@ for (const semifinalists of [5, 6, 7, 8]) {
 }
 
 function evaluate(cfg) {
-  let top1 = 0, top2 = 0, poolCoverage = 0;
+  let top1 = 0, top2 = 0, top3 = 0, poolCoverage = 0;
   for (const row of rows) {
     const pool = row.entries.slice(0, Math.min(cfg.semifinalists, row.entries.length));
     if (pool.some(entry => entry.key === row.teacherKey)) poolCoverage += 1;
     const ranked = scoreConfig(row, cfg);
     if (ranked[0] && ranked[0].key === row.teacherKey) top1 += 1;
     if (ranked.slice(0, 2).some(entry => entry.key === row.teacherKey)) top2 += 1;
+    if (ranked.slice(0, 3).some(entry => entry.key === row.teacherKey)) top3 += 1;
   }
   return Object.assign({}, cfg, {
     positions: rows.length,
     poolCoverage: rows.length ? poolCoverage / rows.length : 0,
     top1: rows.length ? top1 / rows.length : 0,
     top2: rows.length ? top2 / rows.length : 0,
+    top3: rows.length ? top3 / rows.length : 0,
   });
 }
 
-const current = evaluate({
+function adaptiveThirdDiagnostics(cfg) {
+  const margins = [100, 200, 300, 450, 650, 900, 1200, 1800, 2600];
+  return margins.map(margin => {
+    let triggered = 0;
+    let retained = 0;
+    for (const row of rows) {
+      const ranked = scoreConfig(row, cfg);
+      const baseHit = ranked.slice(0, 2).some(entry => entry.key === row.teacherKey);
+      const third = ranked[2];
+      const gap = third && ranked[1] ? ranked[1].score - third.score : Infinity;
+      const useThird = Boolean(third && (third.forcing || gap <= margin));
+      if (useThird) triggered += 1;
+      if (baseHit || (useThird && third.key === row.teacherKey)) retained += 1;
+    }
+    return {
+      margin,
+      triggerRate: rows.length ? triggered / rows.length : 0,
+      teacherCoverage: rows.length ? retained / rows.length : 0,
+    };
+  });
+}
+
+const currentConfig = {
   semifinalists: STONEFISH_V5_5_SEARCH.semifinalists,
   tacticalWeight: 1.00,
   scoutWeight: 0.34,
   heritageMultiplier: 1.25,
   conversionWeight: 1.00,
-});
+};
+const current = evaluate(currentConfig);
 
 const rankedConfigs = configs.map(evaluate).sort((a, b) =>
   (b.top2 - a.top2)
+  || (b.top3 - a.top3)
   || (b.top1 - a.top1)
   || (b.poolCoverage - a.poolCoverage)
   || (a.semifinalists - b.semifinalists)
@@ -208,6 +237,7 @@ const rankedConfigs = configs.map(evaluate).sort((a, b) =>
 const output = {
   positions: rows.length,
   current,
+  adaptiveThird: adaptiveThirdDiagnostics(currentConfig),
   best: rankedConfigs[0],
   topConfigs: rankedConfigs.slice(0, 10),
 };
