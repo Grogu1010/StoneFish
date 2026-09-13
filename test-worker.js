@@ -26,6 +26,7 @@ const workerModels = {
   v4: getStonefishV4Move,
   v45: getStonefishV45Move,
   v5: getStonefishV5Move,
+  v55test1noarmx: getStonefishV55Testunit1NoARMXMove,
   v55test1: getStonefishV55Testunit1Move,
   v5pro: getStonefishV5ProMove
 };
