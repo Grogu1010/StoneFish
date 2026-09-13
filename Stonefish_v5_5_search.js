@@ -455,17 +455,9 @@ function stonefishV55FastCandidates(game) {
   const n = Math.min(STONEFISH_V5_5_SEARCH.semifinalists, scored.length);
   const semifinalists = stonefishV55SelectSemifinalists(scored, n);
   const semifinalistSet = new Set(semifinalists);
-  let write = 0;
-  for (let i = 0; i < semifinalists.length; i += 1) scored[write++] = semifinalists[i];
-  const original = legal.length === scored.length ? scored.slice() : scored;
-  // `scored` was just rewritten at the front, so recover the untouched entries
-  // from the legal-move identity rather than relying on the old array order.
-  const byRaw = new Map();
-  for (let i = 0; i < scored.length; i += 1) byRaw.set(stonefishV55RawKey(scored[i].raw), scored[i]);
-  for (let i = 0; i < legal.length; i += 1) {
-    const entry = byRaw.get(stonefishV55RawKey(legal[i]));
-    if (entry && !semifinalistSet.has(entry)) scored[write++] = entry;
-  }
+  const remainder = scored.filter(entry => !semifinalistSet.has(entry));
+  scored.length = 0;
+  scored.push(...semifinalists, ...remainder);
 
   for (let i = 0; i < n; i += 1) {
     const entry = scored[i];
