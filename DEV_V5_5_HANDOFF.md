@@ -2,6 +2,17 @@
 
 This file is the durable continuation point for the active v5.5 / ARMX-preview work. Update it when the architecture, hard targets, or confirmed benchmark state changes materially.
 
+## Development naming rule
+
+`5.5(testunit1)` is the **rolling current-best v5.5 development build**. Do not freeze it and do not create a `testunit2` merely to continue development. When a tested change is better, update testunit1 itself.
+
+The two developer-test entries are:
+
+- `5.5(testunit1)` — current best v5.5 host + separate ARMX-preview.
+- `5.5(testunit1) (no ARMX)` — the exact same current v5.5 host with ARMX-preview bypassed.
+
+Both entries are **Developer menu only**. Neither belongs in the normal opponent selector until v5.5 is intentionally promoted to a release model.
+
 ## Hard release targets
 
 Required hierarchy:
@@ -100,15 +111,15 @@ Aggregate timing across both matchups each model participates in:
 
 ## Current teacher/candidate-selection state
 
-The current 80-position teacher run reported roughly:
+The teacher benchmark is now seeded across both Pro teacher selection and v5.5 heritage/candidate feature construction. Two consecutive runs of commit `aa5cfa90d92dffd09ae64e3eda451c67e9df430d` reproduced exactly:
 
-- pool coverage: **0.8125**
-- top1: **0.5875**
-- top2: **0.65**
-- top3: **0.75**
-- top4: **0.80**
+- pool coverage: **0.7625**
+- top1: **0.5625**
+- top2: **0.6000**
+- top3: **0.7000**
+- top4: **0.7500**
 
-Previous teacher runs on nominally unchanged host code have varied by a few percentage points, so do **not** tune from tiny teacher deltas until benchmark determinism is checked. The current host still appears to miss the teacher move from its cheap semifinalist pool around 19-21% of the time.
+This is the deterministic baseline to beat. About 23.75% of teacher moves are outside the seven-move cheap scout pool, so selective candidate rescue is worth testing before widening the full engine.
 
 A promising next host experiment is a selective eighth-semifinalist rescue: normally score only 7, but tactical-score scout-rank 8 when its scout margin to rank 7 is small or it is a cheap forcing move. First measure this only in the teacher benchmark; do not widen the engine blindly.
 
@@ -124,15 +135,17 @@ A promising next host experiment is a selective eighth-semifinalist rescue: norm
 - `18b88e3e76e133b96444a2cc7bf9a0f83d49b2f1` — add causal accepted-response outcome memory (`preview-adapt7-response`)
 - `a018c0314024ca58ac10ed88279952225399acbc` — run 40-game adapt7 confirmation
 - `3f2c63093320a8abbc88cbffbcb994fcb2d5c537` — restore quick 8-game iteration after confirmation
+- `aa5cfa90d92dffd09ae64e3eda451c67e9df430d` — make teacher candidate features deterministic
+- `254dc7a1952ec528789ac181774d7cd846b5ba15` — name the rolling developer builds `5.5(testunit1)` and `5.5(testunit1) (no ARMX)`
+- `5a1ef2cfe18720fba4e134e17a903cc7e27b41ae` — keep both v5.5 testunit1 variants Developer-menu-only
 
 ## Immediate next steps
 
 1. Keep `preview-adapt7-response` as the current ARMX-preview baseline. Do not increase multipliers blindly.
 2. Strengthen native v5.5: 18/40 actual wins vs Pro is still far below the target-equivalent 26/40.
-3. Before tuning tiny teacher differences, make/verify the teacher benchmark deterministic.
-4. Add teacher-only diagnostics for a selective scout-rank-8 rescue (close scout margin and/or forcing move) and measure teacher coverage versus trigger rate.
-5. If the rescue improves teacher retention cheaply, implement it in native v5.5 and run the quick 8-game strength/speed loop before another 40-game confirmation.
-6. ARMX-preview direct Pro speed remains below 3x. Since direct host overhead is small, improve host efficiency/trajectory and avoid sacrificing ARMX-preview behavior merely to game timing.
-7. Housekeeping: benchmark scripts still load the old compatibility shim; move them to `ARMX-preview.js`, then delete the shim in separate commits.
+3. Add teacher-only diagnostics for a selective scout-rank-8 rescue (close scout margin and/or forcing move) and measure teacher coverage versus trigger rate.
+4. If the rescue improves teacher retention cheaply, implement it directly in **testunit1** and run the quick 8-game strength/speed loop before another 40-game confirmation.
+5. ARMX-preview direct Pro speed remains below 3x. Since direct host overhead is small, improve host efficiency/trajectory and avoid sacrificing ARMX-preview behavior merely to game timing.
+6. Housekeeping: benchmark scripts still load the old compatibility shim; move them to `ARMX-preview.js`, then delete the shim in separate commits.
 
 Every meaningful improvement must be committed separately on `main` so a future chat can continue from git history.
