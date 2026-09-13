@@ -24,6 +24,12 @@
     </header>
 
     <section class="blog-index" aria-label="Blog posts">
+      <a class="blog-card" href="#stonefish-v5-pro">
+        <span class="blog-card-kicker">MODEL RELEASE</span>
+        <h2>Introducing Stonefish v5 Pro</h2>
+        <p>Adaptive evaluation, threat geometry, selective five-ply search — and one of the strangest matchup triangles Stonefish has produced.</p>
+        <span class="blog-card-link">Read the launch story →</span>
+      </a>
       <a class="blog-card" href="#stonefish-v5">
         <span class="blog-card-kicker">MODEL RELEASE</span>
         <h2>Introducing Stonefish v5</h2>
@@ -62,114 +68,122 @@
       </a>
     </section>
 
+    <article id="stonefish-v5-pro" class="blog-article">
+      <p class="eyebrow">MODEL RELEASE · STONEFISH V5 PRO</p>
+      <h1>Introducing Stonefish v5 Pro</h1>
+      <p class="blog-lead">Stonefish v5 Pro takes the unified points architecture and adds context, threat awareness, and deeper verification before committing.</p>
+
+      <p>Stonefish v5 changed the engine by putting every legal move on one scoreboard. Stonefish v5 Pro keeps that foundation, then adds adaptive weights, richer tactical geometry, counterplay suppression, confidence-aware scoring, and a selective five-ply alpha-beta search.</p>
+      <p>The result is not just stronger play. It is one of the most interesting benchmark patterns in the Stonefish project.</p>
+
+      <h2>Adaptive points</h2>
+      <p>Pro no longer treats every phase of chess the same way. It estimates opening, attack, defence, conversion, endgame, and pawn-race context, then changes the importance of different features accordingly.</p>
+      <p>Development matters more while the opening is alive. King safety becomes more important under pressure. King activity grows in the endgame. Passed pawns become more valuable when promotion races begin. When Stonefish is ahead, suppressing counterplay and converting cleanly receive extra weight.</p>
+      <blockquote>The scorecard stays unified. The meaning of the score changes with the position.</blockquote>
+
+      <h2>Threat geometry becomes explicit</h2>
+      <p>Stonefish v5 Pro measures loose pieces and coordination, attacker-versus-defender counts, king-zone pressure, pins and skewers, under-defended pieces, enemy checking chances, forcing moves, promotion threats, and dangerous passed pawns.</p>
+      <p>That lets it distinguish between positions that look similar on material and mobility but carry very different tactical risk.</p>
+
+      <h2>Confidence-aware scoring</h2>
+      <p>Pro also asks whether independent systems agree. A move gains confidence when tactical evaluation, adaptive positional evaluation, inherited Stonefish knowledge, and forcing characteristics point in the same direction.</p>
+      <p>If a position looks attractive strategically while tactics strongly disagree, Pro can actively distrust the pretty move.</p>
+
+      <h2>Five-ply search</h2>
+      <p>Stonefish v5 evaluates tactics through three plies. Pro adds exactly two more searched plies.</p>
+      <p>Every legal move first receives a preliminary points-based score. Pro then keeps the top eight candidates and searches those to five plies with alpha-beta pruning. The deeper result is blended back with the preliminary score, while mating results can override the blend outright.</p>
+      <p>This means a move that looks best after three plies can now be challenged by what happens two moves later.</p>
+
+      <h2>The test: 2,000 direct games</h2>
+      <p>Only games involving Stonefish v5 Pro count here: 1,000 against Stonefish v4.5 and 1,000 against Stonefish v5.</p>
+      <div class="blog-stats" role="group" aria-label="Stonefish v5 Pro direct test results">
+        <div class="blog-stat"><span>1,500</span><p>Wins</p></div>
+        <div class="blog-stat"><span>500</span><p>Losses</p></div>
+        <div class="blog-stat"><span>0</span><p>Draws</p></div>
+        <div class="blog-stat"><span>75.0%</span><p>Win rate</p></div>
+      </div>
+      <p>The aggregate is strong. The matchups are much stranger.</p>
+
+      <h2>v5 Pro vs v5: 1000–0</h2>
+      <div class="blog-stats" role="group" aria-label="Stonefish v5 Pro versus v5 test results">
+        <div class="blog-stat"><span>1,000</span><p>Pro wins</p></div>
+        <div class="blog-stat"><span>0</span><p>Pro losses</p></div>
+        <div class="blog-stat"><span>0</span><p>Draws</p></div>
+        <div class="blog-stat"><span>100.0%</span><p>Pro win rate</p></div>
+      </div>
+      <p>Stonefish v5 had just posted a perfect 2,000–0 result against v4 and v4.5. Against Pro, it lost all 1,000 games.</p>
+      <p>This is where Pro's design has the cleanest advantage. It speaks the same points-based language as v5, then adds adaptive priorities, richer threat detection, counterplay suppression, confidence signals, and two more searched plies.</p>
+      <blockquote>Pro takes v5's own decision framework — and looks farther through it.</blockquote>
+
+      <h2>v5 Pro vs v4.5: 500–500</h2>
+      <div class="blog-stats" role="group" aria-label="Stonefish v5 Pro versus v4.5 test results">
+        <div class="blog-stat"><span>500</span><p>Pro wins</p></div>
+        <div class="blog-stat"><span>500</span><p>Pro losses</p></div>
+        <div class="blog-stat"><span>0</span><p>Draws</p></div>
+        <div class="blog-stat"><span>50.0%</span><p>Pro win rate</p></div>
+      </div>
+      <p>Then the benchmark does something unexpected: v4.5 and Pro split the entire 1,000-game matchup exactly in half.</p>
+
+      <h2>The triangle should not be possible if strength were a simple ladder</h2>
+      <p>The three direct results are extreme:</p>
+      <p><strong>v5 beats v4.5 1000–0. Pro beats v5 1000–0. Pro and v4.5 go 500–500.</strong></p>
+      <p>That is a textbook reminder that chess-engine strength can be matchup-dependent. A model can dominate one opponent without inheriting the same margin against every engine that opponent previously beat.</p>
+
+      <h2>Why might v4.5 be so much harder for Pro than v5?</h2>
+      <p>The code suggests several plausible mechanisms.</p>
+      <p><strong>They make decisions differently.</strong> v5 and Pro share the unified points architecture, so Pro's deeper and more adaptive evaluation attacks v5 on familiar ground. v4.5 is structurally different: it is much more book-driven and lexicographic, so it can reach positions that do not interact with Pro's improvements in the same way.</p>
+      <p><strong>Pro is selective.</strong> Every legal move gets a preliminary score, but only the top eight are searched to five plies. That is normally a major strength. It also creates a distinct failure mode: if an awkward v4.5 position pushes the truly resilient move outside that preliminary shortlist, deeper search never gets the chance to recover it.</p>
+      <p><strong>The opening repertoire can shape the entire matchup.</strong> v4.5 can force games through prepared branches and compatible-line fallback. Pro can deviate from book through evaluation, but its adaptive priorities are not identical to v5's fixed unified scoring, so it can choose very different paths from the model that beat v4.5 1000–0.</p>
+      <p><strong>The exact 500–500 with zero draws looks systematic.</strong> A perfectly even split across 1,000 decisive games is consistent with a strong color, opening-branch, or deterministic interaction. Without per-color or per-opening logs, that cannot be claimed as the cause, but it is hard to read the result as ordinary random variance.</p>
+      <blockquote>Pro is clearly stronger than v5 head-to-head. v4.5 simply asks a different question of it.</blockquote>
+
+      <h2>Deeper does not mean universally dominant</h2>
+      <p>Stonefish v5 Pro is deeper, more adaptive, and tactically richer than v5. The 1000–0 result confirms how devastating that can be against the model it directly extends.</p>
+      <p>But the v4.5 split is just as valuable a result. It reveals that opening structure, candidate selection, and opponent style can reshape the value of an engine's improvements.</p>
+      <p>That makes Pro more interesting than a simple "v5 but stronger" release.</p>
+
+      <h2>From judgment to adaptation</h2>
+      <p>Stonefish v1 was unpredictable. Stonefish v2 became aware. Stonefish v3 learned to calculate. Stonefish v4 learned to build. Stonefish v4.5 arrived prepared. Stonefish v5 learned to judge.</p>
+      <p><strong>Stonefish v5 Pro learns to adapt — and then looks deeper before it commits.</strong></p>
+      <blockquote>Strength is not one number. Pro proves it can dominate one matchup while another opponent exposes an entirely different game.</blockquote>
+    </article>
+
     <article id="stonefish-v5" class="blog-article">
       <p class="eyebrow">MODEL RELEASE · STONEFISH V5</p>
       <h1>Introducing Stonefish v5</h1>
       <p class="blog-lead">Stonefish v5 rewrites the decision system around one idea: every legal move gets a complete score before Stonefish decides.</p>
 
-      <p>Earlier Stonefish models became stronger by adding new layers: tactical calculation, positional judgment, opening knowledge, mating patterns, and opponent restriction. Stonefish v5 does something more fundamental. It changes how all of those ideas interact.</p>
+      <p>Earlier Stonefish models became stronger by adding new layers: tactical calculation, positional judgment, opening knowledge, mating patterns, and opponent restriction. Stonefish v5 changes how all of those ideas interact.</p>
       <p>Two upgrades define the release: a <strong>unified points architecture</strong>, and an opening book that has become <strong>advice instead of law</strong>.</p>
 
       <h2>Change one: every move gets points</h2>
-      <p>Stonefish v4 and v4.5 used staged decisions. One layer could narrow the candidate set, then the next layer judged only the survivors. That made each priority clear, but it also meant a move eliminated early could never recover because of strengths elsewhere.</p>
-      <p>Stonefish v5 removes that bottleneck. Every legal root move stays eligible. Every one receives tactical, positional, strategic, and knowledge points. The move with the strongest total score wins.</p>
+      <p>Every legal root move stays eligible. Every one receives tactical, positional, strategic, and knowledge points. The move with the strongest total score wins.</p>
+      <p>Stonefish v5 scores material, mobility, development, center control, minor-piece centralization, king protection, king freedom, pawn structure, rook activity, king placement, board control, hanging pieces, bishop-pair value, passed pawns, repetition pressure, mating knowledge, and opponent restriction.</p>
       <blockquote>Stonefish no longer asks which move survives the hierarchy. It asks which move has the strongest complete case.</blockquote>
 
-      <h2>Tactical safety for every legal move</h2>
-      <p>v5 keeps three-ply tactical reasoning — our move, the opponent’s reply, our response — but applies it to every legal root move instead of using an older model’s candidate gate.</p>
-      <p>Mate receives overwhelming priority. Immediate tactical loss is punished heavily. Captures, promotions, checking moves, the opponent’s strongest response, and Stonefish’s best recovery all feed into the tactical score.</p>
-      <p>The difference is that tactics now contributes to a total rather than prematurely deciding which moves the rest of the engine is allowed to see.</p>
-
-      <h2>A unified positional scorecard</h2>
-      <p>Stonefish v5 scores material, mobility, development, center control, minor-piece centralization, king protection, king freedom, pawn structure, rook activity, king placement, board control, hanging pieces, bishop-pair value, and passed pawns.</p>
-      <p>That gives the engine something the older ordered tie-break chain could not express naturally: trade-offs. A move can give up a little mobility for a much safer king. A passed pawn can outweigh a quieter positional preference. A tactical opportunity can justify an imperfect structure.</p>
-      <p>Everything speaks the same language: points.</p>
-
-      <h2>Passed pawns and conversion pressure</h2>
-      <p>v5 sharpens endgame judgment by tracking passed-pawn progress and danger. It considers how close a passer is to promotion, whether its route is blocked or controlled, whether major pieces or kings stand in front of it, whether the pawn is attacked, and whether the promotion square can be covered.</p>
-      <p>It also applies enormous pressure against repetition, especially when Stonefish is ahead, and can value moves that reset the fifty-move clock when necessary.</p>
-      <p>The engine is not only trying to become better. It is trying to convert better.</p>
-
       <h2>Change two: the opening book becomes advice</h2>
-      <p>Stonefish v4.5 introduced the weighted 50-line opening repertoire and adaptive compatible-line fallback. v5 keeps that preparation, but changes what a book move means.</p>
-      <p>In v4.5, when a valid book move existed and no tactical pattern overrode it, theory could directly control the move.</p>
-      <p>In v5, the book move receives a strong <strong>point bonus</strong>.</p>
-      <p>That sounds like a small change. It is not.</p>
+      <p>Stonefish v4.5 introduced the weighted opening repertoire. v5 keeps that preparation, but the book move now receives a strong point bonus instead of automatically controlling the move.</p>
+      <p>If theory and the full evaluation agree, Stonefish follows the book. If another move earns a higher total, Stonefish can deliberately reject theory.</p>
       <blockquote>The book can win the argument. It no longer automatically wins the vote.</blockquote>
 
-      <h2>Sometimes Stonefish follows theory. Sometimes it says it knows better.</h2>
-      <p>If the repertoire recommends a strong main-line move and the rest of the position agrees, the book bonus helps that move rise to the top. Stonefish follows its preparation.</p>
-      <p>But every alternative move is being scored at the same time. If another move is tactically superior, avoids a serious threat, creates a much stronger passed pawn, improves the complete position enough, or otherwise earns a higher total, v5 can reject the book move.</p>
-      <p>Stonefish is no longer asking only, “Am I still in theory?”</p>
-      <p><strong>It asks, “What does theory recommend — and is that still the best move on this board?”</strong></p>
-
-      <h2>The opening system is flexible in two different ways</h2>
-      <p>The adaptive repertoire behavior from v4.5 remains. If the opponent deviates, Stonefish can continue with another opening line that still matches the real move history.</p>
-      <p>v5 then adds another layer of flexibility: even when a prepared continuation remains available, Stonefish’s unified evaluation can decide not to play it.</p>
-      <p>That gives v5 both <strong>repertoire flexibility</strong> — adapting the book to the actual game — and <strong>evaluation flexibility</strong> — overriding the book when Stonefish’s own scoring system finds something better.</p>
-
-      <h2>Old Stonefish knowledge becomes a vote too</h2>
-      <p>v5 retains a heritage signal from the strongest pre-v5 decision pattern. The move that the older tactical-positional process would have preferred gets a large bonus.</p>
-      <p>But even that is no longer absolute. Heritage can influence the decision without deleting the alternatives.</p>
-      <p>That is the philosophy of v5: proven knowledge deserves weight, not unquestioned authority.</p>
-
       <h2>The test: 2,000 direct games</h2>
-      <p>For the v5 benchmark, only games involving Stonefish v5 count: 1,000 against Stonefish v4 and 1,000 against Stonefish v4.5.</p>
-      <p><strong>The result was perfect.</strong></p>
       <div class="blog-stats" role="group" aria-label="Stonefish v5 direct test results">
         <div class="blog-stat"><span>2,000</span><p>Wins</p></div>
         <div class="blog-stat"><span>0</span><p>Losses</p></div>
         <div class="blog-stat"><span>0</span><p>Draws</p></div>
         <div class="blog-stat"><span>100.0%</span><p>Win rate</p></div>
       </div>
-
-      <h2>v5 vs v4: 1000–0</h2>
-      <div class="blog-stats" role="group" aria-label="Stonefish v5 versus v4 test results">
-        <div class="blog-stat"><span>1,000</span><p>v5 wins</p></div>
-        <div class="blog-stat"><span>0</span><p>v5 losses</p></div>
-        <div class="blog-stat"><span>0</span><p>Draws</p></div>
-        <div class="blog-stat"><span>100.0%</span><p>v5 win rate</p></div>
-      </div>
-      <p>Every one of the 1,000 games against Stonefish v4 ended in a Stonefish v5 win.</p>
-
-      <h2>v5 vs v4.5: 1000–0</h2>
-      <div class="blog-stats" role="group" aria-label="Stonefish v5 versus v4.5 test results">
-        <div class="blog-stat"><span>1,000</span><p>v5 wins</p></div>
-        <div class="blog-stat"><span>0</span><p>v5 losses</p></div>
-        <div class="blog-stat"><span>0</span><p>Draws</p></div>
-        <div class="blog-stat"><span>100.0%</span><p>v5 win rate</p></div>
-      </div>
-      <p>Stonefish v4.5 brought the opening repertoire, mating-pattern knowledge, restriction logic, and v4 positional foundation into all 1,000 games. v5 won every one.</p>
-      <blockquote>2,000 games. 2,000 wins. No losses. No draws.</blockquote>
-
-      <h2>Why the points architecture matters</h2>
-      <p>Stonefish v5 does not achieve this jump by simply adding another search ply. The major change is simultaneous evaluation.</p>
-      <p>Tactics, material, activity, structure, king safety, passed-pawn danger, preparation, mating geometry, opponent restriction, repetition pressure, and inherited Stonefish knowledge can all influence the same move score.</p>
-      <p>No small early preference has to erase a move that is overwhelmingly better in the complete position. No opening line gets to silence the tactical engine. No legacy rule gets to stop the positional system from making its case.</p>
-      <p>For the first time, Stonefish can hear every part of itself before choosing.</p>
-
-      <h2>From preparation to judgment</h2>
-      <p>Stonefish v1 was unpredictable.</p>
-      <p>Stonefish v2 became aware.</p>
-      <p>Stonefish v3 learned to calculate.</p>
-      <p>Stonefish v4 learned to build.</p>
-      <p>Stonefish v4.5 arrived prepared.</p>
       <p><strong>Stonefish v5 learns to judge.</strong></p>
-      <blockquote>The book still speaks. The tactical engine still speaks. The positional engine still speaks. Stonefish hears all of them before it decides.</blockquote>
     </article>
 
     <article id="stonefish-v45" class="blog-article">
       <p class="eyebrow">MODEL RELEASE · STONEFISH V4.5</p>
       <h1>Introducing Stonefish v4.5</h1>
-      <p class="blog-lead">Stonefish v4.5 is the moment the Stonefish revolution gains something new: knowledge before calculation.</p>
-      <p>Stonefish v4 already combined the three-ply tactical core with a broad positional decision layer. Stonefish v4.5 keeps all of that and adds three major knowledge systems: a weighted opening repertoire, named mating-pattern recognition, and inverse positional logic that evaluates how effectively a move restricts the opponent.</p>
+      <p class="blog-lead">Stonefish v4.5 adds knowledge before calculation: opening preparation, mating-pattern recognition, and opponent restriction.</p>
 
       <h2>A 50-line opening repertoire</h2>
       <p>Stonefish v4.5 includes a <strong>weighted 50-line opening repertoire: 25 lines for White and 25 for Black</strong>, centered on high-theory, engine-friendly main lines.</p>
       <p>If the opponent leaves the selected branch, v4.5 discards it and re-weights only the repertoire lines still compatible with the actual game.</p>
-
-      <h2>Named mating-pattern recognition</h2>
-      <p>The engine recognizes ladder, triangle, back-rank, smothered, Arabian, queen-and-rook kill-box, and Boden-style mating geometry.</p>
 
       <h2>The test: 2,000 direct games</h2>
       <div class="blog-stats" role="group" aria-label="Stonefish v4.5 direct test results">
@@ -178,30 +192,6 @@
         <div class="blog-stat"><span>493</span><p>Draws</p></div>
         <div class="blog-stat"><span>66.6%</span><p>Win rate</p></div>
       </div>
-
-      <h2>v4.5 vs v4: 760–0</h2>
-      <div class="blog-stats" role="group" aria-label="Stonefish v4.5 versus v4 test results">
-        <div class="blog-stat"><span>760</span><p>v4.5 wins</p></div>
-        <div class="blog-stat"><span>0</span><p>v4.5 losses</p></div>
-        <div class="blog-stat"><span>240</span><p>Draws</p></div>
-        <div class="blog-stat"><span>76.0%</span><p>v4.5 win rate</p></div>
-      </div>
-
-      <h2>v4.5 vs v3: 573–174</h2>
-      <div class="blog-stats" role="group" aria-label="Stonefish v4.5 versus v3 test results">
-        <div class="blog-stat"><span>573</span><p>v4.5 wins</p></div>
-        <div class="blog-stat"><span>174</span><p>v4.5 losses</p></div>
-        <div class="blog-stat"><span>253</span><p>Draws</p></div>
-        <div class="blog-stat"><span>57.3%</span><p>v4.5 win rate</p></div>
-      </div>
-
-      <h2>Why does v3 fare better against v4.5 than v4 does?</h2>
-      <p>Stonefish v4 is stronger than v3 head-to-head, but strength is not perfectly transitive. v4.5 is especially well-equipped to suppress the exact positional variables v4 tries to optimize: mobility, king freedom, center control, and board control.</p>
-      <p>v3 is simpler and more tactically driven, so some of that targeted positional restriction has less leverage against its style.</p>
-      <blockquote>v4 is stronger against v3. But v3 is the less convenient opponent for v4.5.</blockquote>
-
-      <h2>From principles to preparation</h2>
-      <p>Stonefish v1 was unpredictable. Stonefish v2 became aware. Stonefish v3 learned to calculate. Stonefish v4 learned to build.</p>
       <p><strong>Stonefish v4.5 arrives prepared.</strong></p>
     </article>
 
@@ -209,11 +199,7 @@
       <p class="eyebrow">MODEL RELEASE · STONEFISH V4</p>
       <h1>Introducing Stonefish v4</h1>
       <p class="blog-lead">Stonefish v4 pairs the tactical calculation of v3 with a full positional decision layer.</p>
-      <p>Only moves tied by v3’s tactical engine reach v4’s positional tie-break system.</p>
-
-      <h2>A full positional stack</h2>
-      <p>Stonefish v4 compares development, castling, hanging-piece safety, repetition control, mobility, queen discipline, endgame pawn progress, piece support, king freedom, center control, minor-piece centralization, king protection, pawn structure, rook activity, king placement, and board control.</p>
-
+      <p>Only moves tied by v3's tactical engine reach v4's positional tie-break system.</p>
       <h2>The test: 2,000 direct games</h2>
       <div class="blog-stats" role="group" aria-label="Stonefish v4 direct test results">
         <div class="blog-stat"><span>1,587</span><p>Wins</p></div>
@@ -228,7 +214,7 @@
       <p class="eyebrow">MODEL RELEASE · STONEFISH V3</p>
       <h1>Introducing Stonefish v3</h1>
       <p class="blog-lead">Stonefish v3 marks the leap from immediate tactical awareness to genuine multi-step calculation.</p>
-      <p>It evaluates a three-ply sequence: our move, the opponent’s reply, and our response, then optimizes the worst-case material result.</p>
+      <p>It evaluates a three-ply sequence: our move, the opponent's reply, and our response, then optimizes the worst-case material result.</p>
       <h2>The test: 2,000 direct games</h2>
       <div class="blog-stats" role="group" aria-label="Stonefish v3 direct test results">
         <div class="blog-stat"><span>1,940</span><p>Wins</p></div>
