@@ -103,11 +103,13 @@ function freshStats() {
     adaptationRejected: 0,
     overrides: 0,
     overrideEvents: [],
+    rejectionEvents: [],
     guardEligible: 0,
     guardVerified: 0,
     guardLowered: 0,
     notesSeen: 0,
     reasonCounts: Object.create(null),
+    rejectionReasonCounts: Object.create(null),
     noteCounts: Object.create(null),
   };
 }
@@ -133,6 +135,17 @@ function compactReport(report) {
   };
 }
 
+function compactGateDecision(decision) {
+  if (!decision) return null;
+  const output = { allowed: Boolean(decision.allowed), reason: decision.reason || null };
+  const fields = [
+    'hostGap', 'deepSacrifice', 'challengerEvidence', 'challengerConfidence',
+    'adaptedLead', 'challengerSignal', 'provisionalSignal'
+  ];
+  for (const field of fields) if (Number.isFinite(Number(decision[field]))) output[field] = Number(decision[field]);
+  return output;
+}
+
 function observeReview(stats, review, context) {
   if (!review) return;
   stats.turns += 1;
@@ -140,7 +153,32 @@ function observeReview(stats, review, context) {
   stats.observedPliesSum += observed;
   stats.observedPliesMax = Math.max(stats.observedPliesMax, observed);
   if (review.adaptationApplied) stats.adaptationApplied += 1;
-  if (review.adaptationRejected) stats.adaptationRejected += 1;
+  if (review.adaptationRejected) {
+    stats.adaptationRejected += 1;
+    const reports = Array.isArray(review.reports) ? review.reports : [];
+    const provisional = reports.find(report => report && review.provisionalRaw
+      && stonefishV5SameMove(report.raw, review.provisionalRaw));
+    const proposed = reports.find(report => report && review.proposedRaw
+      && stonefishV5SameMove(report.raw, review.proposedRaw));
+    const reason = review.rejectionReason || (review.gateDecision && review.gateDecision.reason) || 'unknown';
+    increment(stats.rejectionReasonCounts, reason);
+    stats.rejectionEvents.push({
+      game: context.gameIndex + 1,
+      pair: context.pair + 1,
+      side: context.armxIsWhite ? 'W' : 'B',
+      ply: context.plies,
+      result: null,
+      reason,
+      observedPlies: observed,
+      hostMove: rawKey(review.provisionalRaw),
+      proposedMove: rawKey(review.proposedRaw),
+      hostScoreGap: Number(review.hostScoreGap),
+      gateDecision: compactGateDecision(review.gateDecision),
+      provisional: compactReport(provisional),
+      proposed: compactReport(proposed),
+      notes: Array.isArray(review.notes) ? review.notes.slice() : [],
+    });
+  }
   if (review.override) {
     stats.overrides += 1;
     const reports = Array.isArray(review.reports) ? review.reports : [];
@@ -208,6 +246,8 @@ function summarize(stats) {
     adaptationRejectedRate: stats.turns ? stats.adaptationRejected / stats.turns : 0,
     overrideRate: stats.turns ? stats.overrides / stats.turns : 0,
     overrideEvents: stats.overrideEvents,
+    rejectionEvents: stats.rejectionEvents,
+    topRejectionReasons: top(stats.rejectionReasonCounts),
     guardEligibleRate: stats.turns ? stats.guardEligible / stats.turns : 0,
     guardVerificationRate: stats.turns ? stats.guardVerified / stats.turns : 0,
     guardLowerRate: stats.turns ? stats.guardLowered / stats.turns : 0,
@@ -227,6 +267,7 @@ function simulate(label, games, opponentFn) {
     stats.games += 1;
     let plies = game.historyStack.length;
     const overrideStart = stats.overrideEvents.length;
+    const rejectionStart = stats.rejectionEvents.length;
     let gameOutcome = 'draw';
 
     withSeed((0xD550000 + pair * 1103 + i) >>> 0, () => {
@@ -260,6 +301,9 @@ function simulate(label, games, opponentFn) {
 
     for (let event = overrideStart; event < stats.overrideEvents.length; event += 1) {
       stats.overrideEvents[event].result = gameOutcome;
+    }
+    for (let event = rejectionStart; event < stats.rejectionEvents.length; event += 1) {
+      stats.rejectionEvents[event].result = gameOutcome;
     }
   }
   return { label, outcomes, adaptation: summarize(stats) };
