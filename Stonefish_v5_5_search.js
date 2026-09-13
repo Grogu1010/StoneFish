@@ -12,7 +12,6 @@ const STONEFISH_V5_5_SEARCH = Object.freeze({
   branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
   lmrAfterMove: 2,
-  safetyReplies: 6,
 });
 
 let STONEFISH_V5_5_LAST_SEARCH_STATS = null;
@@ -26,40 +25,27 @@ function stonefishV55SameRaw(a, b) {
     && (a.promotion || 0) === (b.promotion || 0) && (a.flags || 0) === (b.flags || 0));
 }
 
-// Native v5.5 feature: reply-floor safety.
-// Instead of counting checks/captures heuristically, actually sample the opponent's
-// strongest immediate replies and measure the worst resulting v5 Pro evaluation.
-// This is a cheap robustness test before the full five-ply search.
 function stonefishV55RootSafety(game, raw, perspective) {
   const historyDepth = game.historyStack.length;
   try {
     game.fastApply(raw);
     const replies = game.fastMoves();
-    if (!replies.length) return 0;
-
-    const baseline = stonefishV5ProLeaf(game, perspective);
-    const ordered = replies
-      .map((move, index) => ({ move, index, order: stonefishV5ProSpeedMoveOrder(game, move) }))
-      .sort((a, b) => (b.order - a.order) || (a.index - b.index))
-      .slice(0, Math.min(STONEFISH_V5_5_SEARCH.safetyReplies, replies.length));
-
-    let worst = Infinity;
-    for (const entry of ordered) {
-      const checking = game.fastGivesCheck && game.fastGivesCheck(entry.move);
-      game.fastApply(entry.move);
-      let value;
-      if (checking && !game.fastHasLegalMove() && game.in_check()) {
-        value = -STONEFISH_V5_PRO_MATE + 2;
-      } else {
-        value = stonefishV5ProLeaf(game, perspective);
-      }
-      game.fastUndo();
-      if (value < worst) worst = value;
+    let risk = 0;
+    for (let i = 0; i < replies.length; i += 1) {
+      const reply = replies[i];
+      if (reply.promotion) risk += 620;
+      const captured = STONEFISH_V5_PIECE[reply.captured] || 0;
+      if (captured >= 900) risk += 290;
+      else if (captured >= 500) risk += 150;
+      else if (captured >= 300) risk += 75;
+      if (game.fastGivesCheck && game.fastGivesCheck(reply)) risk += 105;
     }
-
-    if (!Number.isFinite(worst)) return 0;
-    if (worst <= -STONEFISH_V5_PRO_MATE * 0.9) return 12000;
-    return Math.min(6000, Math.max(0, baseline - worst));
+    const passer = typeof stonefishV5EnemyPasserThreat === 'function'
+      ? stonefishV5EnemyPasserThreat(game, perspective)
+      : 0;
+    if (passer >= 2200) risk += passer * 0.70;
+    else if (passer >= 900) risk += passer * 0.26;
+    return risk + replies.length * 1.5;
   } finally {
     while (game.historyStack.length > historyDepth) game.fastUndo();
   }
