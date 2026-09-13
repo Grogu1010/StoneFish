@@ -89,6 +89,7 @@ function stonefishV55ApplyRefutationGuard(game, finished, perspective = game.sid
     eligible: false,
     screened: 0,
     verified: 0,
+    reusedSearchTable: false,
     changedMove: false,
     lowered: false,
     originalDeep: null,
@@ -103,6 +104,8 @@ function stonefishV55ApplyRefutationGuard(game, finished, perspective = game.sid
   metadata.eligible = stonefishV55ShouldRunGuard(game, finished, perspective);
   if (!metadata.eligible) return metadata;
 
+  const reusableTT = finished.v55SearchTT instanceof Map ? finished.v55SearchTT : null;
+  metadata.reusedSearchTable = Boolean(reusableTT);
   const candidates = finished.slice(0, STONEFISH_V5_5_REFUTATION_GUARD.candidates);
   for (const entry of candidates) {
     if (!entry || !Number.isFinite(entry.deep)) continue;
@@ -113,23 +116,34 @@ function stonefishV55ApplyRefutationGuard(game, finished, perspective = game.sid
     for (let i = 0; i < Math.min(STONEFISH_V5_5_REFUTATION_GUARD.maxVerifiedReplies, scan.replies.length); i += 1) {
       const criticalReply = scan.replies[i].reply;
       const originalDeep = entry.deep;
-      const oldTT = typeof STONEFISH_V5_5_ACTIVE_TT !== 'undefined' ? STONEFISH_V5_5_ACTIVE_TT : null;
-      if (typeof STONEFISH_V5_5_ACTIVE_TT !== 'undefined') STONEFISH_V5_5_ACTIVE_TT = new Map();
-      let verified;
-      try {
-        verified = stonefishV55FivePlyScore(game, entry.raw, perspective, criticalReply);
-      } finally {
-        if (typeof STONEFISH_V5_5_ACTIVE_TT !== 'undefined') STONEFISH_V5_5_ACTIVE_TT = oldTT;
+      const originalScore = entry.score;
+
+      if (typeof stonefishV55VerifyInjectedReply === 'function') {
+        stonefishV55VerifyInjectedReply(game, entry, perspective, criticalReply, reusableTT);
+      } else {
+        entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, criticalReply);
+        entry.score = stonefishV55RecomputeFinalScore(entry);
       }
       metadata.verified += 1;
-      const verifiedDeep = Math.min(originalDeep, verified);
+
+      // Adding an extra legal opponent reply can only make the root candidate
+      // worse. Preserve that minimax invariant even if selective-search noise
+      // happens to return a numerically higher value on the verification pass.
+      const verifiedDeep = Math.min(originalDeep, entry.deep);
       const drop = originalDeep - verifiedDeep;
-      if (drop < STONEFISH_V5_5_REFUTATION_GUARD.minVerifiedDrop) continue;
+      if (drop < STONEFISH_V5_5_REFUTATION_GUARD.minVerifiedDrop) {
+        entry.deep = originalDeep;
+        entry.score = originalScore;
+        entry.refutationGuardCriticalReply = null;
+        entry.refutationGuardVerifiedDeep = null;
+        continue;
+      }
 
       entry.refutationGuardOriginalDeep = originalDeep;
       entry.refutationGuardCriticalReply = criticalReply;
       entry.deep = verifiedDeep;
       entry.score = stonefishV55RecomputeFinalScore(entry);
+      entry.refutationGuardVerifiedDeep = verifiedDeep;
       metadata.lowered = true;
       metadata.originalDeep = originalDeep;
       metadata.verifiedDeep = verifiedDeep;
