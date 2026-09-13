@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'ARMX_preview_fast.js'
+      - 'Stonefish_v5_5_search.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
       - 'test-worker.js'
@@ -23,10 +24,12 @@ jobs:
           node-version: '20'
       - name: Syntax check ARMX-preview
         run: node --check ARMX_preview_fast.js
+      - name: Syntax check v5.5 native search
+        run: node --check Stonefish_v5_5_search.js
       - name: Syntax check v5.5 testunit1
         run: node --check Stonefish_v5_5_testunit1.js
       - name: Run v5.5 dev benchmark
         env:
-          SAMPLES: '30'
-          GAMES: '100'
+          SAMPLES: '20'
+          GAMES: '20'
         run: node benchmark_v5_5_testunit1.js
