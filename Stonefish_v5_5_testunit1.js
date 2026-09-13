@@ -4,8 +4,8 @@
 // replies outside the normal selective beam and verifies them through the same
 // five-ply v5.5 search before they may lower a move. ARMX-preview is separate: it
 // learns this opponent's behavior from the current game and applies small bounded
-// multipliers to already-searched candidates. The No-ARMX control uses the exact
-// same v5.5 host, including Refutation Guard, but never consults ARMX.
+// multipliers to Stonefish's already-searched candidates. The No-ARMX control uses
+// the exact same v5.5 host, including Refutation Guard, but never consults ARMX.
 
 const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   name: 'Stonefish v5.5 testunit1',
@@ -92,6 +92,15 @@ function stonefishV55ARMXChangeAllowed(
   return challengerReport.adaptedScore > provisionalReport.adaptedScore;
 }
 
+function stonefishV55ARMXPromoteReviewedCandidate(finished, candidate) {
+  if (!candidate || !finished || !finished.length) return false;
+  const index = finished.indexOf(candidate);
+  if (index <= 0) return false;
+  finished.splice(index, 1);
+  finished.unshift(candidate);
+  return true;
+}
+
 function stonefishV55Testunit1ScoreAllMoves(game) {
   const perspective = game.side;
   const host = stonefishV55Testunit1HostSearch(game);
@@ -127,6 +136,10 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
       target.armxMultiplier = report.multiplier;
       target.armxAdjustment = report.adjustment;
       target.armxAdaptedScore = report.adaptedScore;
+      // Keep the native score intact. ARMX owns only the relative decision among
+      // candidates it actually reviewed; an unreviewed third move must never rise
+      // to first merely because both reviewed scores received negative modifiers.
+      target.armxDecisionScore = report.adaptedScore;
       touched.push(target);
     }
 
@@ -148,12 +161,9 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
     }
 
     if (allowChange) {
-      for (const target of touched) {
-        target.score = target.armxAdaptedScore;
-        totalAdjustment += target.armxAdjustment || 0;
-      }
-      if (touched.length) stonefishV55SortFinalScores(game, finished);
+      for (const target of touched) totalAdjustment += target.armxAdjustment || 0;
       adaptationApplied = touched.some(target => Math.abs(target.armxAdjustment || 0) > 1e-9);
+      if (wantsChange) stonefishV55ARMXPromoteReviewedCandidate(finished, proposed);
     }
   }
 
