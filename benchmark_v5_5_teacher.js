@@ -177,7 +177,7 @@ for (const semifinalists of [5, 6, 7, 8]) {
 }
 
 function evaluate(cfg) {
-  let top1 = 0, top2 = 0, top3 = 0, poolCoverage = 0;
+  let top1 = 0, top2 = 0, top3 = 0, top4 = 0, poolCoverage = 0;
   for (const row of rows) {
     const pool = row.entries.slice(0, Math.min(cfg.semifinalists, row.entries.length));
     if (pool.some(entry => entry.key === row.teacherKey)) poolCoverage += 1;
@@ -185,6 +185,7 @@ function evaluate(cfg) {
     if (ranked[0] && ranked[0].key === row.teacherKey) top1 += 1;
     if (ranked.slice(0, 2).some(entry => entry.key === row.teacherKey)) top2 += 1;
     if (ranked.slice(0, 3).some(entry => entry.key === row.teacherKey)) top3 += 1;
+    if (ranked.slice(0, 4).some(entry => entry.key === row.teacherKey)) top4 += 1;
   }
   return Object.assign({}, cfg, {
     positions: rows.length,
@@ -192,6 +193,7 @@ function evaluate(cfg) {
     top1: rows.length ? top1 / rows.length : 0,
     top2: rows.length ? top2 / rows.length : 0,
     top3: rows.length ? top3 / rows.length : 0,
+    top4: rows.length ? top4 / rows.length : 0,
   });
 }
 
@@ -227,8 +229,9 @@ const currentConfig = {
 const current = evaluate(currentConfig);
 
 const rankedConfigs = configs.map(evaluate).sort((a, b) =>
-  (b.top2 - a.top2)
+  (b.top4 - a.top4)
   || (b.top3 - a.top3)
+  || (b.top2 - a.top2)
   || (b.top1 - a.top1)
   || (b.poolCoverage - a.poolCoverage)
   || (a.semifinalists - b.semifinalists)
@@ -236,6 +239,7 @@ const rankedConfigs = configs.map(evaluate).sort((a, b) =>
 
 const output = {
   positions: rows.length,
+  finalistCutoff: STONEFISH_V5_5_SEARCH.rootCandidates,
   current,
   adaptiveThird: adaptiveThirdDiagnostics(currentConfig),
   best: rankedConfigs[0],
