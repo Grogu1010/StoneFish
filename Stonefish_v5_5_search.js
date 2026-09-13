@@ -14,7 +14,7 @@ const STONEFISH_V5_5_SEARCH = Object.freeze({
   rootProbeKeep: 2,
   branch: [0, 1, 2, 2, 4],
   lmrMinDepth: 3,
-  lmrAfterMove: 2,
+  lmrAfterMove: 1,
   pvsEpsilon: 1e-6,
   tacticalWeight: 1.10,
   scoutWeight: 0.20,
