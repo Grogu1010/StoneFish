@@ -10,6 +10,7 @@ on:
       - 'Stonefish_v5_pro_speed_patch.js'
       - 'Stonefish_v5_pro_geometry_patch.js'
       - 'Stonefish_runtime_speed_patch.js'
+      - 'Stonefish_fast_moves_experiment.js'
       - 'Stonefish_v5.js'
       - 'Stonefish_v4_5*.js'
       - 'Stonefish_v4.js'
@@ -18,11 +19,11 @@ on:
       - 'Stonefish_ui_speed_patch.js'
       - 'index.html'
       - 'benchmark_v5_pro.js'
+      - 'benchmark_fast_moves_parity.js'
       - 'benchmark_ui_move_apply.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
       - '.github/workflows/stonefish-v5-pro-fast-release-gate.yml'
 
-# Keep this gate attached to the exact speed-pass head being released.
 concurrency:
   group: stonefish-v5-pro-fast-release-${{ github.ref }}
   cancel-in-progress: true
