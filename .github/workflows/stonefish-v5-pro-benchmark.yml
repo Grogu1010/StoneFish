@@ -22,6 +22,7 @@ on:
       - 'benchmark_v5_pro_regression.js'
       - 'benchmark_runtime_parity.js'
       - 'benchmark_ui_move_apply.js'
+      - 'benchmark_attack_count_parity.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
   pull_request:
     paths:
@@ -41,6 +42,7 @@ on:
       - 'benchmark_v5_pro_regression.js'
       - 'benchmark_runtime_parity.js'
       - 'benchmark_ui_move_apply.js'
+      - 'benchmark_attack_count_parity.js'
       - '.github/workflows/stonefish-v5-pro-benchmark.yml'
 
 concurrency:
@@ -48,6 +50,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  attack-count-parity:
+    name: Pro attack-count map parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compare full attack maps with released reverse-ray counts
+        run: node benchmark_attack_count_parity.js
+
   ui-move-apply-parity:
     name: UI known-move apply parity
     runs-on: ubuntu-latest
