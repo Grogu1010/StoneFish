@@ -1,0 +1,30 @@
+name: Stonefish v5.5 testunit1 dev
+
+on:
+  pull_request:
+    paths:
+      - 'ARMX_preview_fast.js'
+      - 'Stonefish_v5_5_testunit1.js'
+      - 'benchmark_v5_5_testunit1.js'
+      - 'DEV_V5_5_TESTUNIT1.md'
+      - '.github/workflows/v5-5-testunit1.yml'
+  workflow_dispatch:
+
+jobs:
+  dev-testunit1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check ARMX-preview
+        run: node --check ARMX_preview_fast.js
+      - name: Syntax check v5.5 testunit1
+        run: node --check Stonefish_v5_5_testunit1.js
+      - name: Run v5.5 dev benchmark
+        env:
+          SAMPLES: '8'
+          GAMES: '2'
+        run: node benchmark_v5_5_testunit1.js
