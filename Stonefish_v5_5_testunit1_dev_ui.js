@@ -3,7 +3,7 @@
 // in test-worker.js so ARMX-on vs ARMX-off can be compared directly.
 
 models.v55test1noarmx = {
-  name: 'Stonefish_v5.5 testunit1 (No ARMX)',
+  name: '5.5(testunit1) (no ARMX)',
   trait: 'Development-only v5.5 control build',
   subtitle: 'Native v5.5 Guarded-PVS with Refutation Guard, but with the separate ARMX-preview opponent model completely disabled.',
   logic: [
@@ -16,7 +16,7 @@ models.v55test1noarmx = {
 };
 
 models.v55test1 = {
-  name: 'Stonefish_v5.5 testunit1 (ARMX-preview)',
+  name: '5.5(testunit1)',
   trait: 'Development-only v5.5 + ARMX-preview test unit',
   subtitle: 'The same native v5.5 host plus a separate per-game ARMX-preview model that learns the current opponent’s tendencies and adjusts close candidate scores.',
   logic: [
