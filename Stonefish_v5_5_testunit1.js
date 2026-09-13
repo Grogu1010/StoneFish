@@ -9,7 +9,7 @@ const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   name: 'Stonefish v5.5 testunit1',
   base: 'Stonefish v5 Pro',
   knowledgeBase: 'Stonefish v5 Pro',
-  search: 'ARMX-guided Guarded PVS',
+  search: 'Guarded PVS',
   nativeFeature: 'reply-pressure safety',
   armx: 'ARMX-preview',
 });
