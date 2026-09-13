@@ -33,6 +33,23 @@ function stonefishV55GuardStaticScore(game, perspective) {
   return score;
 }
 
+function stonefishV55GuardEntryBefore(a, b) {
+  if (a.score < b.score) return true;
+  if (a.score > b.score) return false;
+  return a.index < b.index;
+}
+
+function stonefishV55GuardKeepWorst(screened, entry, limit) {
+  if (limit <= 0) return;
+  const last = screened.length ? screened[screened.length - 1] : null;
+  if (screened.length >= limit && last && !stonefishV55GuardEntryBefore(entry, last)) return;
+
+  let at = screened.length;
+  while (at > 0 && stonefishV55GuardEntryBefore(entry, screened[at - 1])) at -= 1;
+  screened.splice(at, 0, entry);
+  if (screened.length > limit) screened.pop();
+}
+
 function stonefishV55GuardNovelReplies(game, rootMove, perspective) {
   const historyDepth = game.historyStack.length;
   try {
@@ -40,13 +57,16 @@ function stonefishV55GuardNovelReplies(game, rootMove, perspective) {
     const legal = game.fastMoves();
     if (!legal.length) return { legal: 0, beam: 0, replies: [] };
 
-    const ordered = legal
-      .map((move, index) => ({ move, index, order: stonefishV5ProSpeedMoveOrder(game, move) }))
-      .sort((a, b) => (b.order - a.order) || (a.index - b.index));
     const beam = typeof stonefishV55SearchWidth === 'function'
       ? stonefishV55SearchWidth(game, 4, legal)
       : Math.min(4, legal.length);
-    const selected = new Set(ordered.slice(0, beam).map(entry => entry.move));
+    const orderedBeam = typeof stonefishV55TopOrdered === 'function'
+      ? stonefishV55TopOrdered(game, legal, beam, null)
+      : legal
+        .map((move, index) => ({ move, index, order: stonefishV5ProSpeedMoveOrder(game, move) }))
+        .sort((a, b) => (b.order - a.order) || (a.index - b.index))
+        .slice(0, beam);
+    const selected = new Set(orderedBeam.map(entry => entry.move));
     const screened = [];
 
     for (let i = 0; i < legal.length; i += 1) {
@@ -55,14 +75,17 @@ function stonefishV55GuardNovelReplies(game, rootMove, perspective) {
       game.fastApply(reply);
       const score = stonefishV55GuardStaticScore(game, perspective);
       game.fastUndo();
-      screened.push({ reply, score, index: i });
+      stonefishV55GuardKeepWorst(
+        screened,
+        { reply, score, index: i },
+        STONEFISH_V5_5_REFUTATION_GUARD.maxScreenedReplies
+      );
     }
 
-    screened.sort((a, b) => (a.score - b.score) || (a.index - b.index));
     return {
       legal: legal.length,
       beam,
-      replies: screened.slice(0, STONEFISH_V5_5_REFUTATION_GUARD.maxScreenedReplies),
+      replies: screened,
     };
   } finally {
     while (game.historyStack.length > historyDepth) game.fastUndo();
