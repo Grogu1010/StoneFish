@@ -233,12 +233,14 @@ function stonefishV55FastCandidates(game) {
     raw,
     tactical: null,
     knowledge: 0,
+    conversion: 0,
     heritageMatch: !!heritageMove && stonefishV5SameMove(raw, heritageMove),
     scout: stonefishV5ProFastScoutScore(game, raw, bookMove, heritageMove, perspective),
     preliminary: -Infinity,
     deep: null,
     score: -Infinity,
   }));
+  scored.v55Context = { legal, perspective, bookMove, heritageMove };
 
   scored.sort((a, b) => {
     if (Math.abs(b.scout - a.scout) > 1e-9) return b.scout - a.scout;
@@ -252,11 +254,11 @@ function stonefishV55FastCandidates(game) {
     const heritageBoost = entry.heritageMatch
       ? STONEFISH_V5_WEIGHTS.heritage * STONEFISH_V5_5_SEARCH.heritageMultiplier
       : 0;
-    const conversion = stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+    entry.conversion = stonefishV5ProConversionUrgency(game, entry.raw, perspective);
     entry.preliminary = entry.tactical * STONEFISH_V5_5_SEARCH.tacticalWeight
       + entry.scout * STONEFISH_V5_5_SEARCH.scoutWeight
       + heritageBoost
-      + conversion * STONEFISH_V5_5_SEARCH.conversionWeight;
+      + entry.conversion * STONEFISH_V5_5_SEARCH.conversionWeight;
     entry.score = entry.preliminary;
   }
   for (let i = n; i < scored.length; i += 1) {
@@ -273,10 +275,11 @@ function stonefishV55FastCandidates(game) {
 
 function stonefishV55FinishCandidates(game, ranked) {
   if (!ranked.length) return [];
-  const perspective = game.side;
-  const legal = game.fastMoves();
-  const bookMove = stonefishV45BookMove(game, 1, legal);
-  const heritageMove = stonefishV5HeritageMove(game);
+  const context = ranked.v55Context || null;
+  const perspective = context ? context.perspective : game.side;
+  const legal = context ? context.legal : ranked.map(entry => entry.raw);
+  const bookMove = context ? context.bookMove : stonefishV45BookMove(game, 1, legal);
+  const heritageMove = context ? context.heritageMove : stonefishV5HeritageMove(game);
   const finalists = Math.min(STONEFISH_V5_5_SEARCH.rootCandidates, ranked.length);
   const oldTT = STONEFISH_V5_5_ACTIVE_TT;
   STONEFISH_V5_5_ACTIVE_TT = new Map();
@@ -287,8 +290,7 @@ function stonefishV55FinishCandidates(game, ranked) {
       entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
         ? 0
         : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
-      entry.preliminary = entry.tactical + entry.knowledge
-        + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
+      entry.preliminary = entry.tactical + entry.knowledge + entry.conversion;
       entry.refutationGuardCriticalReply = null;
       entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
       entry.score = stonefishV55RecomputeFinalScore(entry);
