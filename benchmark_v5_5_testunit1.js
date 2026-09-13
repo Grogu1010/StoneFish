@@ -58,6 +58,16 @@ function cloneGame(source) {
   return game;
 }
 
+function clearSharedEngineCaches() {
+  // Pro's speed layer uses global position-keyed caches. Without clearing these,
+  // measuring Pro first warms data that v5.5 can reuse and makes the second model
+  // look artificially fast. Per-game runtime memos live on each cloned Chess object
+  // and therefore do not need clearing here.
+  if (typeof STONEFISH_V5_PRO_POSITION_CACHE !== 'undefined') STONEFISH_V5_PRO_POSITION_CACHE.clear();
+  if (typeof STONEFISH_V5_PRO_CONTEXT_CACHE !== 'undefined') STONEFISH_V5_PRO_CONTEXT_CACHE.clear();
+  if (typeof STONEFISH_V5_PRO_ADAPTIVE_CACHE !== 'undefined') STONEFISH_V5_PRO_ADAPTIVE_CACHE.clear();
+}
+
 function play(game, move) {
   return move ? game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' }) : null;
 }
@@ -81,7 +91,9 @@ function assertProFallbackParity() {
   const saved = globalThis.armxPreviewReview;
   try {
     globalThis.armxPreviewReview = undefined;
+    clearSharedEngineCaches();
     const pro = withSeed(0x5150, () => getStonefishV5ProMove(new Chess()));
+    clearSharedEngineCaches();
     const v55 = withSeed(0x5150, () => getStonefishV55Testunit1Move(new Chess()));
     if (moveKey(pro) !== moveKey(v55)) throw new Error(`Without ARMX, v5.5 must equal v5 Pro: ${moveKey(pro)} vs ${moveKey(v55)}`);
   } finally {
@@ -120,20 +132,46 @@ function buildSamplePositions(count) {
   return positions;
 }
 
+function timedMove(seed, fn) {
+  clearSharedEngineCaches();
+  const start = performance.now();
+  let move;
+  withSeed(seed, () => { move = fn(); });
+  return { move, ms: performance.now() - start };
+}
+
 function latencyAndBehavior(samples) {
   let proMs = 0, v55Ms = 0, changed = 0, overrides = 0, nodes = 0;
+
+  // Warm both code paths before timing. Caches are cleared around each warmup so
+  // only JIT/code warmup is shared, not position evaluation data.
+  if (samples.length) {
+    clearSharedEngineCaches();
+    withSeed(0x7701, () => getStonefishV5ProMove(cloneGame(samples[0])));
+    clearSharedEngineCaches();
+    withSeed(0x7702, () => getStonefishV55Testunit1Move(cloneGame(samples[0])));
+    clearSharedEngineCaches();
+  }
+
   for (let i = 0; i < samples.length; i += 1) {
     const a = cloneGame(samples[i]);
     const b = cloneGame(samples[i]);
     const seed = 0x9000 + i;
-    let proMove, v55Move;
-    let start = performance.now();
-    withSeed(seed, () => { proMove = getStonefishV5ProMove(a); });
-    proMs += performance.now() - start;
-    start = performance.now();
-    withSeed(seed, () => { v55Move = getStonefishV55Testunit1Move(b); });
-    v55Ms += performance.now() - start;
-    if (moveKey(proMove) !== moveKey(v55Move)) changed += 1;
+    let proResult, v55Result;
+
+    // Alternate measurement order to balance any residual runtime/CPU effects.
+    if (i % 2 === 0) {
+      proResult = timedMove(seed, () => getStonefishV5ProMove(a));
+      v55Result = timedMove(seed, () => getStonefishV55Testunit1Move(b));
+    } else {
+      v55Result = timedMove(seed, () => getStonefishV55Testunit1Move(b));
+      proResult = timedMove(seed, () => getStonefishV5ProMove(a));
+    }
+
+    proMs += proResult.ms;
+    v55Ms += v55Result.ms;
+    if (moveKey(proResult.move) !== moveKey(v55Result.move)) changed += 1;
+
     const review = stonefishV55Testunit1LastARMX();
     if (!review || !review.connected) throw new Error('ARMX-preview was not connected');
     if (review.nodes > ARMX_PREVIEW.maxNodes) throw new Error(`ARMX node budget exceeded: ${review.nodes}`);
