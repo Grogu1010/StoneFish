@@ -54,23 +54,35 @@ function cheapDrawReached(game) {
 function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000) {
   const game = new Chess();
   let plies = 0;
+  const metrics = {
+    [whiteModelKey]: { moves: 0, thinkMs: 0 },
+    [blackModelKey]: { moves: 0, thinkMs: 0 }
+  };
 
   while (plies < maxPlies) {
     const modelKey = game.turn() === 'w' ? whiteModelKey : blackModelKey;
     const getMove = workerModels[modelKey];
     if (!getMove) throw new Error(`Unknown model: ${modelKey}`);
 
+    const started = performance.now();
     const move = getMove(game);
+    const elapsed = performance.now() - started;
     if (!move) {
-      return game.in_check() ? (game.turn() === 'w' ? 'black' : 'white') : 'draw';
+      return {
+        outcome: game.in_check() ? (game.turn() === 'w' ? 'black' : 'white') : 'draw',
+        metrics,
+        plies
+      };
     }
 
+    metrics[modelKey].moves += 1;
+    metrics[modelKey].thinkMs += elapsed;
     commitChosenMove(game, move);
     plies += 1;
-    if (cheapDrawReached(game)) return 'draw';
+    if (cheapDrawReached(game)) return { outcome: 'draw', metrics, plies };
   }
 
-  return 'draw';
+  return { outcome: 'draw', metrics, plies };
 }
 
 self.onmessage = event => {
