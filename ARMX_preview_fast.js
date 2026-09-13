@@ -9,7 +9,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt2',
+  version: 'preview-adapt3',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 2,
@@ -21,6 +21,12 @@ const ARMX_PREVIEW = Object.freeze({
   effectScale: 360,
   maxHostGap: 260,
   maxDeepSacrifice: 55,
+  minOverrideEvidence: 3.5,
+  minOverrideConfidence: 0.65,
+  minAdaptedLead: 12,
+  earlyOverridePlies: 20,
+  earlyOverrideEvidence: 5,
+  earlyOverrideConfidence: 0.90,
   shortHorizonPlies: 2,
   longHorizonPlies: 4,
 });
@@ -284,12 +290,13 @@ function armxPreviewCandidateReport(game, entry, profile) {
     const choice = armxPreviewOpponentChoiceRate(profile, feature);
     const effect = armxPreviewEffect(profile.opponentEffects, feature);
     if (choice.evidence < 2 || effect.evidence < ARMX_PREVIEW.minEvidence) continue;
-    // Positive opponent-effect means that when they chose this behavior, our
-    // position subsequently improved. A candidate that offers a behavior they
-    // often choose therefore receives an evidence-weighted boost.
-    const contribution = choice.rate * effect.value * ARMX_PREVIEW.opponentSignalWeight;
+    // Choice propensity matters twice: a behavior the opponent only selects one
+    // time in four should not dominate a root decision merely because its past
+    // outcome was dramatic. Frequently chosen behaviors retain strong influence.
+    const propensity = choice.rate * choice.rate;
+    const contribution = propensity * effect.value * ARMX_PREVIEW.opponentSignalWeight;
     signal += contribution;
-    evidence += Math.min(2.5, choice.evidence * 0.35 + effect.evidence * 0.25);
+    evidence += Math.min(2.5, (choice.evidence * 0.35 + effect.evidence * 0.25) * Math.max(0.25, choice.rate));
     if (Math.abs(contribution) >= 0.08) {
       reasons.push(`opp-${feature}:${Math.round(choice.rate * 100)}%/${effect.value > 0 ? '+' : ''}${effect.value.toFixed(2)}`);
     }
