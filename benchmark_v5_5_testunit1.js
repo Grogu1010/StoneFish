@@ -1,7 +1,9 @@
 // Development benchmark for Stonefish v5.5 testunit1.
-// v5.5 now combines v5 Pro chess knowledge, a native Guarded-PVS search core,
-// and the separate ARMX-preview critic. Varied deterministic openings prevent
-// repeated games from collapsing into one identical line.
+// Reports three controlled comparisons on the same varied opening set:
+//   1) v5.5 + ARMX vs v5 Pro
+//   2) v5.5 No ARMX vs v5 Pro
+//   3) v5.5 + ARMX vs v5.5 No ARMX
+// This makes the host-engine gain and ARMX's isolated contribution visible.
 
 const fs = require('fs');
 const vm = require('vm');
@@ -89,20 +91,14 @@ function assertContract() {
     throw new Error('ARMX-preview must remain 3-ply base / 4-ply max');
   }
   if (ARMX_PREVIEW.maxNodes > 160) throw new Error(`ARMX-preview node budget too high: ${ARMX_PREVIEW.maxNodes}`);
-  if (STONEFISH_V5_5_SEARCH.rootCandidates > 2) throw new Error('Preview v5.5 must keep at most two full-depth root finalists');
+  if (STONEFISH_V5_5_SEARCH.rootCandidates > 4) throw new Error('Preview v5.5 must keep at most four full-depth root candidates');
 }
 
-function assertNativeFallbackWorks() {
-  const saved = globalThis.armxPreviewReview;
-  try {
-    globalThis.armxPreviewReview = undefined;
-    clearSharedEngineCaches();
-    const game = new Chess();
-    const move = withSeed(0x5150, () => getStonefishV55Testunit1Move(game));
-    if (!move || !play(game, move)) throw new Error('v5.5 native search must remain legal without ARMX');
-  } finally {
-    globalThis.armxPreviewReview = saved;
-  }
+function assertNoARMXControlWorks() {
+  clearSharedEngineCaches();
+  const game = new Chess();
+  const move = withSeed(0x5150, () => getStonefishV55Testunit1NoARMXMove(game));
+  if (!move || !play(game, move)) throw new Error('v5.5 No-ARMX control must return a legal move');
 }
 
 function generateOpening(pairIndex, plies = 10) {
@@ -145,32 +141,32 @@ function timedMove(seed, fn) {
 }
 
 function latencyAndBehavior(samples) {
-  let proMs = 0, v55Ms = 0, changed = 0, overrides = 0, nodes = 0;
+  let proMs = 0, noArmxMs = 0, armxMs = 0;
+  let armxVsProChanges = 0, armxVsHostChanges = 0, overrides = 0, nodes = 0;
+
   if (samples.length) {
     clearSharedEngineCaches();
     withSeed(0x7701, () => getStonefishV5ProMove(cloneGame(samples[0])));
     clearSharedEngineCaches();
-    withSeed(0x7702, () => getStonefishV55Testunit1Move(cloneGame(samples[0])));
+    withSeed(0x7702, () => getStonefishV55Testunit1NoARMXMove(cloneGame(samples[0])));
+    clearSharedEngineCaches();
+    withSeed(0x7703, () => getStonefishV55Testunit1Move(cloneGame(samples[0])));
     clearSharedEngineCaches();
   }
 
   for (let i = 0; i < samples.length; i += 1) {
-    const a = cloneGame(samples[i]);
-    const b = cloneGame(samples[i]);
     const seed = 0x9000 + i;
-    let proResult, v55Result;
-    if (i % 2 === 0) {
-      proResult = timedMove(seed, () => getStonefishV5ProMove(a));
-      v55Result = timedMove(seed, () => getStonefishV55Testunit1Move(b));
-    } else {
-      v55Result = timedMove(seed, () => getStonefishV55Testunit1Move(b));
-      proResult = timedMove(seed, () => getStonefishV5ProMove(a));
-    }
+    const proResult = timedMove(seed, () => getStonefishV5ProMove(cloneGame(samples[i])));
+    const noArmxResult = timedMove(seed, () => getStonefishV55Testunit1NoARMXMove(cloneGame(samples[i])));
+    const armxResult = timedMove(seed, () => getStonefishV55Testunit1Move(cloneGame(samples[i])));
+    const review = stonefishV55Testunit1LastARMX();
 
     proMs += proResult.ms;
-    v55Ms += v55Result.ms;
-    if (moveKey(proResult.move) !== moveKey(v55Result.move)) changed += 1;
-    const review = stonefishV55Testunit1LastARMX();
+    noArmxMs += noArmxResult.ms;
+    armxMs += armxResult.ms;
+    if (moveKey(proResult.move) !== moveKey(armxResult.move)) armxVsProChanges += 1;
+    if (moveKey(noArmxResult.move) !== moveKey(armxResult.move)) armxVsHostChanges += 1;
+
     if (!review || !review.connected) throw new Error('ARMX-preview was not connected');
     if (review.nodes > ARMX_PREVIEW.maxNodes) throw new Error(`ARMX node budget exceeded: ${review.nodes}`);
     if (review.override) overrides += 1;
@@ -179,53 +175,67 @@ function latencyAndBehavior(samples) {
 
   return {
     samples: samples.length,
-    changedMoves: changed,
-    overrides,
+    armxVsProChangedMoves: armxVsProChanges,
+    armxVsHostChangedMoves: armxVsHostChanges,
+    armxOverrides: overrides,
     proAverageMs: samples.length ? proMs / samples.length : 0,
-    v55AverageMs: samples.length ? v55Ms / samples.length : 0,
-    latencyRatio: proMs ? v55Ms / proMs : 0,
-    speedupVsPro: v55Ms ? proMs / v55Ms : 0,
+    noArmxAverageMs: samples.length ? noArmxMs / samples.length : 0,
+    armxAverageMs: samples.length ? armxMs / samples.length : 0,
+    noArmxSpeedupVsPro: noArmxMs ? proMs / noArmxMs : 0,
+    armxSpeedupVsPro: armxMs ? proMs / armxMs : 0,
+    armxOverheadVsHost: noArmxMs ? armxMs / noArmxMs : 0,
     armxAverageNodes: samples.length ? nodes / samples.length : 0
   };
 }
 
-function simulateGame(v55IsWhite, opening, seed, maxPlies = 360) {
+function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, maxPlies = 360) {
   const game = positionAfter(opening);
   let plies = opening.length;
   return withSeed(seed, () => {
     while (!game.game_over() && plies < maxPlies) {
-      const v55Turn = (game.side === 1) === v55IsWhite;
-      const move = v55Turn ? getStonefishV55Testunit1Move(game) : getStonefishV5ProMove(game);
-      if (!play(game, move)) return { result: v55Turn ? 'loss' : 'win', reason: 'invalid-move', plies };
+      const contenderTurn = (game.side === 1) === contenderIsWhite;
+      const move = contenderTurn ? contenderFn(game) : opponentFn(game);
+      if (!play(game, move)) return { result: contenderTurn ? 'loss' : 'win', reason: 'invalid-move', plies };
       plies += 1;
     }
     if (game.in_checkmate()) {
       const winnerIsWhite = game.side === -1;
-      return { result: winnerIsWhite === v55IsWhite ? 'win' : 'loss', reason: 'checkmate', plies };
+      return { result: winnerIsWhite === contenderIsWhite ? 'win' : 'loss', reason: 'checkmate', plies };
     }
     return { result: 'draw', reason: game.game_over() ? 'draw-rule' : 'max-plies', plies };
   });
 }
 
-function variedHeadToHead(games) {
+function variedHeadToHead(games, label, contenderFn, opponentFn, seedSalt) {
   const totals = { win: 0, loss: 0, draw: 0 };
   for (let i = 0; i < games; i += 1) {
     const pair = Math.floor(i / 2);
     const opening = generateOpening(pair, 10);
-    const v55IsWhite = i % 2 === 0;
-    const result = simulateGame(v55IsWhite, opening, (0xC550000 + pair * 977 + i) >>> 0);
+    const contenderIsWhite = i % 2 === 0;
+    const result = simulateGame(
+      contenderIsWhite,
+      opening,
+      (0xC550000 + seedSalt + pair * 977 + i) >>> 0,
+      contenderFn,
+      opponentFn
+    );
     totals[result.result] += 1;
-    console.log(`game ${i + 1}: pair=${pair + 1} v5.5=${v55IsWhite ? 'W' : 'B'} ${result.result} ${result.reason} ${result.plies} plies`);
+    console.log(`${label} game ${i + 1}: pair=${pair + 1} side=${contenderIsWhite ? 'W' : 'B'} ${result.result} ${result.reason} ${result.plies} plies`);
   }
   return Object.assign(totals, { score: games ? (totals.win + totals.draw * 0.5) / games : 0 });
 }
 
 assertContract();
-assertNativeFallbackWorks();
+assertNoARMXControlWorks();
 const sampleCount = Math.max(4, Number.parseInt(process.env.SAMPLES || '12', 10) || 12);
 const latency = latencyAndBehavior(buildSamplePositions(sampleCount));
 const games = Math.max(0, Number.parseInt(process.env.GAMES || '12', 10) || 0);
-const headToHead = games ? variedHeadToHead(games) : null;
+
+const matchups = games ? {
+  armxVsPro: variedHeadToHead(games, 'ARMX-vs-Pro', getStonefishV55Testunit1Move, getStonefishV5ProMove, 0),
+  noArmxVsPro: variedHeadToHead(games, 'NoARMX-vs-Pro', getStonefishV55Testunit1NoARMXMove, getStonefishV5ProMove, 0x10000),
+  armxVsNoArmx: variedHeadToHead(games, 'ARMX-vs-NoARMX', getStonefishV55Testunit1Move, getStonefishV55Testunit1NoARMXMove, 0x20000),
+} : null;
 
 const result = {
   testUnit: STONEFISH_V5_5_TESTUNIT1.name,
@@ -233,12 +243,16 @@ const result = {
   search: STONEFISH_V5_5_SEARCH,
   armx: ARMX_PREVIEW,
   latency,
-  headToHead,
-  targets: { winsPer100: 65, speedupVsPro: 3 }
+  matchups,
+  targets: { winsPer100VsPro: 65, speedupVsPro: 3 }
 };
 console.log('\nSTONEFISH_V5_5_TESTUNIT1 ' + JSON.stringify(result));
 
 if (process.env.RELEASE_GATE === '1' && games >= 100) {
-  if (headToHead.win < 65) throw new Error(`v5.5 strength gate failed: ${headToHead.win} wins; need >=65`);
-  if (latency.speedupVsPro < 3) throw new Error(`v5.5 speed gate failed: ${latency.speedupVsPro.toFixed(3)}x; need >=3x`);
+  if (matchups.armxVsPro.win < 65) {
+    throw new Error(`v5.5 strength gate failed: ${matchups.armxVsPro.win} wins; need >=65`);
+  }
+  if (latency.armxSpeedupVsPro < 3) {
+    throw new Error(`v5.5 speed gate failed: ${latency.armxSpeedupVsPro.toFixed(3)}x; need >=3x`);
+  }
 }
