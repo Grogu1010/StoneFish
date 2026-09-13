@@ -10,6 +10,7 @@ on:
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
       - 'test-worker.js'
+      - 'Stonefish_parallel_tests.js'
       - 'benchmark_v5_5_testunit1.js'
       - 'benchmark_v5_5_teacher.js'
       - 'DEV_V5_5_TESTUNIT1.md'
@@ -21,6 +22,7 @@ on:
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
       - 'test-worker.js'
+      - 'Stonefish_parallel_tests.js'
       - 'benchmark_v5_5_testunit1.js'
       - 'benchmark_v5_5_teacher.js'
       - 'DEV_V5_5_TESTUNIT1.md'
@@ -42,6 +44,10 @@ jobs:
         run: node --check Stonefish_v5_5_search.js
       - name: Syntax check v5.5 testunit1
         run: node --check Stonefish_v5_5_testunit1.js
+      - name: Syntax check browser dev-test worker
+        run: node --check test-worker.js
+      - name: Syntax check parallel dev-test UI
+        run: node --check Stonefish_parallel_tests.js
       - name: Syntax check v5.5 teacher benchmark
         run: node --check benchmark_v5_5_teacher.js
       - name: Run v5.5 teacher benchmark
