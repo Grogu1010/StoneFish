@@ -91,9 +91,6 @@ function stonefishV55OrderedEntryBefore(a, b) {
   return a.index < b.index;
 }
 
-// Exact v5 Pro speed-order score plus the already-computed gives-check bit.
-// Keeping the check result on the entry lets LMR reuse it instead of applying
-// the move a second time just to ask the same tactical question.
 function stonefishV55MoveOrderInfo(game, move, enemyPassers = null) {
   const givesCheck = Boolean(game.fastGivesCheck && game.fastGivesCheck(move));
   if (typeof STONEFISH_V5_PIECE === 'undefined') {
@@ -119,16 +116,12 @@ function stonefishV55MoveOrderInfo(game, move, enemyPassers = null) {
       if (move.to === promotionSq) score += danger * 6;
     }
   } else if (typeof stonefishV5ProSpeedMoveOrder === 'function') {
-    // Compatibility fallback for unusual harnesses that omit the passer helpers.
     score = stonefishV5ProSpeedMoveOrder(game, move);
   }
 
   return { order: score, givesCheck };
 }
 
-// Exact replacement for full sort + slice when the selective beam is tiny.
-// It evaluates the same ordering score for every legal move and keeps the same
-// order/tie-break, but only maintains the top K entries instead of sorting N.
 function stonefishV55TopOrdered(game, legal, width, injectedMove = null, enemyPassers = null) {
   const selected = [];
   let injectedEntry = null;
@@ -340,17 +333,30 @@ function stonefishV55RecomputeFinalScore(entry) {
   return Math.max(selective, heritageFloor);
 }
 
+function stonefishV55EntryUci(game, entry) {
+  if (entry.uci) return entry.uci;
+  entry.uci = stonefishV45RawUci(game, entry.raw);
+  return entry.uci;
+}
+
 function stonefishV55SortFinalScores(game, ranked) {
-  ranked.sort((a, b) => {
+  const active = [];
+  const inactive = [];
+  for (let i = 0; i < ranked.length; i += 1) {
+    const entry = ranked[i];
+    if (Number.isFinite(entry.score)) active.push(entry);
+    else inactive.push(entry);
+  }
+  active.sort((a, b) => {
     if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
-    return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
+    return stonefishV55EntryUci(game, a).localeCompare(stonefishV55EntryUci(game, b));
   });
+  inactive.sort((a, b) => stonefishV55EntryUci(game, a).localeCompare(stonefishV55EntryUci(game, b)));
+  ranked.length = 0;
+  ranked.push(...active, ...inactive);
   return ranked;
 }
 
-// Algebraically identical to stonefishV5BestResponseGain, but each response's
-// gives-check result is computed once instead of once inside fastIsMateMove and
-// then a second time for the +18 bonus.
 function stonefishV55BestResponseGain(game, responses) {
   let best = 0;
   for (let i = 0; i < responses.length; i += 1) {
@@ -371,9 +377,6 @@ function stonefishV55BestResponseGain(game, responses) {
   return best;
 }
 
-// Exact v5 three-ply tactical arithmetic with duplicate mate/check probes folded
-// together. v5 Pro keeps its original scorer; only the v5.5 root candidate pass
-// uses this implementation.
 function stonefishV55TacticalScore(game, raw) {
   const historyDepth = game.historyStack.length;
   let immediate = STONEFISH_V5_PIECE[raw.captured] || 0;
@@ -410,6 +413,25 @@ function stonefishV55TacticalScore(game, raw) {
   }
 }
 
+function stonefishV55ScoutBefore(a, b) {
+  if (Math.abs(b.scout - a.scout) > 1e-9) return a.scout > b.scout;
+  return a.uci < b.uci;
+}
+
+function stonefishV55SelectSemifinalists(scored, limit) {
+  const top = [];
+  for (let i = 0; i < scored.length; i += 1) {
+    const entry = scored[i];
+    const last = top.length ? top[top.length - 1] : null;
+    if (top.length >= limit && last && !stonefishV55ScoutBefore(entry, last)) continue;
+    let at = top.length;
+    while (at > 0 && stonefishV55ScoutBefore(entry, top[at - 1])) at -= 1;
+    top.splice(at, 0, entry);
+    if (top.length > limit) top.pop();
+  }
+  return top;
+}
+
 function stonefishV55FastCandidates(game) {
   const legal = game.fastMoves();
   if (!legal.length) return [];
@@ -418,6 +440,7 @@ function stonefishV55FastCandidates(game) {
   const heritageMove = stonefishV5HeritageMove(game);
   const scored = legal.map(raw => ({
     raw,
+    uci: stonefishV45RawUci(game, raw),
     tactical: null,
     knowledge: 0,
     conversion: 0,
@@ -429,12 +452,21 @@ function stonefishV55FastCandidates(game) {
   }));
   scored.v55Context = { legal, perspective, bookMove, heritageMove };
 
-  scored.sort((a, b) => {
-    if (Math.abs(b.scout - a.scout) > 1e-9) return b.scout - a.scout;
-    return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
-  });
-
   const n = Math.min(STONEFISH_V5_5_SEARCH.semifinalists, scored.length);
+  const semifinalists = stonefishV55SelectSemifinalists(scored, n);
+  const semifinalistSet = new Set(semifinalists);
+  let write = 0;
+  for (let i = 0; i < semifinalists.length; i += 1) scored[write++] = semifinalists[i];
+  const original = legal.length === scored.length ? scored.slice() : scored;
+  // `scored` was just rewritten at the front, so recover the untouched entries
+  // from the legal-move identity rather than relying on the old array order.
+  const byRaw = new Map();
+  for (let i = 0; i < scored.length; i += 1) byRaw.set(stonefishV55RawKey(scored[i].raw), scored[i]);
+  for (let i = 0; i < legal.length; i += 1) {
+    const entry = byRaw.get(stonefishV55RawKey(legal[i]));
+    if (entry && !semifinalistSet.has(entry)) scored[write++] = entry;
+  }
+
   for (let i = 0; i < n; i += 1) {
     const entry = scored[i];
     entry.tactical = stonefishV55TacticalScore(game, entry.raw);
@@ -453,10 +485,15 @@ function stonefishV55FastCandidates(game) {
     scored[i].score = -Infinity;
   }
 
-  scored.sort((a, b) => {
+  const active = scored.slice(0, n);
+  const inactive = scored.slice(n);
+  active.sort((a, b) => {
     if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
-    return stonefishV45RawUci(game, a.raw).localeCompare(stonefishV45RawUci(game, b.raw));
+    return a.uci.localeCompare(b.uci);
   });
+  inactive.sort((a, b) => a.uci.localeCompare(b.uci));
+  scored.length = 0;
+  scored.push(...active, ...inactive);
   return scored;
 }
 
@@ -500,9 +537,6 @@ function stonefishV55FinishCandidates(game, ranked) {
   STONEFISH_V5_5_ACTIVE_TT = rootTT;
 
   try {
-    // Root knowledge is cheap relative to the five-ply search. Compute it for all
-    // four finalists first so the lower finalists can be probed against the exact
-    // score needed to enter the current top two.
     for (let i = 0; i < finalists; i += 1) {
       const entry = ranked[i];
       entry.knowledge = Math.abs(entry.tactical) >= STONEFISH_V5_MATE * 1.5
@@ -539,9 +573,6 @@ function stonefishV55FinishCandidates(game, ranked) {
         if (probe > alpha + STONEFISH_V5_5_SEARCH.pvsEpsilon * 0.5) {
           needsFullSearch = true;
         } else {
-          // The zero-window search proved this candidate cannot enter the exact
-          // top two under the same final-score formula. ARMX only consumes those
-          // exact top two, so no full search is needed here.
           entry.rootProbeOnly = true;
           entry.deep = probe;
           entry.score = -Infinity;
