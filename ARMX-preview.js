@@ -9,13 +9,16 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt6-mature3',
+  version: 'preview-adapt6-positive3',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 3,
   baseCandidateLimit: 2,
   expandedCandidateMinPlies: 36,
   expandedCandidateMinEvidence: 5.5,
+  thirdCandidateMinSignal: 0.20,
+  thirdCandidateMinConfidence: 0.90,
+  thirdCandidateMinEvidence: 5.5,
   minEvidence: 1.25,
   fullConfidenceEvidence: 5.5,
   maxMultiplierDelta: 0.18,
@@ -410,11 +413,16 @@ function armxPreviewProfileNotes(profile) {
 
 function armxPreviewReview(game, candidates, perspective = game.side) {
   const profile = armxPreviewSyncProfile(game, perspective);
-  const reviewLimit = armxPreviewProfileMatureForThirdCandidate(profile)
-    ? ARMX_PREVIEW.candidateLimit
-    : ARMX_PREVIEW.baseCandidateLimit;
+  const expanded = armxPreviewProfileMatureForThirdCandidate(profile);
+  const reviewLimit = expanded ? ARMX_PREVIEW.candidateLimit : ARMX_PREVIEW.baseCandidateLimit;
   const finalists = candidates.filter(entry => entry && Number.isFinite(entry.score)).slice(0, reviewLimit);
-  const reports = finalists.map(entry => armxPreviewCandidateReport(game, entry, profile));
+  const candidateReports = finalists.map(entry => armxPreviewCandidateReport(game, entry, profile));
+  const reports = candidateReports.filter((report, index) => {
+    if (index < ARMX_PREVIEW.baseCandidateLimit) return true;
+    return report.signal >= ARMX_PREVIEW.thirdCandidateMinSignal
+      && report.confidence >= ARMX_PREVIEW.thirdCandidateMinConfidence
+      && report.evidence >= ARMX_PREVIEW.thirdCandidateMinEvidence;
+  });
   reports.sort((a, b) => b.adaptedScore - a.adaptedScore);
   profile.notes = armxPreviewProfileNotes(profile);
 
@@ -427,7 +435,8 @@ function armxPreviewReview(game, candidates, perspective = game.side) {
     opponentMovesObserved: profile.opponentMoves,
     notes: profile.notes.slice(),
     candidateLimitUsed: reviewLimit,
-    expandedCandidateReview: reviewLimit > ARMX_PREVIEW.baseCandidateLimit,
+    expandedCandidateReview: expanded,
+    thirdCandidateAccepted: reports.length > ARMX_PREVIEW.baseCandidateLimit,
     candidatesReviewed: reports.length,
     reports,
     nodes: 0,
