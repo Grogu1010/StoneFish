@@ -11,7 +11,7 @@ const STONEFISH_V5_5_SEARCH = Object.freeze({
   name: 'Guarded PVS',
   semifinalists: 7,
   rootCandidates: 4,
-  branch: [0, 1, 2, 2, 4],
+  branch: [0, 1, 2, 1, 4],
   lmrMinDepth: 3,
   lmrAfterMove: 2,
   pvsEpsilon: 1e-6,
