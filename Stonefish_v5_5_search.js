@@ -1,14 +1,14 @@
-// Stonefish v5.5 native search core — ARMX-guided Guarded PVS.
+// Stonefish v5.5 native search core — Guarded PVS.
 //
-// v5.5 keeps v5 Pro's evaluation/knowledge and now retains four serious root
+// v5.5 keeps v5 Pro's evaluation/knowledge and retains four serious root
 // finalists, matching Pro's candidate coverage while using a much narrower
 // internal five-ply tree. True principal-variation probes, safe exact
 // transposition reuse and late-move reductions keep the wider root set cheap.
-// ARMX audits the actual provisional winner and may inject one missed opponent
-// reply for a targeted re-search.
+// The separate native Refutation Guard can inject a missed opponent reply into
+// this same search; ARMX-preview is no longer part of the search core.
 
 const STONEFISH_V5_5_SEARCH = Object.freeze({
-  name: 'ARMX-guided Guarded PVS',
+  name: 'Guarded PVS',
   semifinalists: 8,
   rootCandidates: 4,
   branch: [0, 1, 2, 2, 4],
@@ -177,7 +177,7 @@ function stonefishV55Minimax(game, depth, perspective, alpha, beta, plyFromRoot,
   return best;
 }
 
-function stonefishV55FivePlyScore(game, raw, perspective, criticalReply = null) {
+function stonefishV55FivePlyScore(game, raw, perspective, injectedReply = null) {
   const historyDepth = game.historyStack.length;
   STONEFISH_V5_5_LAST_SEARCH_STATS = {
     nodes: 0,
@@ -199,7 +199,7 @@ function stonefishV55FivePlyScore(game, raw, perspective, criticalReply = null) 
       -STONEFISH_V5_PRO_MATE,
       STONEFISH_V5_PRO_MATE,
       1,
-      criticalReply
+      injectedReply
     );
   } finally {
     while (game.historyStack.length > historyDepth) game.fastUndo();
@@ -289,7 +289,7 @@ function stonefishV55FinishCandidates(game, ranked) {
         : stonefishV5ProRootKnowledge(game, entry.raw, heritageMove, bookMove, perspective, entry.tactical);
       entry.preliminary = entry.tactical + entry.knowledge
         + stonefishV5ProConversionUrgency(game, entry.raw, perspective);
-      entry.armxCriticalReply = null;
+      entry.refutationGuardCriticalReply = null;
       entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, null);
       entry.score = stonefishV55RecomputeFinalScore(entry);
     }
@@ -301,19 +301,19 @@ function stonefishV55FinishCandidates(game, ranked) {
   return stonefishV55SortFinalScores(game, ranked);
 }
 
-function stonefishV55AuditCandidate(game, entry, perspective, criticalReply) {
-  if (!entry || !criticalReply) return entry;
-  entry.armxOriginalDeep = entry.deep;
-  entry.armxCriticalReply = criticalReply;
+function stonefishV55VerifyInjectedReply(game, entry, perspective, injectedReply) {
+  if (!entry || !injectedReply) return entry;
+  entry.refutationGuardOriginalDeep = entry.deep;
+  entry.refutationGuardCriticalReply = injectedReply;
   const oldTT = STONEFISH_V5_5_ACTIVE_TT;
   STONEFISH_V5_5_ACTIVE_TT = new Map();
   try {
-    entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, criticalReply);
+    entry.deep = stonefishV55FivePlyScore(game, entry.raw, perspective, injectedReply);
   } finally {
     STONEFISH_V5_5_ACTIVE_TT = oldTT;
   }
   entry.score = stonefishV55RecomputeFinalScore(entry);
-  entry.armxVerifiedDeep = entry.deep;
+  entry.refutationGuardVerifiedDeep = entry.deep;
   return entry;
 }
 
@@ -323,6 +323,6 @@ if (typeof globalThis !== 'undefined') {
   globalThis.stonefishV55FivePlyScore = stonefishV55FivePlyScore;
   globalThis.stonefishV55FastCandidates = stonefishV55FastCandidates;
   globalThis.stonefishV55FinishCandidates = stonefishV55FinishCandidates;
-  globalThis.stonefishV55AuditCandidate = stonefishV55AuditCandidate;
+  globalThis.stonefishV55VerifyInjectedReply = stonefishV55VerifyInjectedReply;
   globalThis.stonefishV55SortFinalScores = stonefishV55SortFinalScores;
 }
