@@ -9,7 +9,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt8-attribution',
+  version: 'preview-native-calibration',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 3,
@@ -28,11 +28,11 @@ const ARMX_PREVIEW = Object.freeze({
   acceptedResponseWeight: 0.75,
   effectScale: 360,
   episodeFeatureWeight: 0.55,
-  maxHostGap: 260,
-  maxDeepSacrifice: 55,
+  maxHostGap: 40,
+  maxDeepSacrifice: 25,
   minOverrideEvidence: 3.5,
   minOverrideConfidence: 0.65,
-  minAdaptedLead: 12,
+  minAdaptedLead: 2,
   earlyOverridePlies: 20,
   earlyOverrideEvidence: 5,
   earlyOverrideConfidence: 0.90,

@@ -20,6 +20,14 @@ Use 'GAMES=100 RELEASE_GATE=1 node benchmark_v5_5_testunit1.js' (environment-var
 
 ## Latest development checkpoint
 
+The first integrated 100-game confirmation scored **92W-7L-1D** No ARMX vs Pro, **91W-6L-3D** ARMX vs Pro, and **42W-44L-14D** ARMX vs No ARMX. ARMX was **4.683x** faster than Pro. All matchups used 50 distinct openings with color swaps.
+
+The current ARMX calibration matches the new centipawn score scale: require a 2-point adapted lead instead of 12, while tightening the native score gap to 40 and maximum deep-score sacrifice to 25. This changes only ARMX's voting gates; the native engine is frozen. Its 100-game confirmation scored **90W-8L-2D** vs Pro and **47W-43L-10D** vs No ARMX, with **4.702x** direct speed versus Pro. The unchanged No-ARMX control reproduced **92W-7L-1D**. Evidence is saved in `benchmarks/v5_5/armx-calibrated-100.json.gz`; the previous confirmation is `native-baseline-100.json.gz`. Both contain complete move histories and loaded-source fingerprints.
+
+The user's separate 10,000-game browser test of the preceding build supports the same diagnosis: ARMX scored 1,427W-1,485L-422D against No ARMX across 3,334 games; versus Pro, ARMX scored 3,082/3,333 wins and No ARMX 3,097/3,333. Treat those timings as uncontrolled, as requested. Focus further development on ARMX while keeping the base fixed. The **65 actual wins / 100 vs No ARMX gate is still unmet**, so 5.5 remains development-only.
+
+### Previous 40-game checkpoint
+
 Forty games per matchup, twenty distinct openings with color swaps:
 
 | Matchup | Wins | Losses | Draws | Speed vs Pro |

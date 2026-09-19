@@ -1,5 +1,7 @@
 # Active checkpoint — native PVS, September 19, 2026
 
+Latest ARMX calibration: 47W-43L-10D /100 vs No ARMX (up from 42W-44L-14D), 90W-8L-2D /100 vs Pro, 4.702x faster than Pro. The frozen No-ARMX native host reproduced 92W-7L-1D /100 vs Pro. User explicitly requested focusing only on ARMX now and supplied a 10,000-game browser baseline corroborating the old ARMX deficit. The only unmet gate is 65 actual wins /100 against No ARMX. Keep native engine fixed, improve genuine per-game learning, commit verified gains directly to main, and do not release prematurely. Detailed evidence and experiment status are in DEV_V5_5_TESTUNIT1.md.
+
 Read DEV_V5_5_TESTUNIT1.md first. It supersedes the architecture and "latest" results below. The rolling test unit now uses Stonefish_v5_5_native.js for BOTH variants, with ARMX-preview as the only difference. Native PVS has 37/40 actual wins vs unchanged Pro; ARMX has 37/40 vs Pro but only 17/40 vs the identical no-ARMX host. Speed passed in that forty-game run. All release targets remain mandatory. Commit verified progress directly to main; release only when all three 100-game win gates and speed pass. No blog post requested.
 
 The historical record follows for context; do not restore its old architecture as the current build.
