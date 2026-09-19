@@ -9,7 +9,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adapt7-response',
+  version: 'preview-adapt8-attribution',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 3,
@@ -166,15 +166,35 @@ function armxPreviewCheapFeatureSet(move) {
 
 function armxPreviewFreshStats() {
   const stats = Object.create(null);
-  for (const feature of ARMX_PREVIEW_FEATURES) stats[feature] = { weight: 0, impact: 0, positive: 0 };
+  for (const feature of ARMX_PREVIEW_FEATURES) {
+    stats[feature] = { weight: 0, impact: 0, positive: 0, observations: new Set() };
+  }
   return stats;
 }
 
-function armxPreviewNewProfile(perspective) {
+function armxPreviewNewProfile(perspective, game = null, observationStartPly = 0) {
   const replay = new Chess();
+  // Recover the actual starting board, including positions supplied with a
+  // partial history. Never pretend an arbitrary position began at move one.
+  if (game) {
+    replay.boardState = new Int8Array(game.boardState);
+    replay.side = game.side;
+    replay.castling = game.castling;
+    replay.ep = game.ep;
+    replay.halfmove = game.halfmove;
+    replay.fullmove = game.fullmove;
+    replay.kingSq = { 1: game.kingSq[1], '-1': game.kingSq[-1] };
+    replay.historyStack = (game.historyStack || []).slice();
+    replay.positionCounts = new Map(game.positionCounts);
+    replay._stonefishRuntimePositionKey = null;
+    while (replay.historyStack.length) replay.fastUndo();
+  }
   return {
     perspective,
     processedPlies: 0,
+    observationStartPly,
+    lastHistoryState: null,
+    initialPositionKey: replay.fastPositionKey(),
     replay,
     currentSnapshot: armxPreviewStateSnapshot(replay, perspective),
     pending: [],
@@ -185,11 +205,12 @@ function armxPreviewNewProfile(perspective) {
     opponentMoves: 0,
     opponentChoices: Object.create(null),
     opponentOpportunities: Object.create(null),
+    opponentOpportunityPlies: Object.create(null),
     notes: [],
   };
 }
 
-function armxPreviewRecordImpact(bucket, features, impact, weight) {
+function armxPreviewRecordImpact(bucket, features, impact, weight, observationId) {
   const normalized = armxPreviewClamp(impact / ARMX_PREVIEW.effectScale, -1, 1);
   for (const feature of features) {
     const row = bucket[feature];
@@ -197,6 +218,7 @@ function armxPreviewRecordImpact(bucket, features, impact, weight) {
     row.weight += weight;
     row.impact += normalized * weight;
     if (normalized > 0) row.positive += weight;
+    if (observationId !== undefined) row.observations.add(observationId);
   }
 }
 
@@ -231,11 +253,11 @@ function armxPreviewResolvePending(profile, currentPly, currentSnapshot = profil
     const bucket = event.bucket === 'accepted-response'
       ? profile.acceptedResponseEffects
       : (event.actor === profile.perspective ? profile.ourEffects : profile.opponentEffects);
-    armxPreviewRecordImpact(bucket, event.features, impact, event.weight);
+    armxPreviewRecordImpact(bucket, event.features, impact, event.weight, event.observationId);
     if (event.bucket !== 'accepted-response') {
       const episodeFeatures = armxPreviewEpisodeFeatures(event.features, event.beforeMaterial, snapshot.material);
       if (episodeFeatures.size) {
-        armxPreviewRecordImpact(bucket, episodeFeatures, impact, event.weight * ARMX_PREVIEW.episodeFeatureWeight);
+        armxPreviewRecordImpact(bucket, episodeFeatures, impact, event.weight * ARMX_PREVIEW.episodeFeatureWeight, event.observationId);
       }
     }
   }
@@ -255,15 +277,25 @@ function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
     if (available.has(feature)) {
       profile.opponentOpportunities[feature] = (profile.opponentOpportunities[feature] || 0) + 1;
       if (chosen.has(feature)) profile.opponentChoices[feature] = (profile.opponentChoices[feature] || 0) + 1;
+      if (!profile.opponentOpportunityPlies[feature]) profile.opponentOpportunityPlies[feature] = new Set();
+      profile.opponentOpportunityPlies[feature].add(profile.processedPlies);
     }
   }
-  return { available, chosen };
+  return { available, chosen, move: chosenMove, actor: game.side };
+}
+
+function armxPreviewCapturedSquare(move, actor) {
+  if (!move || !move.captured) return -1;
+  return move.flags & 2 ? move.to - actor * 8 : move.to;
 }
 
 function armxPreviewRecordAcceptedResponse(profile, observed, opponentPlyIndex) {
   const offer = profile.pendingOffer;
   profile.pendingOffer = null;
-  if (!offer || !observed) return;
+  if (!offer || !observed || opponentPlyIndex !== offer.index + 1) return;
+  // A capture elsewhere is an opponent choice, but is not acceptance of the
+  // piece we just offered. Keep this more specific outcome memory attributable.
+  if (armxPreviewCapturedSquare(observed.move, observed.actor) !== offer.to) return;
   const accepted = new Set();
   for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
     if (observed.available.has(feature) && observed.chosen.has(feature)) accepted.add(feature);
@@ -272,6 +304,7 @@ function armxPreviewRecordAcceptedResponse(profile, observed, opponentPlyIndex) 
 
   profile.pending.push({
     bucket: 'accepted-response',
+    observationId: opponentPlyIndex,
     features: accepted,
     before: offer.before,
     resolveAt: offer.index + ARMX_PREVIEW.shortHorizonPlies,
@@ -279,6 +312,7 @@ function armxPreviewRecordAcceptedResponse(profile, observed, opponentPlyIndex) 
   });
   profile.pending.push({
     bucket: 'accepted-response',
+    observationId: opponentPlyIndex,
     features: accepted,
     before: offer.before,
     resolveAt: offer.index + ARMX_PREVIEW.longHorizonPlies,
@@ -287,19 +321,38 @@ function armxPreviewRecordAcceptedResponse(profile, observed, opponentPlyIndex) 
 }
 
 function armxPreviewSyncProfile(game, perspective) {
-  let profile = ARMX_PREVIEW_GAME_PROFILES.get(game);
+  let profiles = ARMX_PREVIEW_GAME_PROFILES.get(game);
+  if (!profiles) {
+    profiles = new Map();
+    ARMX_PREVIEW_GAME_PROFILES.set(game, profiles);
+  }
+  let profile = profiles.get(perspective);
   const historyLength = game.historyStack ? game.historyStack.length : 0;
-  if (!profile || profile.perspective !== perspective || historyLength < profile.processedPlies) {
-    profile = armxPreviewNewProfile(perspective);
-    ARMX_PREVIEW_GAME_PROFILES.set(game, profile);
+  const history = game.historyStack || [];
+  const observationStartPly = Math.max(0, Math.trunc(Number(game.armxObservationStartPly) || 0));
+  const changedHistory = profile && profile.processedPlies > 0
+    && history[profile.processedPlies - 1] !== profile.lastHistoryState;
+  const changedEmptyPosition = profile && !historyLength
+    && game.fastPositionKey() !== profile.initialPositionKey;
+  if (!profile || historyLength < profile.processedPlies || changedHistory
+    || changedEmptyPosition || profile.observationStartPly !== observationStartPly) {
+    profile = armxPreviewNewProfile(perspective, game, observationStartPly);
+    profiles.set(perspective, profile);
   }
 
-  const history = game.historyStack || [];
   while (profile.processedPlies < history.length) {
     const index = profile.processedPlies;
     const state = history[index];
     const move = state && state.move;
     if (!move) break;
+    // Seeded openings provide board history, not evidence about this opponent.
+    if (index < observationStartPly) {
+      profile.replay.fastApply(move);
+      profile.currentSnapshot = armxPreviewStateSnapshot(profile.replay, perspective);
+      profile.processedPlies += 1;
+      profile.lastHistoryState = state;
+      continue;
+    }
     const actor = profile.replay.side;
     const before = profile.currentSnapshot.score;
     const beforeMaterial = profile.currentSnapshot.material;
@@ -310,15 +363,16 @@ function armxPreviewSyncProfile(game, perspective) {
       armxPreviewRecordAcceptedResponse(profile, observed, index);
     }
 
-    profile.pending.push({ actor, features, before, beforeMaterial, resolveAt: index + ARMX_PREVIEW.shortHorizonPlies, weight: 0.65 });
-    profile.pending.push({ actor, features, before, beforeMaterial, resolveAt: index + ARMX_PREVIEW.longHorizonPlies, weight: 0.35 });
+    profile.pending.push({ actor, features, before, beforeMaterial, observationId: index, resolveAt: index + ARMX_PREVIEW.shortHorizonPlies, weight: 0.65 });
+    profile.pending.push({ actor, features, before, beforeMaterial, observationId: index, resolveAt: index + ARMX_PREVIEW.longHorizonPlies, weight: 0.35 });
 
     profile.replay.fastApply(move);
     profile.currentSnapshot = armxPreviewStateSnapshot(profile.replay, perspective);
     profile.processedPlies += 1;
+    profile.lastHistoryState = state;
     armxPreviewResolvePending(profile, profile.processedPlies, profile.currentSnapshot);
 
-    if (actor === perspective) profile.pendingOffer = { before, index };
+    if (actor === perspective) profile.pendingOffer = { before, index, to: move.to };
   }
 
   armxPreviewResolvePending(profile, profile.processedPlies, profile.currentSnapshot);
@@ -334,7 +388,8 @@ function armxPreviewEffect(stats, feature) {
 function armxPreviewOpponentChoiceRate(profile, feature) {
   const opportunities = profile.opponentOpportunities[feature] || 0;
   if (!opportunities) return { rate: 0, evidence: 0 };
-  return { rate: (profile.opponentChoices[feature] || 0) / opportunities, evidence: opportunities };
+  // A uniform Beta prior prevents one forced capture becoming a 100% habit.
+  return { rate: ((profile.opponentChoices[feature] || 0) + 1) / (opportunities + 2), evidence: opportunities };
 }
 
 function armxPreviewHasUsefulReplyEvidence(profile) {
@@ -352,7 +407,7 @@ function armxPreviewHasUsefulReplyEvidence(profile) {
 }
 
 function armxPreviewProfileMatureForThirdCandidate(profile) {
-  if (!profile || profile.processedPlies < ARMX_PREVIEW.expandedCandidateMinPlies) return false;
+  if (!profile || profile.processedPlies - profile.observationStartPly < ARMX_PREVIEW.expandedCandidateMinPlies) return false;
   for (const feature of ARMX_PREVIEW_FEATURES) {
     const ours = profile.ourEffects[feature];
     const opponent = profile.opponentEffects[feature];
@@ -367,30 +422,39 @@ function armxPreviewProfileMatureForThirdCandidate(profile) {
 function armxPreviewCandidateReplyOpportunities(game, raw) {
   const historyDepth = game.historyStack.length;
   const available = new Set();
+  const offered = new Set();
   try {
     game.fastApply(raw);
     for (const reply of game.fastMoves()) {
       const features = armxPreviewCheapFeatureSet(reply);
       for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (features.has(feature)) available.add(feature);
+      if (armxPreviewCapturedSquare(reply, game.side) === raw.to) {
+        for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (features.has(feature)) offered.add(feature);
+      }
     }
   } finally {
     while (game.historyStack.length > historyDepth) game.fastUndo();
   }
-  return available;
+  return { available, offered };
 }
 
 function armxPreviewCandidateReport(game, entry, profile) {
   const features = armxPreviewFeatureSet(game, entry.raw);
-  const replyOpportunities = armxPreviewHasUsefulReplyEvidence(profile)
+  const replyOptions = armxPreviewHasUsefulReplyEvidence(profile)
     ? armxPreviewCandidateReplyOpportunities(game, entry.raw)
-    : new Set();
+    : { available: new Set(), offered: new Set() };
   let signal = 0;
   let evidence = 0;
+  const independentObservations = new Set();
+  const recordObservations = observations => {
+    for (const observation of observations || []) independentObservations.add(observation);
+  };
   const reasons = [];
 
   for (const feature of features) {
     const effect = armxPreviewEffect(profile.ourEffects, feature);
     if (effect.evidence < ARMX_PREVIEW.minEvidence) continue;
+    recordObservations(profile.ourEffects[feature].observations);
     const weight = feature === 'rookTrade' || feature === 'queenTrade' ? 1.45
       : feature === 'trade' || feature === 'simplify' ? 1.15 : 0.72;
     signal += effect.value * weight;
@@ -398,10 +462,12 @@ function armxPreviewCandidateReport(game, entry, profile) {
     if (Math.abs(effect.value) >= 0.12) reasons.push(`${feature}:${effect.value > 0 ? '+' : ''}${effect.value.toFixed(2)}`);
   }
 
-  for (const feature of replyOpportunities) {
+  for (const feature of replyOptions.available) {
     const choice = armxPreviewOpponentChoiceRate(profile, feature);
     const opponentEffect = armxPreviewEffect(profile.opponentEffects, feature);
     if (choice.evidence >= 2 && opponentEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+      recordObservations(profile.opponentOpportunityPlies[feature]);
+      recordObservations(profile.opponentEffects[feature].observations);
       const propensity = choice.rate * choice.rate;
       const contribution = propensity * opponentEffect.value * ARMX_PREVIEW.opponentSignalWeight;
       signal += contribution;
@@ -411,6 +477,8 @@ function armxPreviewCandidateReport(game, entry, profile) {
 
     const ourEffect = armxPreviewEffect(profile.ourEffects, feature);
     if (choice.evidence >= 3 && ourEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+      recordObservations(profile.opponentOpportunityPlies[feature]);
+      recordObservations(profile.ourEffects[feature].observations);
       const reliability = armxPreviewClamp((choice.evidence - 1) / 6, 0.25, 1);
       const expectedOutcome = choice.rate * ourEffect.value * ARMX_PREVIEW.responseOutcomeWeight * reliability;
       signal += expectedOutcome;
@@ -419,7 +487,9 @@ function armxPreviewCandidateReport(game, entry, profile) {
     }
 
     const acceptedEffect = armxPreviewEffect(profile.acceptedResponseEffects, feature);
-    if (choice.evidence >= 2 && acceptedEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+    if (replyOptions.offered.has(feature) && choice.evidence >= 2 && acceptedEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+      recordObservations(profile.opponentOpportunityPlies[feature]);
+      recordObservations(profile.acceptedResponseEffects[feature].observations);
       const reliability = armxPreviewClamp(acceptedEffect.evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0.25, 1);
       const acceptedOutcome = choice.rate * acceptedEffect.value
         * ARMX_PREVIEW.acceptedResponseWeight * reliability;
@@ -432,6 +502,9 @@ function armxPreviewCandidateReport(game, entry, profile) {
     }
   }
 
+  const featureEvidence = evidence;
+  // Correlated labels and the two horizons do not create new observations.
+  evidence = Math.min(evidence, independentObservations.size);
   const confidence = armxPreviewClamp(evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0, 1);
   const delta = armxPreviewClamp(signal * ARMX_PREVIEW.multiplierSignalScale * confidence, -ARMX_PREVIEW.maxMultiplierDelta, ARMX_PREVIEW.maxMultiplierDelta);
   const multiplier = 1 + delta;
@@ -447,6 +520,8 @@ function armxPreviewCandidateReport(game, entry, profile) {
     signal,
     confidence,
     evidence,
+    featureEvidence,
+    independentObservations: independentObservations.size,
     features: Array.from(features),
     reasons,
   };
@@ -492,7 +567,7 @@ function armxPreviewReview(game, candidates, perspective = game.side) {
     version: ARMX_PREVIEW.version,
     kind: ARMX_PREVIEW.kind,
     reset: ARMX_PREVIEW.reset,
-    observedPlies: profile.processedPlies,
+    observedPlies: Math.max(0, profile.processedPlies - profile.observationStartPly),
     opponentMovesObserved: profile.opponentMoves,
     notes: profile.notes.slice(),
     candidateLimitUsed: reviewLimit,

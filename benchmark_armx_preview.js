@@ -24,7 +24,8 @@ if (fs.existsSync('Stonefish_fast_moves_experiment.js')) engineFiles.push('Stone
 engineFiles.push(
   'Stonefish_v5_5_search.js',
   'Stonefish_v5_5_refutation_guard.js',
-  'ARMX_preview_fast.js',
+  'Stonefish_v5_5_native.js',
+  'ARMX-preview.js',
   'Stonefish_v5_5_testunit1.js'
 );
 
@@ -84,6 +85,7 @@ function generateOpening(pairIndex, plies = 10) {
 function positionAfter(opening) {
   const game = new Chess();
   for (const move of opening) if (!play(game, move)) throw new Error('Invalid generated opening');
+  game.armxObservationStartPly = game.historyStack.length;
   return game;
 }
 

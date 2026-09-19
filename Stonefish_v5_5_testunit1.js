@@ -1,19 +1,18 @@
-// Stonefish v5.5 testunit1 — fast native v5.5 + Refutation Guard + ARMX-preview.
+// Stonefish v5.5 testunit1 — native PVS + separate ARMX-preview.
 //
-// Native v5.5 owns the chess search. Its Refutation Guard checks for opponent
-// replies outside the normal selective beam and verifies them through the same
-// five-ply v5.5 search before they may lower a move. ARMX-preview is separate: it
+// Native v5.5 owns the chess search and considers every legal root move.
+// Capture quiescence resolves exchanges before evaluation. ARMX is separate: it
 // learns this opponent's behavior from the current game and applies small bounded
 // multipliers to Stonefish's already-searched candidates. The No-ARMX control uses
-// the exact same v5.5 host, including Refutation Guard, but never consults ARMX.
+// the exact same v5.5 host, but never consults ARMX.
 
 const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
   name: 'Stonefish v5.5 testunit1',
   base: 'Stonefish v5 Pro',
-  knowledgeBase: 'Stonefish v5 Pro',
-  search: 'Guarded PVS',
-  nativeFeature: 'PVS + TT four-root search + Refutation Guard',
-  refutationGuard: 'Refutation Guard',
+  knowledgeBase: 'Native tapered positional evaluation',
+  search: 'Native PVS',
+  nativeFeature: 'All legal root moves + capture quiescence + exact finalist scores',
+  refutationGuard: 'Full legal reply search',
   armx: 'ARMX-preview opponent adaptation model',
 });
 
@@ -27,14 +26,7 @@ const STONEFISH_V5_5_ARMX_CONTRASTIVE_MIN_EVIDENCE = 5.5;
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
 function stonefishV55Testunit1HostSearch(game) {
-  const ranked = stonefishV55FastCandidates(game);
-  if (!ranked.length) return { finished: [], fastLeader: null, refutationGuard: null };
-  const fastLeader = ranked[0] ? ranked[0].raw : null;
-  const finished = stonefishV55FinishCandidates(game, ranked);
-  const refutationGuard = typeof stonefishV55ApplyRefutationGuard === 'function'
-    ? stonefishV55ApplyRefutationGuard(game, finished, game.side)
-    : null;
-  return { finished, fastLeader, refutationGuard };
+  return sf55cHost(game);
 }
 
 function stonefishV55FindEntry(finished, raw) {
@@ -72,9 +64,7 @@ function stonefishV55ARMXDecisionScore(report, gain = STONEFISH_V5_5_ARMX_DECISI
 
 function stonefishV55BestARMXReport(reports, provisionalReport = null) {
   let best = provisionalReport || null;
-  let bestScore = provisionalReport
-    ? stonefishV55ARMXDecisionScore(provisionalReport, STONEFISH_V5_5_ARMX_DECISION_GAIN)
-    : -Infinity;
+  let bestLead = provisionalReport ? 0 : -Infinity;
   for (const report of reports || []) {
     if (!report || report === provisionalReport) continue;
     const gain = provisionalReport
@@ -84,10 +74,11 @@ function stonefishV55BestARMXReport(reports, provisionalReport = null) {
     const provisionalScore = provisionalReport
       ? stonefishV55ARMXDecisionScore(provisionalReport, gain)
       : -Infinity;
-    if (provisionalReport && score <= provisionalScore) continue;
-    if (!best || score > bestScore) {
+    const lead = provisionalReport ? score - provisionalScore : score;
+    if (provisionalReport && lead <= 0) continue;
+    if (!best || lead > bestLead) {
       best = report;
-      bestScore = score;
+      bestLead = lead;
     }
   }
   return best;
@@ -329,7 +320,7 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
     hostSearchChangedMove: changedFromFastLeader,
     hostScoreGap,
     refutationGuard: host.refutationGuard,
-    search: STONEFISH_V5_5_SEARCH.name,
+    search: STONEFISH_V5_5_TESTUNIT1.search,
     // Compatibility fields for older diagnostics while the preview evolves.
     criticApplied: adaptationApplied,
     criticAdjustment: totalAdjustment,

@@ -11,6 +11,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const { performance } = require('perf_hooks');
+const crypto = require('crypto');
 
 const engineFiles = [
   'StonefishChess.js',
@@ -30,11 +31,15 @@ if (fs.existsSync('Stonefish_fast_moves_experiment.js')) engineFiles.push('Stone
 engineFiles.push(
   'Stonefish_v5_5_search.js',
   'Stonefish_v5_5_refutation_guard.js',
-  'ARMX_preview_fast.js',
+  'Stonefish_v5_5_native.js',
+  process.env.ARMX_SOURCE || 'ARMX-preview.js',
   'Stonefish_v5_5_testunit1.js'
 );
+// Experiment files are explicit and included in the saved source fingerprints.
+if (process.env.ENGINE_PATCH) engineFiles.push(...process.env.ENGINE_PATCH.split(',').filter(Boolean));
 
-vm.runInThisContext(engineFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n'), {
+const loadedSources = engineFiles.map(file => ({ file, source: fs.readFileSync(file, 'utf8') }));
+vm.runInThisContext(loadedSources.map(entry => entry.source).join('\n\n'), {
   filename: 'stonefish-v5-5-testunit1-bundle.js'
 });
 
@@ -57,15 +62,9 @@ function withSeed(seed, fn) {
 
 function cloneGame(source) {
   const game = new Chess();
-  game.boardState = new Int8Array(source.boardState);
-  game.side = source.side;
-  game.castling = source.castling;
-  game.ep = source.ep;
-  game.halfmove = source.halfmove;
-  game.fullmove = source.fullmove;
-  game.kingSq = { 1: source.kingSq[1], '-1': source.kingSq[-1] };
-  game.historyStack = [];
-  game.positionCounts = new Map(source.positionCounts);
+  for (const state of source.historyStack) game._applyRaw({ ...state.move }, state.trackRepetition);
+  game.armxObservationStartPly = source.armxObservationStartPly || 0;
+  if (game.fastPositionKey() !== source.fastPositionKey()) throw new Error('Position replay failed');
   return game;
 }
 
@@ -89,24 +88,16 @@ function cleanMove(game, raw) {
 }
 
 function assertContract() {
-  if (STONEFISH_V5_5_TESTUNIT1.knowledgeBase !== 'Stonefish v5 Pro') {
+  if (STONEFISH_V5_5_TESTUNIT1.knowledgeBase !== 'Native tapered positional evaluation') {
     throw new Error(`Wrong v5.5 knowledge base: ${STONEFISH_V5_5_TESTUNIT1.knowledgeBase}`);
   }
-  if (STONEFISH_V5_5_TESTUNIT1.search !== 'Guarded PVS') {
+  if (STONEFISH_V5_5_TESTUNIT1.search !== 'Native PVS') {
     throw new Error(`Wrong v5.5 search core: ${STONEFISH_V5_5_TESTUNIT1.search}`);
-  }
-  if (!STONEFISH_V5_5_REFUTATION_GUARD || STONEFISH_V5_5_REFUTATION_GUARD.name !== 'Refutation Guard') {
-    throw new Error('v5.5 must include native Refutation Guard');
-  }
-  if (STONEFISH_V5_5_REFUTATION_GUARD.ply !== 5) {
-    throw new Error(`Current v5.5 Refutation Guard must use the five-ply horizon; got ${STONEFISH_V5_5_REFUTATION_GUARD.ply}`);
   }
   if (ARMX_PREVIEW.kind !== 'opponent-adaptation' || ARMX_PREVIEW.reset !== 'per-game') {
     throw new Error('ARMX-preview must be the separate per-game opponent adaptation model');
   }
-  if (STONEFISH_V5_5_SEARCH.rootCandidates > 4) {
-    throw new Error('Preview v5.5 must keep at most four full-depth root candidates');
-  }
+  if (typeof sf55cHost !== 'function' || SF55C.multiPV < 2) throw new Error('Native host must expose searched alternatives');
 }
 
 function assertNoARMXControlWorks() {
@@ -150,6 +141,7 @@ function generateOpening(pairIndex, plies = 10) {
 function positionAfter(opening) {
   const game = new Chess();
   for (const move of opening) if (!play(game, move)) throw new Error('Invalid generated opening');
+  game.armxObservationStartPly = game.historyStack.length;
   return game;
 }
 
@@ -253,7 +245,10 @@ function combinePerformance(parts) {
 
 function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, maxPlies = 360) {
   const game = positionAfter(opening);
+  game.armxObservationStartPly = opening.length;
+  clearSharedEngineCaches();
   let plies = opening.length;
+  const playedMoves = [];
   const enginePerf = {
     contender: { moves: 0, thinkMs: 0 },
     opponent: { moves: 0, thinkMs: 0 }
@@ -266,8 +261,9 @@ function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, 
       const move = contenderTurn ? contenderFn(game) : opponentFn(game);
       const elapsed = performance.now() - started;
       if (!play(game, move)) {
-        return { result: contenderTurn ? 'loss' : 'win', reason: 'invalid-move', plies, enginePerf };
+        throw new Error(`Invalid move at ply ${plies}: ${JSON.stringify(move)}`);
       }
+      playedMoves.push(moveKey(move));
       const bucket = contenderTurn ? enginePerf.contender : enginePerf.opponent;
       bucket.moves += 1;
       bucket.thinkMs += elapsed;
@@ -279,6 +275,7 @@ function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, 
         result: winnerIsWhite === contenderIsWhite ? 'win' : 'loss',
         reason: 'checkmate',
         plies,
+        playedMoves,
         enginePerf
       };
     }
@@ -286,6 +283,7 @@ function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, 
       result: 'draw',
       reason: game.game_over() ? 'draw-rule' : 'max-plies',
       plies,
+      playedMoves,
       enginePerf
     };
   });
@@ -301,7 +299,10 @@ function variedHeadToHead(games, label, contenderFn, opponentFn) {
     opponentMoves: 0,
     opponentThinkMs: 0
   };
-  for (let i = 0; i < games; i += 1) {
+  const records = [];
+  const startIndex = Number.parseInt(process.env.START_INDEX || '0', 10);
+  for (let localIndex = 0; localIndex < games; localIndex += 1) {
+    const i = startIndex + localIndex;
     const pair = Math.floor(i / 2);
     const opening = generateOpening(pair, 10);
     const contenderIsWhite = i % 2 === 0;
@@ -317,9 +318,11 @@ function variedHeadToHead(games, label, contenderFn, opponentFn) {
     totals.contenderThinkMs += result.enginePerf.contender.thinkMs;
     totals.opponentMoves += result.enginePerf.opponent.moves;
     totals.opponentThinkMs += result.enginePerf.opponent.thinkMs;
+    records.push({ index: i, pair, contenderIsWhite, opening, ...result });
     console.log(`${label} game ${i + 1}: pair=${pair + 1} side=${contenderIsWhite ? 'W' : 'B'} ${result.result} ${result.reason} ${result.plies} plies`);
   }
   return {
+    records,
     win: totals.win,
     loss: totals.loss,
     draw: totals.draw,
@@ -344,20 +347,28 @@ assertARMXResetsByGame();
 const sampleCount = Math.max(4, Number.parseInt(process.env.SAMPLES || '12', 10) || 12);
 const latency = latencyAndBehavior(buildSamplePositions(sampleCount));
 const games = Math.max(0, Number.parseInt(process.env.GAMES || '12', 10) || 0);
+if (process.env.RELEASE_GATE === '1' && (games < 100 || games % 2 !== 0 || process.env.MATCHUP)) {
+  throw new Error('Release proof requires all three matchups and at least 100 color-balanced games each');
+}
 
-const matchups = games ? {
-  armxVsPro: variedHeadToHead(games, 'ARMX-vs-Pro', getStonefishV55Testunit1Move, getStonefishV5ProMove),
-  noArmxVsPro: variedHeadToHead(games, 'NoARMX-vs-Pro', getStonefishV55Testunit1NoARMXMove, getStonefishV5ProMove),
-  armxVsNoArmx: variedHeadToHead(games, 'ARMX-vs-NoARMX', getStonefishV55Testunit1Move, getStonefishV55Testunit1NoARMXMove),
-} : null;
+const definitions = {
+  armxVsPro: ['ARMX-vs-Pro', getStonefishV55Testunit1Move, getStonefishV5ProMove],
+  noArmxVsPro: ['NoARMX-vs-Pro', getStonefishV55Testunit1NoARMXMove, getStonefishV5ProMove],
+  armxVsNoArmx: ['ARMX-vs-NoARMX', getStonefishV55Testunit1Move, getStonefishV55Testunit1NoARMXMove]
+};
+if (process.env.MATCHUP && !definitions[process.env.MATCHUP]) throw new Error('Unknown MATCHUP');
+const matchups = games ? Object.fromEntries(Object.entries(definitions)
+  .filter(([name]) => !process.env.MATCHUP || name === process.env.MATCHUP)
+  .map(([name, args]) => [name, variedHeadToHead(games, ...args)])) : null;
+const fullMatchups = matchups && Object.keys(matchups).length === 3;
 
-const hierarchy = matchups ? {
+const hierarchy = fullMatchups ? {
   hostBeatsPro: matchups.noArmxVsPro.score > 0.5,
   armxBeatsHost: matchups.armxVsNoArmx.score > 0.5,
   armxOutscoresHostVsPro: matchups.armxVsPro.score > matchups.noArmxVsPro.score,
 } : null;
 
-const gamePerformanceByModel = matchups ? {
+const gamePerformanceByModel = fullMatchups ? {
   v5Pro: combinePerformance([
     matchups.armxVsPro.performance.opponent,
     matchups.noArmxVsPro.performance.opponent
@@ -386,10 +397,13 @@ const targets = {
 };
 
 const result = {
+  gamesPerMatchup: games,
+  startIndex: Number.parseInt(process.env.START_INDEX || '0', 10),
+  sourceHashes: Object.fromEntries(loadedSources.map(({ file, source }) => [file, crypto.createHash('sha256').update(source).digest('hex')])),
   testUnit: STONEFISH_V5_5_TESTUNIT1.name,
   knowledgeBase: STONEFISH_V5_5_TESTUNIT1.knowledgeBase,
-  search: STONEFISH_V5_5_SEARCH,
-  refutationGuard: STONEFISH_V5_5_REFUTATION_GUARD,
+  search: SF55C,
+  refutationGuard: 'Full legal reply search',
   host: STONEFISH_V5_5_TESTUNIT1,
   armx: ARMX_PREVIEW,
   latency,
@@ -399,6 +413,7 @@ const result = {
   hierarchy,
   targets
 };
+if (process.env.RESULT_JSON) fs.writeFileSync(process.env.RESULT_JSON, JSON.stringify(result, null, 2) + '\n');
 console.log('\nSTONEFISH_V5_5_TESTUNIT1 ' + JSON.stringify(result));
 
 if (process.env.RELEASE_GATE === '1' && games >= 100) {

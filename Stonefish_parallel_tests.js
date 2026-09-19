@@ -150,7 +150,7 @@ async function stonefishParallelRoundRobinTest() {
           jobId: scheduleIndex + 1,
           whiteModelKey: job.whiteModelKey,
           blackModelKey: job.blackModelKey,
-          maxPlies: 1000,
+          maxPlies: 360,
           openingIndex: job.openingIndex
         });
 

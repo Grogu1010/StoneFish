@@ -7,6 +7,9 @@ on:
     paths:
       - 'ARMX-preview.js'
       - 'Stonefish_v5_5_search.js'
+      - 'Stonefish_v5_5_native.js'
+      - 'benchmark_v5_5_native_contract.js'
+      - 'benchmark_armx_contract.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
@@ -21,6 +24,9 @@ on:
     paths:
       - 'ARMX-preview.js'
       - 'Stonefish_v5_5_search.js'
+      - 'Stonefish_v5_5_native.js'
+      - 'benchmark_v5_5_native_contract.js'
+      - 'benchmark_armx_contract.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
@@ -41,11 +47,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
       - name: Syntax check ARMX-preview
         run: node --check ARMX-preview.js
       - name: Syntax check v5.5 native search
-        run: node --check Stonefish_v5_5_search.js
+        run: node --check Stonefish_v5_5_native.js
       - name: Syntax check Refutation Guard
         run: node --check Stonefish_v5_5_refutation_guard.js
       - name: Syntax check v5.5 testunit1
@@ -58,10 +64,10 @@ jobs:
         run: node --check benchmark_v5_5_teacher.js
       - name: Syntax check ARMX-preview in-game diagnostics
         run: node --check benchmark_armx_preview.js
-      - name: Run v5.5 teacher benchmark
-        env:
-          TEACHER_POSITIONS: '80'
-        run: node benchmark_v5_5_teacher.js
+      - name: Verify native search and capture generation
+        run: node benchmark_v5_5_native_contract.js
+      - name: Verify opponent memory contracts
+        run: node benchmark_armx_contract.js
       - name: Run ARMX-preview in-game diagnostics
         env:
           ARMX_DIAG_GAMES: '8'

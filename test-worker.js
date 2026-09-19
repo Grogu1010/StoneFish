@@ -16,6 +16,7 @@ importScripts(
   './Stonefish_fast_moves_experiment.js',
   './Stonefish_v5_5_search.js',
   './Stonefish_v5_5_refutation_guard.js',
+  './Stonefish_v5_5_native.js',
   './ARMX-preview.js',
   './Stonefish_v5_5_testunit1.js'
 );
@@ -54,21 +55,22 @@ function withSeed(seed, fn) {
 // from opposite colors instead of replaying one deterministic initial-position game.
 function applyVariedOpening(game, openingIndex = 0) {
   const index = Math.max(0, Number(openingIndex) || 0);
-  const plies = 4 + (index % 13);
-  const pick = seededRandom((0xD551000 + index * 1597) >>> 0);
+  const plies = 10;
+  const pick = seededRandom((0xA551000 + index * 977) >>> 0);
 
-  withSeed((0xE771000 + index * 211) >>> 0, () => {
+  withSeed((0xB771000 + index * 131) >>> 0, () => {
     for (let ply = 0; ply < plies && !game.game_over(); ply += 1) {
       const scored = stonefishV5ScoreAllMoves(game);
       if (!scored.length) break;
-      const width = Math.min(5, scored.length);
+      const width = Math.min(4, scored.length);
       const r = pick();
-      const rank = Math.min(width - 1, r < 0.40 ? 0 : r < 0.67 ? 1 : r < 0.84 ? 2 : r < 0.95 ? 3 : 4);
+      const rank = Math.min(width - 1, r < 0.48 ? 0 : r < 0.76 ? 1 : r < 0.93 ? 2 : 3);
       const entry = scored[rank];
       if (!entry || !entry.raw) break;
       game._applyRaw(entry.raw, true);
     }
   });
+  game.armxObservationStartPly = game.historyStack.length;
 }
 
 function commitChosenMove(game, move) {
@@ -91,10 +93,10 @@ function cheapDrawReached(game) {
   return (game.positionCounts.get(game.fastPositionKey()) || 0) >= 3;
 }
 
-function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000, openingIndex = 0) {
+function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex = 0) {
   const game = new Chess();
   applyVariedOpening(game, openingIndex);
-  let plies = 0;
+  let plies = game.historyStack.length;
   const metrics = {
     [whiteModelKey]: { moves: 0, thinkMs: 0 },
     [blackModelKey]: { moves: 0, thinkMs: 0 }
@@ -121,6 +123,7 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 1000, openingInde
     metrics[modelKey].thinkMs += elapsed;
     commitChosenMove(game, move);
     plies += 1;
+    if (game.in_checkmate()) return { outcome: game.side === 1 ? 'black' : 'white', metrics, plies, openingIndex };
     if (cheapDrawReached(game)) return { outcome: 'draw', metrics, plies, openingIndex };
   }
 
@@ -134,7 +137,7 @@ self.onmessage = event => {
     const result = playTestGame(
       whiteModelKey,
       blackModelKey,
-      maxPlies || 1000,
+      maxPlies || 360,
       Number.isFinite(Number(openingIndex)) ? Number(openingIndex) : 0
     );
     self.postMessage({ jobId, result });
