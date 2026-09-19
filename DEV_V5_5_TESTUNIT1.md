@@ -26,6 +26,16 @@ The current ARMX calibration matches the new centipawn score scale: require a 2-
 
 The user's separate 10,000-game browser test of the preceding build supports the same diagnosis: ARMX scored 1,427W-1,485L-422D against No ARMX across 3,334 games; versus Pro, ARMX scored 3,082/3,333 wins and No ARMX 3,097/3,333. Treat those timings as uncontrolled, as requested. Focus further development on ARMX while keeping the base fixed. The **65 actual wins / 100 vs No ARMX gate is still unmet**, so 5.5 remains development-only.
 
+### Per-game reset confirmation and further ARMX experiments
+
+The user explicitly requires **empty notes at the start of every game**, even against the same opponent. Cross-game learning is not permitted. The memory contract now checks consecutive rounds with identical supplied openings, both with separate game objects and with a reused/reset object. Neither round inherits the previous round's observations or adjustments.
+
+The unchanged published calibration scored **48W-44L-8D** against No ARMX on an additional 100 games (`START_INDEX=100`). These use 50 distinct mirrored openings, none shared with the first 100-game confirmation. The native and ARMX source hashes match the published build. Together the two sets give **95W-87L-18D / 200**, or **47.5% actual wins**. This supports the diagnosis that the 65% contribution target remains unmet; the earlier 47-win result was not sufficient release evidence. Complete holdout games and source fingerprints are in `benchmarks/v5_5/armx-calibrated-holdout-100.json.gz`.
+
+An archive of 21 rejected ARMX variants covers 1,020 games. It includes opponent-choice prediction, reply-outcome learning, threat context, recent-history weighting, repetition notes, evidence ablations, and voting limits. Always reviewing three candidates, selecting among eligible candidates, and repetition avoidance each scored **46 wins / 100**, below the calibration's 47 on the same openings. The other variants failed the 40-game development screen. Those screens deliberately reuse development openings and must not be represented as independent confirmation. Some strength screens ran concurrently; their timings are not speed evidence.
+
+`benchmarks/v5_5/armx-rejected-experiments.json.gz` preserves hypotheses, results by game, configurations, loaded-source hashes, and the exact experimental sources. These sources are archived data, not active engine code. No rejected variant was promoted, no native engine or Pro source changed, and no release was made. The previous 4.702x direct-game speed measurement remains the applicable measurement for the unchanged build.
+
 ### Previous 40-game checkpoint
 
 Forty games per matchup, twenty distinct openings with color swaps:
