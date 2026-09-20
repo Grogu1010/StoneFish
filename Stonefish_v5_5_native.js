@@ -1,6 +1,6 @@
 // Native v5.5: full legal-move alpha-beta and capture quiescence.
-// Both variants call the same host. No opponent identity
-// or ARMX state enters the native search.
+// Both variants call the same host, evaluation, and search budget. An optional
+// per-game reply policy supplies learned priorities; the control supplies none.
 const SF55C = {
   maxDepth: 4, nodes: 1200, multiPV: 3, qDepth: 5,
   piece: [0, 100, 325, 335, 510, 975, 0], mate: STONEFISH_V5_PRO_MATE,
@@ -88,7 +88,8 @@ function sf55cOrder(ctx,m,tt,ply){
   if(m.promotion)return 200000+SF55C.piece[m.promotion];
   if(m.captured)return 100000+SF55C.piece[m.captured]*16-SF55C.piece[m.piece];
   if(ctx.killers[ply]===id)return 90000;
-  return ctx.history[id]||0;
+  const history=ctx.history[id]||0;
+  return history+(ctx.replyPolicy&&(ply&1)?ctx.replyPolicy.priority(m):0);
 }
 
 function sf55cInsufficient(g) {
@@ -214,6 +215,17 @@ function sf55cQ(g,ctx,alpha,beta,ply,remaining){
 
 function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   if(depth<=0)return sf55cQ(g,ctx,alpha,beta,ply,SF55C.qDepth);
+  // A learned low-priority quiet reply may receive a reduced null-window
+  // probe. Verify at full depth whenever that probe favors the opponent.
+  // With no learned policy this path is completely inactive.
+  if(ctx.replyPolicy&&depth===1&&ply>=2&&!(ply&1)&&beta-alpha<=1){
+    const state=g.historyStack[g.historyStack.length-1],move=state&&state.move;
+    if(move&&!move.captured&&!move.promotion&&move.piece!==6&&!g.in_check()
+      &&ctx.replyPolicy.isLowPriority(move)){
+      const probe=sf55cQ(g,ctx,alpha,beta,ply,SF55C.qDepth);
+      if(ctx.abort||probe>=beta)return probe;
+    }
+  }
   ctx.nodes++;
   const check=g.in_check(),moves=g.fastMoves();
   if(!moves.length)return check?-SF55C.mate+ply:0;
@@ -251,9 +263,9 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   return best;
 }
 
-function sf55cHost(g){
+function sf55cHost(g,replyPolicy=null){
   const legal=g.fastMoves();if(!legal.length)return {finished:[],fastLeader:null,refutationGuard:null};
-  const ctx={nodes:0,limit:SF55C.nodes,depth:0,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768)};
+  const ctx={nodes:0,limit:SF55C.nodes,depth:0,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768),replyPolicy};
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
   for(const e of roots){g.fastApply(e.raw);try{e.score=-sf55cEvaluate(g);}finally{g.fastUndo();}}
   roots.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));

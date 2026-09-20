@@ -1,15 +1,16 @@
 // ARMX-preview — per-game opponent adaptation model for Stonefish v5.5.
 //
 // ARMX is intentionally a separate model from Stonefish. It does not search the
-// move tree and it does not reuse Stonefish evaluation. Instead it watches the
+// move tree. Instead it watches the
 // actual game, builds a small profile of this opponent's choices and of what has
-// worked (or failed) against them, then applies bounded evidence-based multipliers
-// to Stonefish's already-searched candidates. The profile lives in a WeakMap keyed
+// worked (or failed) against them. Learned quiet-reply preferences guide the
+// existing native search budget; bounded outcome multipliers compare finalists.
+// The profile lives in a WeakMap keyed
 // by the game object, so it automatically resets between games/rounds.
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-native-calibration',
+  version: 'preview-native-reply-policy',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 3,
@@ -38,6 +39,10 @@ const ARMX_PREVIEW = Object.freeze({
   earlyOverrideConfidence: 0.90,
   shortHorizonPlies: 2,
   longHorizonPlies: 4,
+  quietChoiceMinObservations: 4,
+  quietChoiceLearningRate: 0.8,
+  quietChoiceDecay: 0.995,
+  quietChoiceWeightLimit: 6,
 });
 
 const ARMX_PREVIEW_GAME_PROFILES = new WeakMap();
@@ -49,6 +54,102 @@ const ARMX_PREVIEW_REPLY_FEATURES = Object.freeze([
   'capture', 'trade', 'rookTrade', 'queenTrade', 'simplify'
 ]);
 const ARMX_PREVIEW_PIECE_VALUES = Object.freeze([0, 100, 320, 335, 510, 930, 0]);
+
+// Geometric activity features for comparing available quiet choices. These
+// priors describe moves; all preference weights start at zero in every game.
+const ARMX_PREVIEW_QUIET_FEATURE_NAMES = Object.freeze([
+  'pawn moves', 'knight moves', 'bishop moves', 'rook moves', 'queen moves',
+  'king moves', 'middlegame activity', 'endgame activity', 'forward moves',
+  'castling', 'minor-piece development', 'central files', 'advanced pawns'
+]);
+const ARMX_PREVIEW_QUIET_ACTIVITY = Array.from({length: 7}, () => new Int16Array(64));
+const ARMX_PREVIEW_QUIET_ENDGAME = Array.from({length: 7}, () => new Int16Array(64));
+for (let square = 0; square < 64; square++) {
+  const file = square & 7, rank = square >> 3;
+  const center = 7 - Math.abs(2 * file - 7) - Math.abs(2 * rank - 7);
+  const fileCenter = 7 - Math.abs(2 * file - 7);
+  const middle = ARMX_PREVIEW_QUIET_ACTIVITY, ending = ARMX_PREVIEW_QUIET_ENDGAME;
+  middle[1][square] = rank * 7 + fileCenter * 3 + (rank >= 3 && file >= 2 && file <= 5 ? 14 : 0);
+  ending[1][square] = rank * rank * 5 + fileCenter;
+  middle[2][square] = center * 7 - (rank === 0 ? 15 : 0);
+  ending[2][square] = center * 5;
+  middle[3][square] = center * 4 + rank * 3;
+  ending[3][square] = center * 3;
+  middle[4][square] = rank === 6 ? 30 : rank * 2;
+  ending[4][square] = center * 2;
+  middle[5][square] = center * 2 - (rank > 2 ? 8 : 0);
+  ending[5][square] = center * 3;
+  middle[6][square] = -center * 5 - rank * 12 + (rank === 0 && (file === 6 || file === 2) ? 45 : 0);
+  ending[6][square] = center * 8;
+}
+
+function armxPreviewQuietFeatures(move, side) {
+  const features = new Float64Array(13), piece = move.piece;
+  const from = side === 1 ? move.from : move.from ^ 56;
+  const to = side === 1 ? move.to : move.to ^ 56;
+  features[piece - 1] = 1;
+  features[6] = (ARMX_PREVIEW_QUIET_ACTIVITY[piece][to] - ARMX_PREVIEW_QUIET_ACTIVITY[piece][from]) / 100;
+  features[7] = (ARMX_PREVIEW_QUIET_ENDGAME[piece][to] - ARMX_PREVIEW_QUIET_ENDGAME[piece][from]) / 100;
+  features[8] = Math.max(-1, Math.min(1, ((to >> 3) - (from >> 3)) / 3));
+  features[9] = move.flags & (4 | 8) ? 1 : 0;
+  features[10] = (piece === 2 || piece === 3) && (from >> 3) === 0 ? 1 : 0;
+  features[11] = (Math.abs((from & 7) - 3.5) - Math.abs((to & 7) - 3.5)) / 4;
+  features[12] = piece === 1 && (to >> 3) >= 4 ? 1 : 0;
+  return features;
+}
+
+function armxPreviewQuietLogit(features, weights) {
+  let value = 0;
+  for (let i = 0; i < features.length; i++) value += features[i] * weights[i];
+  return value;
+}
+
+function armxPreviewObserveQuietChoice(profile, game, chosen) {
+  if (chosen.captured || chosen.promotion || game.in_check()) return;
+  const moves = game.fastMoves().filter(move => !move.captured && !move.promotion);
+  if (moves.length < 2) return;
+  if (!profile.quietPolicy) profile.quietPolicy = { weights: new Float64Array(13), count: 0 };
+  const model = profile.quietPolicy;
+  const rows = moves.map(move => armxPreviewQuietFeatures(move, game.side));
+  const logits = rows.map(row => armxPreviewQuietLogit(row, model.weights));
+  const maximum = Math.max(...logits);
+  const probabilities = logits.map(logit => Math.exp(logit - maximum));
+  const sum = probabilities.reduce((a, b) => a + b, 0);
+  const selected = armxPreviewQuietFeatures(chosen, game.side);
+  for (let i = 0; i < model.weights.length; i++) {
+    let expected = 0;
+    for (let j = 0; j < rows.length; j++) expected += probabilities[j] * rows[j][i] / sum;
+    model.weights[i] = armxPreviewClamp(
+      model.weights[i] * ARMX_PREVIEW.quietChoiceDecay
+        + ARMX_PREVIEW.quietChoiceLearningRate * (selected[i] - expected),
+      -ARMX_PREVIEW.quietChoiceWeightLimit, ARMX_PREVIEW.quietChoiceWeightLimit
+    );
+  }
+  model.count++;
+}
+
+function armxPreviewOpponentPolicy(game, perspective = game.side) {
+  const profile = armxPreviewSyncProfile(game, perspective), model = profile.quietPolicy;
+  if (!model || model.count < ARMX_PREVIEW.quietChoiceMinObservations) return null;
+  // Freeze the learned preferences for this search. Cache only geometry-based
+  // scores, including piece type and flags in the identity; nothing crosses turns.
+  const weights = new Float64Array(model.weights), cache = new Map();
+  const score = move => {
+    const key = move.from | (move.to << 6) | (move.piece << 12)
+      | ((move.promotion || 0) << 15) | ((move.flags || 0) << 18);
+    let value = cache.get(key);
+    if (value === undefined) {
+      value = armxPreviewQuietLogit(armxPreviewQuietFeatures(move, -perspective), weights);
+      cache.set(key, value);
+    }
+    return value;
+  };
+  return {
+    observations: model.count,
+    priority: move => Math.round(300 * score(move)),
+    isLowPriority: move => score(move) < 0,
+  };
+}
 
 function armxPreviewClamp(value, low, high) {
   return Math.max(low, Math.min(high, value));
@@ -207,6 +308,7 @@ function armxPreviewNewProfile(perspective, game = null, observationStartPly = 0
     opponentOpportunities: Object.create(null),
     opponentOpportunityPlies: Object.create(null),
     notes: [],
+    quietPolicy: null,
   };
 }
 
@@ -281,6 +383,7 @@ function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
       profile.opponentOpportunityPlies[feature].add(profile.processedPlies);
     }
   }
+  armxPreviewObserveQuietChoice(profile, game, chosenMove);
   return { available, chosen, move: chosenMove, actor: game.side };
 }
 
@@ -529,6 +632,13 @@ function armxPreviewCandidateReport(game, entry, profile) {
 
 function armxPreviewProfileNotes(profile) {
   const notes = [];
+  if (profile.quietPolicy && profile.quietPolicy.count >= ARMX_PREVIEW.quietChoiceMinObservations) {
+    const preferences = Array.from(profile.quietPolicy.weights, (weight, index) => ({ weight, index }))
+      .filter(row => row.weight > 0.25).sort((a, b) => b.weight - a.weight).slice(0, 2);
+    if (preferences.length) notes.push('Opponent favors '
+      + preferences.map(row => ARMX_PREVIEW_QUIET_FEATURE_NAMES[row.index]).join(' and ')
+      + ' among quiet choices (n=' + profile.quietPolicy.count + ')');
+  }
   const important = ['rookTrade', 'queenTrade', 'minorTrade', 'trade', 'simplify', 'capture', 'kingAttack', 'quiet'];
   for (const feature of important) {
     const ours = armxPreviewEffect(profile.ourEffects, feature);
@@ -569,6 +679,7 @@ function armxPreviewReview(game, candidates, perspective = game.side) {
     reset: ARMX_PREVIEW.reset,
     observedPlies: Math.max(0, profile.processedPlies - profile.observationStartPly),
     opponentMovesObserved: profile.opponentMoves,
+    quietChoicesObserved: profile.quietPolicy ? profile.quietPolicy.count : 0,
     notes: profile.notes.slice(),
     candidateLimitUsed: reviewLimit,
     expandedCandidateReview: expanded,
@@ -587,4 +698,5 @@ if (typeof globalThis !== 'undefined') {
   globalThis.ARMX_PREVIEW = ARMX_PREVIEW;
   globalThis.armxPreviewReview = armxPreviewReview;
   globalThis.armxPreviewResetGame = armxPreviewResetGame;
+  globalThis.armxPreviewOpponentPolicy = armxPreviewOpponentPolicy;
 }

@@ -2,8 +2,8 @@
 //
 // Native v5.5 owns the chess search and considers every legal root move.
 // Capture quiescence resolves exchanges before evaluation. ARMX is separate: it
-// learns this opponent's behavior from the current game and applies small bounded
-// multipliers to Stonefish's already-searched candidates. The No-ARMX control uses
+// learns this opponent's behavior from the current game, supplies reply priorities,
+// and applies bounded multipliers to searched candidates. The No-ARMX control uses
 // the exact same v5.5 host, but never consults ARMX.
 
 const STONEFISH_V5_5_TESTUNIT1 = Object.freeze({
@@ -25,8 +25,8 @@ const STONEFISH_V5_5_ARMX_CONTRASTIVE_MIN_CONFIDENCE = 0.90;
 const STONEFISH_V5_5_ARMX_CONTRASTIVE_MIN_EVIDENCE = 5.5;
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
-function stonefishV55Testunit1HostSearch(game) {
-  return sf55cHost(game);
+function stonefishV55Testunit1HostSearch(game, replyPolicy = null) {
+  return sf55cHost(game, replyPolicy);
 }
 
 function stonefishV55FindEntry(finished, raw) {
@@ -221,7 +221,9 @@ function stonefishV55ARMXPromoteReviewedCandidate(finished, candidate) {
 
 function stonefishV55Testunit1ScoreAllMoves(game) {
   const perspective = game.side;
-  const host = stonefishV55Testunit1HostSearch(game);
+  const replyPolicy = typeof armxPreviewOpponentPolicy === 'function'
+    ? armxPreviewOpponentPolicy(game, perspective) : null;
+  const host = stonefishV55Testunit1HostSearch(game, replyPolicy);
   const finished = host.finished;
   if (!finished.length) {
     STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
@@ -300,6 +302,8 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   );
 
   STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review || {}, {
+    searchGuidanceActive: Boolean(replyPolicy),
+    replyPolicyObservations: replyPolicy ? replyPolicy.observations : 0,
     connected: Boolean(review),
     eligible: Boolean(review),
     adaptationApplied,

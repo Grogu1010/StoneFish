@@ -1,6 +1,6 @@
 # Stonefish v5.5 rolling testunit1
 
-The two Developer-menu models share exactly the same native host, evaluation, search budget, and candidate scores. Only '5.5(testunit1)' invokes the separate ARMX-preview opponent model. Neither model is released in the normal opponent selector.
+The two Developer-menu models share exactly the same native host, evaluation, and search budget. Only '5.5(testunit1)' invokes the separate ARMX-preview opponent model. Its learned reply preferences can influence search and therefore finalist scores. No ARMX supplies no reply policy and retains its previous behavior. Neither model is released in the normal opponent selector.
 
 ## Native search
 
@@ -12,6 +12,10 @@ The former beam search and Refutation Guard remain available to historical diagn
 
 ARMX learns opponent choices and observed short-term outcomes in the current game. It has no search tree and no opponent identity shortcut. Profiles are isolated by game and side, reset after history replacement, and ignore supplied opening moves. Accepted-exchange memory requires the opponent to capture the offered piece. Sparse choice rates are regularized and confidence counts distinct observations, not correlated feature labels.
 
+The reply policy learns which quiet moves the opponent selects from the available alternatives. Its 13 geometric preference weights start at zero every game. After four voluntary quiet choices, a frozen snapshot guides quiet opponent move ordering. Low-priority quiet replies may receive a reduced null-window probe; the host verifies at full depth whenever that probe favors the opponent. Captures, promotions, king moves and check positions do not receive this reduction. The base evaluation, 1,200-node budget, four-ply limit, and No-ARMX behavior are unchanged. Bounded finalist adjustments remain active.
+
+`benchmark_armx_reply_policy.js` checks choice-dependent learning, per-game resets, forced-move exclusion, immutable search snapshots and cleanup after failures. Its 128 saved positions require exact score, move ordering, depth and node-count parity with both the original native control and the tested ARMX prototype. The fixture also verifies learned weights and board restoration.
+
 ## Measurement
 
 Use 'GAMES=100 RELEASE_GATE=1 node benchmark_v5_5_testunit1.js' (environment-variable syntax depends on shell). All three matchups must run at least 100 games with color swaps. Required actual wins are 65/100 No ARMX vs Pro, 85/100 ARMX vs Pro, and 65/100 ARMX vs No ARMX. Both variants must average at least 3x faster real engine time per move than Pro. Draws do not count as wins.
@@ -19,6 +23,16 @@ Use 'GAMES=100 RELEASE_GATE=1 node benchmark_v5_5_testunit1.js' (environment-var
 'RESULT_JSON' saves complete move records, openings, timings, and hashes of the exact source loaded before play. 'START_INDEX' selects additional varied opening pairs. 'MATCHUP' supports focused diagnostics, which cannot satisfy the release gate. Browser tests use the same ten-ply varied opening generator and 360-ply limit as the command-line benchmark.
 
 ## Latest development checkpoint
+
+The integrated learned-reply build scored **92W-6L-2D** against Pro and **48W-41L-11D** against No ARMX across 100 games each. No ARMX reproduced **92W-7L-1D** against Pro. ARMX was **4.428x** faster than Pro in engine-only time per move; the control was **4.770x** faster. Each matchup used 50 varied openings replayed with colors swapped. Full games, timings and loaded-source hashes are saved in `benchmarks/v5_5/armx-reply-policy-100.json.gz`.
+
+On the second 100-game set (`START_INDEX=100`), the integrated build reproduced its prototype's **54W-42L-4D** against No ARMX. The 50 opening pairs have no overlap with the first set. Combined results are **102W-83L-15D / 200**, or **51% actual wins**, compared with the published calibration's **95W-87L-18D / 200** on these same two sets. This is a modest measured improvement, not evidence that the 65% target has been reached. The complete second set is `benchmarks/v5_5/armx-reply-policy-holdout-100.json.gz`. Its source hashes match the integrated build. Strength-only experiments ran alongside part of this second set, so its timings are not used as speed evidence; the full three-matchup confirmation above ran on its own.
+
+The golden fixture archives the exact prototype patches and fixture generator. The integrated implementation reproduces the prototype's choices while caching geometric preference scores within each search. It does not retain any preference weights across games.
+
+The **65 actual wins / 100 against No ARMX requirement remains unmet**. Keep both testunit1 names and development-only availability until every release gate passes. Once all gates pass, the user authorizes removing `(testunit1)` from both display names and releasing the ARMX version. Commit verified improvements directly to main. Do not write a blog post.
+
+### Previous calibrated checkpoint
 
 The first integrated 100-game confirmation scored **92W-7L-1D** No ARMX vs Pro, **91W-6L-3D** ARMX vs Pro, and **42W-44L-14D** ARMX vs No ARMX. ARMX was **4.683x** faster than Pro. All matchups used 50 distinct openings with color swaps.
 

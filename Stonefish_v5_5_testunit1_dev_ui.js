@@ -18,12 +18,13 @@ models.v55test1noarmx = {
 models.v55test1 = {
   name: '5.5(testunit1)',
   trait: 'Development-only v5.5 + ARMX-preview test unit',
-  subtitle: 'The same native v5.5 host plus a separate per-game ARMX-preview model that learns the current opponent’s tendencies and adjusts close candidate scores.',
+  subtitle: 'The same native v5.5 host plus ARMX-preview, which learns reply preferences during the current game to guide search and compare close moves.',
   logic: [
     'Use the exact same native v5.5 host as the No-ARMX control',
     'ARMX-preview observes what the opponent tends to choose when options are available',
     'ARMX tracks whether exchanges and move types have helped or hurt against this opponent during the current game',
-    'Apply only bounded evidence-based candidate multipliers; reset the ARMX profile every game'
+    'Use learned quiet-reply preferences within the same search budget',
+    'Compare close moves with bounded evidence-based multipliers; reset all notes every game'
   ],
   getMove: null
 };

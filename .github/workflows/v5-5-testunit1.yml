@@ -10,6 +10,7 @@ on:
       - 'Stonefish_v5_5_native.js'
       - 'benchmark_v5_5_native_contract.js'
       - 'benchmark_armx_contract.js'
+      - 'benchmark_armx_reply_policy.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
@@ -27,6 +28,7 @@ on:
       - 'Stonefish_v5_5_native.js'
       - 'benchmark_v5_5_native_contract.js'
       - 'benchmark_armx_contract.js'
+      - 'benchmark_armx_reply_policy.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
@@ -68,6 +70,8 @@ jobs:
         run: node benchmark_v5_5_native_contract.js
       - name: Verify opponent memory contracts
         run: node benchmark_armx_contract.js
+      - name: Verify learned reply policy and native control parity
+        run: node benchmark_armx_reply_policy.js
       - name: Run ARMX-preview in-game diagnostics
         env:
           ARMX_DIAG_GAMES: '8'
