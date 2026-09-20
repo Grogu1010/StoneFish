@@ -6,6 +6,8 @@ The user explicitly requires **reset notes after every game**, even against the 
 
 Read DEV_V5_5_TESTUNIT1.md first. It supersedes the architecture and "latest" results below. Focus further work on genuine ARMX learning; preserve the native control's behavior. Commit measured improvements directly to main and update the rolling testunit1. Once all targets pass, remove `(testunit1)` from both display names and release the ARMX version. Do not release or rename early. No blog post. Earlier rejected experiments remain archived; do not re-promote failed variants without new confirmation.
 
+After that checkpoint, 15 follow-up runs (780 experimental games) failed to improve the current build. Contextual reply ordering initially gained one win, but its two-set total was 99/200 versus the current 102/200. Reply-value allowances fell to 44/100. Removing outcome reranking fell to 16/40. Slower learning, broader reductions, selective replies, likely-reply extensions and post-move safety context did not add wins in their screens. Post-move context improved top-three reply prediction from 32.0% to 38.8% on 3,379 choices, but still won only 20/40. Exact sources, results and prediction audits are archived in `benchmarks/v5_5/armx-reply-followups.json.gz`. The engine remains commit `0777b0a70e81834d5bf3da9588701fb499f0ca8f`; its GitHub checks passed. The 65/100 contribution gate remains unmet.
+
 The historical record follows for context; do not restore its old architecture as the current build.
 
 ---

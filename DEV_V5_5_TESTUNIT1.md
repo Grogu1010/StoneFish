@@ -30,6 +30,14 @@ On the second 100-game set (`START_INDEX=100`), the integrated build reproduced 
 
 The golden fixture archives the exact prototype patches and fixture generator. The integrated implementation reproduces the prototype's choices while caching geometric preference scores within each search. It does not retain any preference weights across games.
 
+### Follow-up experiments after the reply-policy checkpoint
+
+Fifteen follow-up runs cover 780 experimental games, archived with exact experimental sources, loaded-source hashes, settings and move records in `benchmarks/v5_5/armx-reply-followups.json.gz`. Forty-game screens reuse the first development openings; they are not independent confirmation. Some runs overlap in time, so their timings are not speed evidence.
+
+Adding learned piece-safety and king-distance context to reply ordering scored **49W-39L-12D /100**, but its second set scored **50W-44L-6D /100**. Combined **99 wins /200** is below the current build's 102, so it was rejected. A bounded learned reply-value allowance scored **44W-44L-12D /100** and was also rejected. Removing the older outcome reranking while retaining reply learning scored **16W-21L-3D /40**. Broader reductions, more selective quiet replies, likely-reply extensions, slower learning and post-move context did not add actual wins in their screens.
+
+Prequential audits predict each opponent choice before updating that game's model. On 3,379 eligible quiet choices from the first 100-game set, the current geometric model placed the played move among its top three about **32.0%** of the time; contextual safety measured after the move improved that to **38.8%**. However, its game screen remained at **20 wins /40**, equal to the current build. Better prediction alone is not sufficient evidence to promote a chess engine. The audits and their source are included in the archive. No follow-up replaced the engine from commit `0777b0a70e81834d5bf3da9588701fb499f0ca8f`.
+
 The **65 actual wins / 100 against No ARMX requirement remains unmet**. Keep both testunit1 names and development-only availability until every release gate passes. Once all gates pass, the user authorizes removing `(testunit1)` from both display names and releasing the ARMX version. Commit verified improvements directly to main. Do not write a blog post.
 
 ### Previous calibrated checkpoint
