@@ -23,7 +23,7 @@ models.v55test1 = {
     'Use the exact same native v5.5 host as the No-ARMX control',
     'ARMX-preview observes what the opponent tends to choose when options are available',
     'ARMX tracks whether exchanges and move types have helped or hurt against this opponent during the current game',
-    'Use learned quiet-reply preferences within the same search budget',
+    'Learn quiet-reply preferences and spend more effort when predictions miss',
     'Compare close moves with bounded evidence-based multipliers; reset all notes every game'
   ],
   getMove: null
