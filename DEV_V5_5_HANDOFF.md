@@ -1,3 +1,13 @@
+# Active checkpoint — adaptive ARMX effort
+
+The adaptive-effort test build won **55W-35L-10D /100** against No ARMX and **57W-31L-12D /100** on the second, non-overlapping opening set. Combined: **112W-66L-22D /200 (56% actual wins)**, up from the prior build's 102/200. These are tested prototype results; integration reproduces all 128 saved positions exactly, including moves, scores, depths, node counts and learned notes. Full records and source fingerprints are in the adaptive-effort archives. The 65-win target is still unmet; this is a development update, not a release. The prototype with the repetition shortcut scored **87W-10L-3D /100** against Pro, but measured only **2.833x** faster, below the 3x requirement. Brief contract checks overlapped this run; repeat speed in isolation after optimization. Both the contribution and speed gates need work. Full integrated games remain pending.
+
+ARMX now allocates 1,200–4,800 nodes using prediction surprise measured before learning each observed quiet move. Per-game reset is mandatory. No ARMX stays at 1,200 nodes with identical evaluation and decisions. Do not release or remove testunit1 names until all gates pass. Push verified improvements to main. No blog.
+
+The following is the previous checkpoint, retained as history.
+
+---
+
 # Active checkpoint — learned ARMX replies, September 20, 2026
 
 Current integrated ARMX reply policy: 48W-41L-11D /100 against No ARMX, plus 54W-42L-4D on a second non-overlapping 100-game opening set. Combined: 102W-83L-15D /200 (51% wins), up from the previous calibration's 95W-87L-18D /200. Against Pro: ARMX 92W-6L-2D /100, 4.428x faster in direct engine time per move. No ARMX still reproduces 92W-7L-1D /100 against Pro, 4.770x faster. The only unmet gate remains 65 actual wins /100 against No ARMX. Full integrated evidence is in `benchmarks/v5_5/armx-reply-policy-100.json.gz` and `armx-reply-policy-holdout-100.json.gz`.

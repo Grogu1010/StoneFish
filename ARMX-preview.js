@@ -4,13 +4,14 @@
 // move tree. Instead it watches the
 // actual game, builds a small profile of this opponent's choices and of what has
 // worked (or failed) against them. Learned quiet-reply preferences guide the
-// existing native search budget; bounded outcome multipliers compare finalists.
+// native search and allocate extra effort when predictions disappoint;
+// bounded outcome multipliers compare finalists.
 // The profile lives in a WeakMap keyed
 // by the game object, so it automatically resets between games/rounds.
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-native-reply-policy',
+  version: 'preview-adaptive-effort',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 3,
@@ -43,6 +44,9 @@ const ARMX_PREVIEW = Object.freeze({
   quietChoiceLearningRate: 0.8,
   quietChoiceDecay: 0.995,
   quietChoiceWeightLimit: 6,
+  predictionQualityDecay: 0.9,
+  predictionSurpriseScale: 0.3,
+  maxExtraSearchNodes: 3600,
 });
 
 const ARMX_PREVIEW_GAME_PROFILES = new WeakMap();
@@ -108,13 +112,24 @@ function armxPreviewObserveQuietChoice(profile, game, chosen) {
   if (chosen.captured || chosen.promotion || game.in_check()) return;
   const moves = game.fastMoves().filter(move => !move.captured && !move.promotion);
   if (moves.length < 2) return;
-  if (!profile.quietPolicy) profile.quietPolicy = { weights: new Float64Array(13), count: 0 };
+  if (!profile.quietPolicy) profile.quietPolicy = {
+    weights: new Float64Array(13), count: 0, qualitySum: 0, qualityWeight: 0
+  };
   const model = profile.quietPolicy;
   const rows = moves.map(move => armxPreviewQuietFeatures(move, game.side));
   const logits = rows.map(row => armxPreviewQuietLogit(row, model.weights));
   const maximum = Math.max(...logits);
   const probabilities = logits.map(logit => Math.exp(logit - maximum));
   const sum = probabilities.reduce((a, b) => a + b, 0);
+  // Measure the prediction before learning from this choice. Compare its
+  // probability with uniform selection among the available quiet moves.
+  const selectedIndex = moves.findIndex(move => move.from === chosen.from && move.to === chosen.to
+    && (move.promotion || 0) === (chosen.promotion || 0));
+  if (model.count >= 1 && selectedIndex >= 0) {
+    const gain = Math.log(moves.length * probabilities[selectedIndex] / sum);
+    model.qualitySum = model.qualitySum * ARMX_PREVIEW.predictionQualityDecay + gain;
+    model.qualityWeight = model.qualityWeight * ARMX_PREVIEW.predictionQualityDecay + 1;
+  }
   const selected = armxPreviewQuietFeatures(chosen, game.side);
   for (let i = 0; i < model.weights.length; i++) {
     let expected = 0;
@@ -146,6 +161,11 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
   };
   return {
     observations: model.count,
+    // An unpredictable opponent needs more verification. This is a frozen
+    // request from current-game notes, never an opponent-name difficulty boost.
+    searchBudget: SF55C.nodes + Math.round(ARMX_PREVIEW.maxExtraSearchNodes *
+      armxPreviewClamp(-(model.qualityWeight ? model.qualitySum / model.qualityWeight : 0)
+        / ARMX_PREVIEW.predictionSurpriseScale, 0, 1)),
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };

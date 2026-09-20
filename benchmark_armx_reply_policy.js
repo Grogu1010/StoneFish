@@ -74,7 +74,7 @@ assert.equal(SF55C.maxDepth, 4);
 // Golden results were generated before integration, with the old native host
 // and the separately tested prototype. Scores, ordering, depths, node counts,
 // learned weights, and board restoration must all agree exactly.
-const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('benchmarks/v5_5/reply-policy-golden.json.gz')));
+const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('benchmarks/v5_5/adaptive-effort-golden.json.gz')));
 for (const row of golden.positions) {
   const game = play(new Chess(), ...row.history);
   game.armxObservationStartPly = row.observationStartPly;
@@ -84,6 +84,11 @@ for (const row of golden.positions) {
   const model = armxPreviewSyncProfile(game, game.side).quietPolicy;
   assert.equal(model ? model.count : 0, row.quietChoices);
   assert.deepEqual(model ? Array.from(model.weights) : null, row.weights);
+  assert.equal(model ? model.qualitySum : 0, row.qualitySum);
+  assert.equal(model ? model.qualityWeight : 0, row.qualityWeight);
+  const policy = armxPreviewOpponentPolicy(game, game.side);
+  assert.equal(policy ? policy.searchBudget : SF55C.nodes, row.searchBudget);
+  assert.equal(SF55C_LAST.searchBudget, row.searchBudget);
   assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(game)), row.native);
   assert.equal(snapshot(game), original);
 }

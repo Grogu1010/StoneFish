@@ -1,6 +1,7 @@
 // Native v5.5: full legal-move alpha-beta and capture quiescence.
-// Both variants call the same host, evaluation, and search budget. An optional
-// per-game reply policy supplies learned priorities; the control supplies none.
+// Both variants call the same host and evaluation. An optional per-game reply
+// policy supplies learned priorities and an effort request; the control uses
+// the unchanged default budget.
 const SF55C = {
   maxDepth: 4, nodes: 1200, multiPV: 3, qDepth: 5,
   piece: [0, 100, 325, 335, 510, 975, 0], mate: STONEFISH_V5_PRO_MATE,
@@ -108,7 +109,9 @@ function sf55cInsufficient(g) {
   return minors <= 1 || (!knights && !mixed);
 }
 function sf55cDraw(g,ctx,key) {
-  return g.halfmove>=100 || (key && (g.positionCounts.get(key)||0)+(ctx.path.get(key)||0)+1>=3)
+  // A third occurrence needs at least eight reversible plies. Earlier path
+  // positions still must be recorded so later repetitions remain detectable.
+  return g.halfmove>=100 || (g.halfmove>=8 && key && (g.positionCounts.get(key)||0)+(ctx.path.get(key)||0)+1>=3)
     || sf55cInsufficient(g);
 }
 function sf55cEnter(ctx,key) {
@@ -265,7 +268,9 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
 
 function sf55cHost(g,replyPolicy=null){
   const legal=g.fastMoves();if(!legal.length)return {finished:[],fastLeader:null,refutationGuard:null};
-  const ctx={nodes:0,limit:SF55C.nodes,depth:0,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768),replyPolicy};
+  const requested=replyPolicy&&replyPolicy.searchBudget;
+  const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+3600,Math.round(requested))):SF55C.nodes;
+  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768),replyPolicy};
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
   for(const e of roots){g.fastApply(e.raw);try{e.score=-sf55cEvaluate(g);}finally{g.fastUndo();}}
   roots.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
@@ -292,6 +297,7 @@ function sf55cHost(g,replyPolicy=null){
   complete.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
   const result={finished:complete,fastLeader:complete[0].raw,refutationGuard:{eligible:false,verified:false,nativeFullWidth:true}};
   result.nodes=ctx.nodes;result.depth=ctx.depth-(ctx.abort?1:0);
+  result.searchBudget=ctx.limit;
   globalThis.SF55C_LAST=result;
   return result;
 }
