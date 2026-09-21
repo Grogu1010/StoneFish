@@ -473,9 +473,20 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(replyPolicy.searchBudget))):SF55C.nodes;
   const depthLimit=Number.isFinite(replyPolicy.maxDepth)
     ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(replyPolicy.maxDepth))):SF55C.maxDepth;
+  let publicHistoryCount=0;
+  if(k.publicKeys&&k.publicCounts){
+    for(const [historyKey,countValue] of g.positionCounts){
+      if(publicHistoryCount>=512)break;
+      const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
+      const offset=publicHistoryCount*17;
+      for(let i=0;i<17;i++)k.publicKeys[offset+i]=packed.charCodeAt(i);
+      k.publicCounts[publicHistoryCount]=countValue;
+      publicHistoryCount++;
+    }
+  }
   const count=k.api.search_all(
     g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-    depthLimit,limit,SF55C.qDepth,1);
+    depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
   const finished=new Array(count);
   for(let i=0;i<count;i++){
     const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
@@ -985,7 +996,9 @@ try {
    config:new Int32Array(api.memory.buffer,api.config_ptr(),903),
    moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512),
    scores:api.scores_ptr?new Int32Array(api.memory.buffer,api.scores_ptr(),512):null,
-   policyWeights:api.policy_ptr?new Float64Array(api.memory.buffer,api.policy_ptr(),13):null};
+   policyWeights:api.policy_ptr?new Float64Array(api.memory.buffer,api.policy_ptr(),13):null,
+   publicKeys:api.public_keys_ptr?new Uint16Array(api.memory.buffer,api.public_keys_ptr(),512*17):null,
+   publicCounts:api.public_counts_ptr?new Int32Array(api.memory.buffer,api.public_counts_ptr(),512):null};
  }
 } catch (_) { /* Use the identical JS implementation if compilation is blocked. */ }
 function sf55cSyncKernelConfig(){
