@@ -15,6 +15,20 @@ const repeat=position({h8:-6,a1:4,e1:6},1,8);repeat.positionCounts.set(repeat.fa
 const material=position({h8:-6,a1:3,e1:6});assert.strictEqual(sf55cQ(material,context(),-SF55C.mate,SF55C.mate,1,5),0);
 const win=position({h8:-6,g6:5,f6:6});const winning=sf55cHost(win).finished[0];win.fastApply(winning.raw);assert(win.in_checkmate());win.fastUndo();
 const originalEvaluate=sf55cEvaluate;sf55cEvaluate=()=>{throw new Error('injected failure');};assert.throws(()=>sf55cHost(game),/injected failure/);sf55cEvaluate=originalEvaluate;assert.strictEqual(snap(game),before);
+// Search history must retain the first cycle even when it is too early for a
+// third occurrence. A second speculative knight cycle is a repetition draw.
+const cycleGame=new Chess(),cycleContext=context(),cycleBefore=snap(cycleGame),cycleKeys=[];
+for(let ply=0;ply<8;ply++){
+  const uci=['g1f3','g8f6','f3g1','f6g8'][ply%4];
+  const move=cycleGame.fastMoves().find(m=>stonefishV45RawUci(cycleGame,m)===uci);
+  assert(move);cycleGame.fastApply(move);
+  const key=sf55cPositionKey(cycleGame);cycleKeys.push(key);
+  assert.strictEqual(key,stonefishRuntimeBasePositionKey.call(cycleGame));
+  assert.strictEqual(!!sf55cDraw(cycleGame,cycleContext,key),ply===7);
+  sf55cEnter(cycleContext,key);
+}
+for(let ply=7;ply>=0;ply--){sf55cExit(cycleContext,cycleKeys[ply]);cycleGame.fastUndo();}
+assert.strictEqual(snap(cycleGame),cycleBefore);assert.strictEqual(cycleContext.path.size,0);
 let randomState = 991;
 let positions = 0;
 const moveKey = move => [move.from, move.to, move.piece, move.captured, move.promotion, move.flags].join(':');
@@ -22,6 +36,7 @@ for (let line = 0; line < 20; line++) {
   const varied = new Chess();
   for (let ply = 0; ply < 50; ply++) {
     const legal = varied.fastMoves();
+    assert.strictEqual(sf55cPositionKey(varied), stonefishRuntimeBasePositionKey.call(varied));
     assert.deepStrictEqual(sf55cTacticalMoves(varied).map(moveKey), legal.filter(move => move.captured || move.promotion).map(moveKey));
     assert.strictEqual(sf55cInsufficient(varied), varied._insufficientMaterial());
     positions++;

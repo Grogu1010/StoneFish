@@ -108,6 +108,23 @@ function sf55cInsufficient(g) {
   }
   return minors <= 1 || (!knights && !mixed);
 }
+// Same exact repetition identity, formed without a long chain of strings.
+// Keep the shared make/undo cache so every caller observes the original key.
+function sf55cPositionKey(g) {
+  if (g._stonefishRuntimePositionKey != null) return g._stonefishRuntimePositionKey;
+  const b = g.boardState;
+  const board = String.fromCharCode(
+    b[0]+70, b[1]+70, b[2]+70, b[3]+70, b[4]+70, b[5]+70, b[6]+70, b[7]+70,
+    b[8]+70, b[9]+70, b[10]+70, b[11]+70, b[12]+70, b[13]+70, b[14]+70, b[15]+70,
+    b[16]+70, b[17]+70, b[18]+70, b[19]+70, b[20]+70, b[21]+70, b[22]+70, b[23]+70,
+    b[24]+70, b[25]+70, b[26]+70, b[27]+70, b[28]+70, b[29]+70, b[30]+70, b[31]+70,
+    b[32]+70, b[33]+70, b[34]+70, b[35]+70, b[36]+70, b[37]+70, b[38]+70, b[39]+70,
+    b[40]+70, b[41]+70, b[42]+70, b[43]+70, b[44]+70, b[45]+70, b[46]+70, b[47]+70,
+    b[48]+70, b[49]+70, b[50]+70, b[51]+70, b[52]+70, b[53]+70, b[54]+70, b[55]+70,
+    b[56]+70, b[57]+70, b[58]+70, b[59]+70, b[60]+70, b[61]+70, b[62]+70, b[63]+70);
+  return g._stonefishRuntimePositionKey = (g.side === 1 ? 'w|' : 'b|') + board + '|' + g.castling + '|' + g.ep;
+}
+
 function sf55cDraw(g,ctx,key) {
   // A third occurrence needs at least eight reversible plies. Earlier path
   // positions still must be recorded so later repetitions remain detectable.
@@ -185,7 +202,7 @@ function sf55cQ(g,ctx,alpha,beta,ply,remaining){
   const check=g.in_check();
   // Captures and pawn moves cannot repeat an earlier position. Avoid building
   // board keys in these common quiescence nodes.
-  const key=g.halfmove ? g.fastPositionKey() : null;
+  const key=g.halfmove ? sf55cPositionKey(g) : null;
   let moves=check ? g.fastMoves() : null;
   if(check && !moves.length)return -SF55C.mate+ply;
   if(sf55cDraw(g,ctx,key))return 0;
@@ -232,7 +249,7 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   ctx.nodes++;
   const check=g.in_check(),moves=g.fastMoves();
   if(!moves.length)return check?-SF55C.mate+ply:0;
-  const key=g.fastPositionKey();
+  const key=sf55cPositionKey(g);
   if(sf55cDraw(g,ctx,key))return 0;
   if(ctx.nodes>ctx.limit&&ctx.depth>2){ctx.abort=true;return sf55cEvaluate(g);}
   // Halfmove clock, mate distance, and the speculative repetition path are part
@@ -270,12 +287,14 @@ function sf55cHost(g,replyPolicy=null){
   const legal=g.fastMoves();if(!legal.length)return {finished:[],fastLeader:null,refutationGuard:null};
   const requested=replyPolicy&&replyPolicy.searchBudget;
   const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+3600,Math.round(requested))):SF55C.nodes;
+  const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
+  const depthLimit=Number.isFinite(requestedDepth)?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(requestedDepth))):SF55C.maxDepth;
   const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768),replyPolicy};
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
   for(const e of roots){g.fastApply(e.raw);try{e.score=-sf55cEvaluate(g);}finally{g.fastUndo();}}
   roots.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
   let complete=roots;
-  for(let depth=1;depth<=SF55C.maxDepth;depth++){
+  for(let depth=1;depth<=depthLimit;depth++){
     ctx.depth=depth;
     const next=[];let threshold=-SF55C.mate;
     for(const previous of complete){
@@ -298,6 +317,7 @@ function sf55cHost(g,replyPolicy=null){
   const result={finished:complete,fastLeader:complete[0].raw,refutationGuard:{eligible:false,verified:false,nativeFullWidth:true}};
   result.nodes=ctx.nodes;result.depth=ctx.depth-(ctx.abort?1:0);
   result.searchBudget=ctx.limit;
+  result.depthLimit=depthLimit;
   globalThis.SF55C_LAST=result;
   return result;
 }

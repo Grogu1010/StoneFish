@@ -1,3 +1,11 @@
+# Active checkpoint — adaptive ARMX horizon
+
+The adaptive-horizon build scored **57W-34L-9D /100** against No ARMX and **59W-31L-10D /100** on the second, non-overlapping opening set: **116W-65L-19D /200 (58% actual wins)**. This improves the preceding adaptive-effort build's 112/200. Against Pro it scored **88W-9L-3D /100**, with **3.249x** faster engine-only time per move in an isolated run. No ARMX retains exact score, move, depth and node-count parity with the original control; its latest full confirmation was 92W-7L-1D /100 against Pro. The 65/100 contribution target remains unmet. Keep both testunit1 names and development-only availability; do not release or write a blog. These full games tested the prototype; the integrated code exactly matches 128 saved prototype positions, including all learned state and the control. Full integrated confirmation follows.
+
+Native board-key construction is lossless and faster. ARMX notes request 1,200–4,800 nodes and depth 4–6; No ARMX remains at 1,200 nodes and depth 4. Notes reset each game. The previous checkpoints follow as history.
+
+---
+
 # Active checkpoint — adaptive ARMX effort
 
 The adaptive-effort test build won **55W-35L-10D /100** against No ARMX and **57W-31L-12D /100** on the second, non-overlapping opening set. Combined: **112W-66L-22D /200 (56% actual wins)**, up from the prior build's 102/200. These are tested prototype results; integration reproduces all 128 saved positions exactly, including moves, scores, depths, node counts and learned notes. Full records and source fingerprints are in the adaptive-effort archives. The 65-win target is still unmet; this is a development update, not a release. The prototype with the repetition shortcut scored **87W-10L-3D /100** against Pro, but measured only **2.833x** faster, below the 3x requirement. Brief contract checks overlapped this run; repeat speed in isolation after optimization. Both the contribution and speed gates need work. Full integrated games remain pending.

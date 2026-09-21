@@ -11,7 +11,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adaptive-effort',
+  version: 'preview-adaptive-horizon',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 3,
@@ -47,6 +47,7 @@ const ARMX_PREVIEW = Object.freeze({
   predictionQualityDecay: 0.9,
   predictionSurpriseScale: 0.3,
   maxExtraSearchNodes: 3600,
+  maxExtraSearchDepth: 2,
 });
 
 const ARMX_PREVIEW_GAME_PROFILES = new WeakMap();
@@ -159,13 +160,17 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
     }
     return value;
   };
+  const uncertainty = armxPreviewClamp(
+    -(model.qualityWeight ? model.qualitySum / model.qualityWeight : 0)
+      / ARMX_PREVIEW.predictionSurpriseScale, 0, 1);
+  const searchBudget = SF55C.nodes + Math.round(ARMX_PREVIEW.maxExtraSearchNodes * uncertainty);
   return {
     observations: model.count,
     // An unpredictable opponent needs more verification. This is a frozen
     // request from current-game notes, never an opponent-name difficulty boost.
-    searchBudget: SF55C.nodes + Math.round(ARMX_PREVIEW.maxExtraSearchNodes *
-      armxPreviewClamp(-(model.qualityWeight ? model.qualitySum / model.qualityWeight : 0)
-        / ARMX_PREVIEW.predictionSurpriseScale, 0, 1)),
+    searchBudget,
+    maxDepth: SF55C.maxDepth + Math.round(ARMX_PREVIEW.maxExtraSearchDepth *
+      (searchBudget - SF55C.nodes) / ARMX_PREVIEW.maxExtraSearchNodes),
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };

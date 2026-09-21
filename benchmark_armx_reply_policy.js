@@ -43,12 +43,22 @@ assert.ok(pawnPolicy.priority(pawn) > pawnPolicy.priority(knight));
 
 // A policy is a frozen per-search snapshot, and a new round gets no policy.
 const remembered = knightPolicy.priority(knight);
+const rememberedBudget = knightPolicy.searchBudget;
 armxPreviewSyncProfile(knights, 1).quietPolicy.weights.fill(-6);
 assert.equal(knightPolicy.priority(knight), remembered);
 assert.notEqual(armxPreviewOpponentPolicy(knights, 1).priority(knight), remembered);
+// Identical board and preference weights, different prediction-quality notes.
+const effortModel = armxPreviewSyncProfile(knights, 1).quietPolicy;
+effortModel.qualityWeight = 1;
+effortModel.qualitySum = 1;
+assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 1200);
+effortModel.qualitySum = -1;
+assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 4800);
+assert.equal(knightPolicy.searchBudget, rememberedBudget);
 assert.equal(armxPreviewOpponentPolicy(new Chess(), 1), null);
 knights.reset();
 assert.equal(armxPreviewOpponentPolicy(knights, 1), null);
+assert.equal(armxPreviewSyncProfile(knights, 1).quietPolicy, null);
 pawns.armxObservationStartPly = pawns.historyStack.length;
 assert.equal(armxPreviewOpponentPolicy(pawns, 1), null);
 
@@ -70,11 +80,39 @@ assert.equal(snapshot(clean), before);
 assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(clean)), expected);
 assert.equal(SF55C.nodes, 1200);
 assert.equal(SF55C.maxDepth, 4);
+for (const [request, budget] of [[-1, 1200], [99999, 4800], [NaN, 1200]]) {
+  const result = sf55cHost(clean, { searchBudget: request,
+    priority() { return 0; }, isLowPriority() { return false; } });
+  assert.equal(result.searchBudget, budget);
+  assert.equal(snapshot(clean), before);
+}
+assert.equal(sf55cHost(clean).searchBudget, 1200);
+for (const [request, depth] of [[-1, 4], [999, 6], [NaN, 4]]) {
+  const result = sf55cHost(clean, { maxDepth: request,
+    priority() { return 0; }, isLowPriority() { return false; } });
+  assert.equal(result.depthLimit, depth);
+  assert.equal(snapshot(clean), before);
+}
+assert.equal(sf55cHost(clean).depthLimit, 4);
+
+// Quality uses the old weights, before this observed choice updates the model.
+const learningGame = new Chess(), learningProfile = armxPreviewNewProfile(-1);
+const learningMoves = learningGame.fastMoves().filter(move => !move.captured && !move.promotion);
+armxPreviewObserveQuietChoice(learningProfile, learningGame, learningMoves[0]);
+const learningModel = learningProfile.quietPolicy;
+assert.equal(learningModel.qualityWeight, 0);
+const logits = learningMoves.map(move => armxPreviewQuietLogit(
+  armxPreviewQuietFeatures(move, learningGame.side), learningModel.weights));
+const maximum = Math.max(...logits), probabilities = logits.map(logit => Math.exp(logit - maximum));
+const gain = Math.log(learningMoves.length * probabilities[1] / probabilities.reduce((a,b) => a+b, 0));
+armxPreviewObserveQuietChoice(learningProfile, learningGame, learningMoves[1]);
+assert.equal(learningModel.qualitySum, gain);
+assert.equal(learningModel.qualityWeight, 1);
 
 // Golden results were generated before integration, with the old native host
 // and the separately tested prototype. Scores, ordering, depths, node counts,
 // learned weights, and board restoration must all agree exactly.
-const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('benchmarks/v5_5/adaptive-effort-golden.json.gz')));
+const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('benchmarks/v5_5/adaptive-horizon-golden.json.gz')));
 for (const row of golden.positions) {
   const game = play(new Chess(), ...row.history);
   game.armxObservationStartPly = row.observationStartPly;
@@ -89,6 +127,8 @@ for (const row of golden.positions) {
   const policy = armxPreviewOpponentPolicy(game, game.side);
   assert.equal(policy ? policy.searchBudget : SF55C.nodes, row.searchBudget);
   assert.equal(SF55C_LAST.searchBudget, row.searchBudget);
+  assert.equal(policy ? policy.maxDepth : SF55C.maxDepth, row.maxDepth);
+  assert.equal(SF55C_LAST.depthLimit, row.maxDepth);
   assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(game)), row.native);
   assert.equal(snapshot(game), original);
 }
