@@ -494,6 +494,10 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
 }
 
 function sf55cHost(g,replyPolicy=null){
+  if(replyPolicy&&typeof process!=='undefined'&&process.env&&process.env.ARMX_COMPILED_EXPERIMENT==='1'){
+    const accelerated=sf55cNativeAcceleratedHost(g,replyPolicy);
+    if(accelerated){globalThis.SF55C_LAST=accelerated;return accelerated;}
+  }
   sf55cSyncKernelConfig();
   g._sf55cKernelSearchActive=true;g._sf55cKernelDirty=true;
   const legal=sf55cLegalMoves(g);if(!legal.length){g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;return {finished:[],fastLeader:null,refutationGuard:null};}
