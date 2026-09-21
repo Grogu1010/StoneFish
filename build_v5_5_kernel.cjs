@@ -8,8 +8,12 @@ try {
  const output=path.join(temporary,'helpers.wasm');
  const exports=['board_ptr','config_ptr','moves_ptr','scores_ptr','policy_ptr','evaluate','in_check','generate',
   'search_all','search_nodes','search_depth'];
- execFileSync(process.env.ZIG||'zig',['cc','-target','wasm32-freestanding','-O3','-nostdlib',
-  '-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output],{stdio:'inherit'});
+ const cc=process.env.CC||process.env.ZIG||'zig';
+ const clang=process.env.CC||/(^|[/\\])clang(?:-[0-9]+)?$/.test(cc);
+ const args=clang
+  ?['--target=wasm32','-O3','-nostdlib','-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output]
+  :['cc','-target','wasm32-freestanding','-O3','-nostdlib','-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output];
+ execFileSync(cc,args,{stdio:'inherit'});
  const bytes=fs.readFileSync(output),module=new WebAssembly.Module(bytes);
  if(WebAssembly.Module.imports(module).length)throw Error('Kernel must have no imports');
  const hash=crypto.createHash('sha256').update(bytes).digest('hex');
