@@ -164,6 +164,9 @@ static int search_history[32768],search_killers[32];
 static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
+#define SEARCH_POLICY_CACHE_CAP 8192
+typedef struct {u32 generation,key;double value;} SearchPolicyCacheEntry;
+static SearchPolicyCacheEntry search_policy_cache[SEARCH_POLICY_CACHE_CAP];
 
 #define SEARCH_POS_CAP 16384
 #define SEARCH_PATH_CAP 32768
@@ -437,7 +440,7 @@ static int quiet_ending(int piece,int sq){
   if(piece==5)return center*3;
   return center*8;
 }
-static double policy_logit(u32 m){
+static double policy_logit_uncached(u32 m){
   int piece=move_piece(m),from=move_from(m),to=move_to(m);
   if(search_policy_side<0){from^=56;to^=56;}
   double v=policy_weights[piece-1];
@@ -451,6 +454,20 @@ static double policy_logit(u32 m){
   v+=center_gain*policy_weights[11];
   if(piece==1&&(to>>3)>=4)v+=policy_weights[12];
   return v;
+}
+static double policy_logit(u32 m){
+  u32 key=(u32)move_from(m)|((u32)move_to(m)<<6)|((u32)move_piece(m)<<12)
+    |((u32)move_promotion(m)<<15)|((u32)move_flags(m)<<18);
+  u32 slot=search_hash_mix(key)&(SEARCH_POLICY_CACHE_CAP-1);
+  for(int probe=0;probe<SEARCH_POLICY_CACHE_CAP;probe++,slot=(slot+1)&(SEARCH_POLICY_CACHE_CAP-1)){
+    SearchPolicyCacheEntry *e=&search_policy_cache[slot];
+    if(e->generation!=search_generation){
+      double value=policy_logit_uncached(m);
+      e->generation=search_generation;e->key=key;e->value=value;return value;
+    }
+    if(e->key==key)return e->value;
+  }
+  return policy_logit_uncached(m);
 }
 static int search_order(u32 m,int ply,int tt_move){
   int promotion=move_promotion(m),captured=move_captured(m),piece=move_piece(m),id=move_id(m);
