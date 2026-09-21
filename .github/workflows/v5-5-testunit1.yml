@@ -98,6 +98,10 @@ jobs:
         env:
           ARMX_H2H_GAMES: '40'
         run: node benchmark_armx_compiled_vs_current.js
+      - name: Measure compiled ARMX versus No-ARMX
+        env:
+          ARMX_H2H_GAMES: '12'
+        run: node benchmark_armx_compiled_vs_noarmx.js
       - name: Measure full ARMX versus No-ARMX
         env:
           SAMPLES: '20'
