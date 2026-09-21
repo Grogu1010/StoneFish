@@ -652,6 +652,12 @@ static void search_exit_position(int pos){
   search_path_counts[pos]--;
   search_path_signature=search_path_stack[--search_path_top];
 }
+static void search_enter_repetition_only(int pos){
+  if(pos)search_path_counts[pos]++;
+}
+static void search_exit_repetition_only(int pos){
+  if(pos)search_path_counts[pos]--;
+}
 static SearchTTEntry *search_tt_find(int pos,int halfmove,int ply,int path){
   u32 hash=(u32)pos*2654435761u^(u32)halfmove*2246822519u^(u32)ply*3266489917u^(u32)path*668265263u;
   u32 slot=hash&(SEARCH_TT_CAP-1);
@@ -781,7 +787,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
     for(int i=0;i<n;i++)moves[i]=output[i];
   }
   int *priorities=search_prepare_order(moves,n,ply,0);
-  if(pos)search_enter_position(pos);
+  search_enter_repetition_only(pos);
   for(int i=0;i<n;i++){
     u32 m=search_pick_ordered(moves,priorities,n,i);
     if(!check&&!move_promotion(m)&&stand+config[move_captured(m)]+160<alpha)continue;
@@ -791,7 +797,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
     if(search_abort)break;
     if(score>stand)stand=score;if(score>alpha)alpha=score;if(alpha>=beta)break;
   }
-  if(pos)search_exit_position(pos);
+  search_exit_repetition_only(pos);
   return stand;
 }
 
