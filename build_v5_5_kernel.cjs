@@ -6,9 +6,14 @@ const root=__dirname,source=path.join(root,'native','v5_5_helpers.c');
 const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'stonefish-kernel-'));
 try {
  const output=path.join(temporary,'helpers.wasm');
- const exports=['board_ptr','config_ptr','moves_ptr','evaluate','in_check','generate'];
- execFileSync(process.env.ZIG||'zig',['cc','-target','wasm32-freestanding','-O3','-nostdlib',
-  '-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output],{stdio:'inherit'});
+ const exports=['board_ptr','config_ptr','moves_ptr','scores_ptr','policy_ptr','evaluate','in_check','generate',
+  'search_all','search_nodes','search_depth'];
+ const directCC=process.env.STONEFISH_CC;
+ const compiler=directCC||(process.env.ZIG||'zig');
+ const args=directCC
+  ?['--target=wasm32','-O3','-nostdlib','-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output]
+  :['cc','-target','wasm32-freestanding','-O3','-nostdlib','-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output];
+ execFileSync(compiler,args,{stdio:'inherit'});
  const bytes=fs.readFileSync(output),module=new WebAssembly.Module(bytes);
  if(WebAssembly.Module.imports(module).length)throw Error('Kernel must have no imports');
  const hash=crypto.createHash('sha256').update(bytes).digest('hex');
