@@ -621,10 +621,12 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
 
 static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 last_move){
   if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
+  int known_check=-1;
   if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
     &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6){
     int king=s->side>0?s->wk:s->bk;
-    if(!in_check(s->side,king)&&policy_logit(last_move)<0){
+    known_check=in_check(s->side,king);
+    if(!known_check&&policy_logit(last_move)<0){
       int probe=search_q(s,alpha,beta,ply,search_qdepth);
       if(search_abort||probe>=beta)return probe;
     }
@@ -638,7 +640,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(hit->flag==1&&hit->score>=beta)return hit->score;
     if(hit->flag==-1&&hit->score<=alpha)return hit->score;
   }
-  int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
+  int king=s->side>0?s->wk:s->bk,check=known_check>=0?known_check:in_check(s->side,king);
   int n=generate_known(s->side,s->castling,s->ep,king,0,check);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
