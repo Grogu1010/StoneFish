@@ -16,6 +16,7 @@ on:
       - 'benchmark_armx_reply_policy.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
+      - 'Stonefish_v5_5_armx_140_experiment.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
       - 'test-worker.js'
       - 'Stonefish_parallel_tests.js'
@@ -37,6 +38,7 @@ on:
       - 'benchmark_armx_reply_policy.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
+      - 'Stonefish_v5_5_armx_140_experiment.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
       - 'test-worker.js'
       - 'Stonefish_parallel_tests.js'
@@ -88,4 +90,23 @@ jobs:
         env:
           SAMPLES: '20'
           GAMES: '8'
+        run: node benchmark_v5_5_testunit1.js
+
+      - name: Test ARMX 140 candidate speed against No ARMX
+        env:
+          ENGINE_PATCH: 'Stonefish_v5_5_armx_140_experiment.js'
+          ARMX140_NODES: '1600'
+          ARMX140_OPPONENT: 'no'
+          MATCHUP: 'armxVsNoArmx'
+          SAMPLES: '4'
+          GAMES: '100'
+        run: node benchmark_v5_5_testunit1.js
+      - name: Test ARMX 140 candidate strength against current ARMX
+        env:
+          ENGINE_PATCH: 'Stonefish_v5_5_armx_140_experiment.js'
+          ARMX140_NODES: '1600'
+          ARMX140_OPPONENT: 'current'
+          MATCHUP: 'armxVsNoArmx'
+          SAMPLES: '4'
+          GAMES: '100'
         run: node benchmark_v5_5_testunit1.js
