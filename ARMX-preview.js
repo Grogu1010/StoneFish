@@ -46,10 +46,13 @@ const ARMX_PREVIEW = Object.freeze({
   quietChoiceWeightLimit: 6,
   predictionQualityDecay: 0.9,
   predictionSurpriseScale: 0.3,
-  maxExtraSearchNodes: 3600,
-  evidenceSearchNodes: 4800,
+  // Efficiency candidate: cap total ARMX search effort at 1,600 nodes and
+  // keep the native four-ply ceiling. Learned ordering and finalist adaptation
+  // are unchanged; only the amount of extra verification work is reduced.
+  maxExtraSearchNodes: 160,
+  evidenceSearchNodes: 240,
   fullSearchEvidence: 8,
-  maxExtraSearchDepth: 2,
+  maxExtraSearchDepth: 0,
 });
 
 const ARMX_PREVIEW_GAME_PROFILES = new WeakMap();
