@@ -466,7 +466,9 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   if(sf55cDraw(g,ctx,key))return 0;
   if(!budgetLive){ctx.abort=true;return sf55cEvaluate(g);}
   const nullMoveEnabled=Boolean(
-    typeof process!=='undefined'&&process.env&&process.env.ARMX_NULL_MOVE==='1'
+    typeof process!=='undefined'&&process.env
+      &&(process.env.ARMX_NULL_MOVE==='1'
+        ||(process.env.ARMX_FAST_SCREEN==='1'&&process.env.ARMX_FAST_NULL_MOVE==='1'))
       &&ctx.replyPolicy&&!ctx.nullActive&&depth>=3&&beta-alpha<=1&&!check
       &&ctx.material>2&&beta<SF55C.mate-100
   );
