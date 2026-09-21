@@ -3,6 +3,7 @@
 typedef signed char i8;
 typedef unsigned int u32;
 typedef unsigned short u16;
+typedef unsigned long long u64;
 static i8 board[64];
 static int config[903]; /* piece[7], middlegame[7][64], endgame[7][64] */
 static u32 output[512];
@@ -210,6 +211,9 @@ int search_depth(void){return search_depth_done;}
 typedef struct {
   int side,castling,ep,wk,bk,halfmove,material;
   u32 hash;
+  int eval_mg,eval_eg,eval_phase,white_bishops,black_bishops;
+  u32 white_pawn_files,black_pawn_files;
+  u64 white_pawns,black_pawns,white_rooks,black_rooks;
 } SearchState;
 typedef struct {
   SearchState state;
@@ -238,10 +242,45 @@ static u32 search_initial_hash(const SearchState *s){
   for(int sq=0;sq<64;sq++)if(board[sq])h^=search_piece_token(sq,board[sq]);
   return h;
 }
+static int search_phase_piece(int type){return type==2||type==3?1:type==4?2:type==5?4:0;}
+static int search_file_count(u32 packed,int file){return (int)((packed>>(file<<2))&15u);}
+static void search_file_adjust(u32 *packed,int file,int delta){
+  u32 unit=1u<<(file<<2);if(delta>0)*packed+=unit;else *packed-=unit;
+}
+static u64 search_file_mask(int file){return ((u64)0x0101010101010101ULL)<<file;}
+static void search_eval_piece(SearchState *s,int sq,int piece,int direction){
+  int side=piece>0?1:-1,type=absolute(piece),ps=side>0?sq:sq^56;
+  const int *pst=config+7,*ending=config+7+448;
+  s->eval_mg+=direction*side*(config[type]+pst[type*64+ps]);
+  s->eval_eg+=direction*side*(config[type]+ending[type*64+ps]);
+  s->eval_phase+=direction*search_phase_piece(type);
+  u64 bit=(u64)1<<sq;
+  if(type==1){
+    if(side>0){
+      if(direction>0)s->white_pawns|=bit;else s->white_pawns&=~bit;
+      search_file_adjust(&s->white_pawn_files,sq&7,direction);
+    }else{
+      if(direction>0)s->black_pawns|=bit;else s->black_pawns&=~bit;
+      search_file_adjust(&s->black_pawn_files,sq&7,direction);
+    }
+  }else if(type==3){
+    if(side>0)s->white_bishops+=direction;else s->black_bishops+=direction;
+  }else if(type==4){
+    if(side>0){if(direction>0)s->white_rooks|=bit;else s->white_rooks&=~bit;}
+    else{if(direction>0)s->black_rooks|=bit;else s->black_rooks&=~bit;}
+  }
+}
+static void search_initial_eval(SearchState *s){
+  s->eval_mg=s->eval_eg=s->eval_phase=0;
+  s->white_bishops=s->black_bishops=0;
+  s->white_pawn_files=s->black_pawn_files=0;
+  s->white_pawns=s->black_pawns=s->white_rooks=s->black_rooks=0;
+  for(int sq=0;sq<64;sq++)if(board[sq])search_eval_piece(s,sq,board[sq],1);
+}
 static void search_hash_set_square(SearchState *s,int sq,int value){
   int old=board[sq];
-  if(old) s->hash^=search_piece_token(sq,old);
-  if(value) s->hash^=search_piece_token(sq,value);
+  if(old){s->hash^=search_piece_token(sq,old);search_eval_piece(s,sq,old,-1);}
+  if(value){s->hash^=search_piece_token(sq,value);search_eval_piece(s,sq,value,1);}
   board[sq]=(i8)value;
 }
 
@@ -356,6 +395,74 @@ int search_evaluate_fast(int side,int white_king,int black_king){
     score+=winner*(edge*10+proximity*6);
   }
   return (int)__builtin_floor(score*side+0.5)+8;
+}
+
+
+static int search_evaluate_state(const SearchState *s){
+  int mg=s->eval_mg,eg=s->eval_eg,phase=s->eval_phase;
+  static const int middle[8]={0,0,8,17,35,65,110,0},endingPawn[8]={0,0,15,32,65,120,210,0};
+  u64 pawns=s->white_pawns;
+  while(pawns){
+    int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
+    int f=sq&7,r=sq>>3,own=search_file_count(s->white_pawn_files,f);
+    if(own>1){mg-=12;eg-=16;}
+    if(!(f>0&&search_file_count(s->white_pawn_files,f-1))&&!(f<7&&search_file_count(s->white_pawn_files,f+1))){mg-=11;eg-=15;}
+    u64 files=search_file_mask(f);
+    if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
+    u64 ahead=sq==63?0:(~(u64)0<<(sq+1));
+    if(!(s->black_pawns&files&ahead)){
+      mg+=middle[r];eg+=endingPawn[r];
+      if(r>=4){
+        int ed=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-7));
+        int od=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-7));
+        eg+=(ed-od)*r*3;
+      }
+    }
+  }
+  pawns=s->black_pawns;
+  while(pawns){
+    int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
+    int f=sq&7,r=7-(sq>>3),own=search_file_count(s->black_pawn_files,f);
+    if(own>1){mg+=12;eg+=16;}
+    if(!(f>0&&search_file_count(s->black_pawn_files,f-1))&&!(f<7&&search_file_count(s->black_pawn_files,f+1))){mg+=11;eg+=15;}
+    u64 files=search_file_mask(f);
+    if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
+    u64 behind=sq==0?0:(((u64)1<<sq)-1);
+    if(!(s->white_pawns&files&behind)){
+      mg-=middle[r];eg-=endingPawn[r];
+      if(r>=4){
+        int ed=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-0));
+        int od=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-0));
+        eg-=(ed-od)*r*3;
+      }
+    }
+  }
+  if(s->white_bishops>=2){mg+=30;eg+=45;}if(s->black_bishops>=2){mg-=30;eg-=45;}
+  u64 rooks=s->white_rooks;
+  while(rooks){
+    int sq=__builtin_ctzll(rooks);rooks&=rooks-1;int f=sq&7;
+    if(!search_file_count(s->white_pawn_files,f)){mg+=search_file_count(s->black_pawn_files,f)?15:30;eg+=15;}
+  }
+  rooks=s->black_rooks;
+  while(rooks){
+    int sq=__builtin_ctzll(rooks);rooks&=rooks-1;int f=sq&7;
+    if(!search_file_count(s->black_pawn_files,f)){mg-=search_file_count(s->white_pawn_files,f)?15:30;eg-=15;}
+  }
+  int shield=0,wf=s->wk&7;
+  for(int df=-1;df<=1;df++){if(wf+df<0||wf+df>7)continue;int x=s->wk+8+df;if(x>=0&&x<64&&board[x]==1)shield++;}
+  mg+=shield*12;shield=0;
+  int bf=s->bk&7;
+  for(int df=-1;df<=1;df++){if(bf+df<0||bf+df>7)continue;int x=s->bk-8+df;if(x>=0&&x<64&&board[x]==-1)shield++;}
+  mg-=shield*12;
+  if(phase>24)phase=24;
+  double score=(mg*phase+eg*(24-phase))/24.0;
+  if(phase<=4&&absolute(eg)>400){
+    int winner=eg>0?1:-1,loser=winner>0?s->bk:s->wk,king=winner>0?s->wk:s->bk;
+    int edge=maximum(absolute(2*(loser&7)-7),absolute(2*(loser>>3)-7));
+    int proximity=14-absolute((king&7)-(loser&7))-absolute((king>>3)-(loser>>3));
+    score+=winner*(edge*10+proximity*6);
+  }
+  return (int)__builtin_floor(score*s->side+0.5)+8;
 }
 
 static int search_insufficient(void){
@@ -573,10 +680,10 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   if(search_draw(s,pos))return 0;
   if(search_nodes_count>search_node_limit&&search_iter_depth>2){
     if(!check&&!generate(s->side,s->castling,s->ep,king,2))return 0;
-    search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);
+    search_abort=1;return search_evaluate_state(s);
   }
-  int stand=check?-SEARCH_MATE:search_evaluate_fast(s->side,s->wk,s->bk);
-  if(ply>20)return !check&&!generate(s->side,s->castling,s->ep,king,2)?0:search_evaluate_fast(s->side,s->wk,s->bk);
+  int stand=check?-SEARCH_MATE:search_evaluate_state(s);
+  if(ply>20)return !check&&!generate(s->side,s->castling,s->ep,king,2)?0:search_evaluate_state(s);
   if(!check){
     if(stand>=beta||remaining<=0)return generate(s->side,s->castling,s->ep,king,2)?stand:0;
     if(stand>alpha)alpha=stand;
@@ -622,7 +729,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   int n=generate(s->side,s->castling,s->ep,king,0);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
-  if(!budget_live){search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);}
+  if(!budget_live){search_abort=1;return search_evaluate_state(s);}
   u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
   search_sort(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
@@ -686,8 +793,9 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
   int material=0;
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
-  SearchState s={side,castling,ep,wk,bk,halfmove,material,0};
-  s.hash=search_initial_hash(&s);
+  SearchState s={0};
+  s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;s.material=material;
+  s.hash=search_initial_hash(&s);search_initial_eval(&s);
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
@@ -702,7 +810,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
   for(int i=0;i<n;i++){
     current_moves[i]=output[i];current_exact[i]=0;SearchUndo u;search_apply(&s,current_moves[i],&u);
-    current_scores[i]=-search_evaluate_fast(s.side,s.wk,s.bk);search_undo(&s,current_moves[i],&u);
+    current_scores[i]=-search_evaluate_state(&s);search_undo(&s,current_moves[i],&u);
   }
   for(int i=1;i<n;i++){
     u32 m=current_moves[i];int sc=current_scores[i],j=i-1;
