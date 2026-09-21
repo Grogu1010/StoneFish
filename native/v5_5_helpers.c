@@ -391,12 +391,12 @@ static int search_generate(const SearchState *s,int mode,int check){
     if(type==1){
       int step=side*8,start=side==1?1:6,promotion=side==1?7:0,one=from+step;
       if(one>=0&&one<64&&!board[one]){
-        if(search_pawn_search_emit(from,one,promotion))return 1;
+        if(search_pawn_emit(from,one,promotion))return 1;
         if((one>>3)!=promotion&&rank==start&&!board[from+step*2]&&search_emit(from,from+step*2,0,1))return 1;
       }
       for(int df=-1;df<=1;df+=2){
         int f=file+df,to=from+step+df;if(f<0||f>7||to<0||to>=64)continue;
-        if(board[to]&&((board[to]>0?1:-1)==-side)){if(search_pawn_search_emit(from,to,promotion))return 1;}
+        if(board[to]&&((board[to]>0?1:-1)==-side)){if(search_pawn_emit(from,to,promotion))return 1;}
         else if(to==ep&&search_emit(from,to,0,2))return 1;
       }
       continue;
