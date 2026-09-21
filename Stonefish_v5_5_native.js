@@ -189,6 +189,66 @@ function sf55cMaterialMoveDelta(move){
   +(move.piece===1&&move.promotion&&(move.promotion===2||move.promotion===3)?1:0);
 }
 
+// Search-local make/undo keeps the exact Chess state transitions while avoiding
+// generic history/cache-frame allocation at every speculative node. Real game
+// history and runtime memo fields remain untouched throughout the search.
+function sf55cEnsureUndo(ctx){
+ if(ctx.undoCaptured)return;
+ ctx.undoCaptured=new Int8Array(64);
+ ctx.undoCastling=new Int8Array(64);
+ ctx.undoEp=new Int8Array(64);
+ ctx.undoHalfmove=new Int32Array(64);
+ ctx.undoFullmove=new Int32Array(64);
+ ctx.undoKingW=new Int8Array(64);
+ ctx.undoKingB=new Int8Array(64);
+ ctx.undoSide=new Int8Array(64);
+ ctx.moveStack=new Array(64);
+}
+function sf55cApply(g,ctx,move,ply){
+ sf55cEnsureUndo(ctx);
+ const b=g.boardState,side=g.side;
+ const capturedPiece=move.flags&2?b[move.to+(side===1?-8:8)]:b[move.to];
+ ctx.undoCaptured[ply]=capturedPiece;
+ ctx.undoCastling[ply]=g.castling;
+ ctx.undoEp[ply]=g.ep;
+ ctx.undoHalfmove[ply]=g.halfmove;
+ ctx.undoFullmove[ply]=g.fullmove;
+ ctx.undoKingW[ply]=g.kingSq[1];
+ ctx.undoKingB[ply]=g.kingSq[-1];
+ ctx.undoSide[ply]=side;
+ ctx.moveStack[ply]=move;
+ const moving=b[move.from];
+ b[move.to]=moving;b[move.from]=0;
+ if(move.flags&2)b[move.to+(side===1?-8:8)]=0;
+ if(move.promotion)b[move.to]=side*move.promotion;
+ if(Math.abs(moving)===6){
+  g.kingSq[side]=move.to;
+  if(side===1)g.castling&=~3;else g.castling&=~12;
+  if(move.flags&4){const rf=side===1?7:63,rt=side===1?5:61;b[rt]=b[rf];b[rf]=0;}
+  else if(move.flags&8){const rf=side===1?0:56,rt=side===1?3:59;b[rt]=b[rf];b[rf]=0;}
+ }
+ if(move.from===0||move.to===0)g.castling&=~2;
+ if(move.from===7||move.to===7)g.castling&=~1;
+ if(move.from===56||move.to===56)g.castling&=~8;
+ if(move.from===63||move.to===63)g.castling&=~4;
+ g.ep=-1;
+ if(Math.abs(moving)===1&&Math.abs(move.to-move.from)===16)g.ep=(move.from+move.to)>>1;
+ g.halfmove=(Math.abs(moving)===1||capturedPiece)?0:g.halfmove+1;
+ if(side===-1)g.fullmove++;
+ g.side=-side;
+}
+function sf55cUndo(g,ctx,move,ply){
+ const side=ctx.undoSide[ply],b=g.boardState,capturedPiece=ctx.undoCaptured[ply];
+ g.side=side;g.castling=ctx.undoCastling[ply];g.ep=ctx.undoEp[ply];
+ g.halfmove=ctx.undoHalfmove[ply];g.fullmove=ctx.undoFullmove[ply];
+ g.kingSq[1]=ctx.undoKingW[ply];g.kingSq[-1]=ctx.undoKingB[ply];
+ b[move.from]=side*move.piece;b[move.to]=capturedPiece;
+ if(move.flags&2){b[move.to]=0;b[move.to+(side===1?-8:8)]=capturedPiece;}
+ if(move.flags&4){const rf=side===1?7:63,rt=side===1?5:61;b[rf]=b[rt];b[rt]=0;}
+ else if(move.flags&8){const rf=side===1?0:56,rt=side===1?3:59;b[rf]=b[rt];b[rt]=0;}
+ ctx.moveStack[ply]=null;
+}
+
 function sf55cDraw(g,ctx,key) {
   if(g.halfmove>=100)return true;
   // A third occurrence needs eight reversible plies. Public history keys keep
@@ -303,8 +363,8 @@ function sf55cQ(g,ctx,alpha,beta,ply,remaining){
     for(const m of moves){
       if(!check&&!m.promotion&&stand+SF55C.piece[m.captured]+160<alpha)continue;
       let score;
-      const materialDelta=sf55cMaterialMoveDelta(m);ctx.material-=materialDelta;g.fastApply(m);
-      try {score=-sf55cQ(g,ctx,-beta,-alpha,ply+1,remaining-1);}finally{g.fastUndo();ctx.material+=materialDelta;}
+      const materialDelta=sf55cMaterialMoveDelta(m);ctx.material-=materialDelta;sf55cApply(g,ctx,m,ply+1);
+      try {score=-sf55cQ(g,ctx,-beta,-alpha,ply+1,remaining-1);}finally{sf55cUndo(g,ctx,m,ply+1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
       if(score>stand)stand=score;if(score>alpha)alpha=score;if(alpha>=beta)break;
     }
@@ -318,7 +378,8 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   // probe. Verify at full depth whenever that probe favors the opponent.
   // With no learned policy this path is completely inactive.
   if(ctx.replyPolicy&&depth===1&&ply>=2&&!(ply&1)&&beta-alpha<=1){
-    const state=g.historyStack[g.historyStack.length-1],move=state&&state.move;
+    const state=g.historyStack[g.historyStack.length-1];
+    const move=ctx.moveStack&&ctx.moveStack[ply]||state&&state.move;
     if(move&&!move.captured&&!move.promotion&&move.piece!==6&&!sf55cInCheck(g)
       &&ctx.replyPolicy.isLowPriority(move)){
       const probe=sf55cQ(g,ctx,alpha,beta,ply,SF55C.qDepth);
@@ -343,7 +404,7 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   try {
     for(const m of moves){
       let score;
-      const materialDelta=sf55cMaterialMoveDelta(m);ctx.material-=materialDelta;g.fastApply(m);
+      const materialDelta=sf55cMaterialMoveDelta(m);ctx.material-=materialDelta;sf55cApply(g,ctx,m,ply+1);
       try {
         if(index===0)score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         else{
@@ -357,7 +418,7 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
           score=-sf55cSearch(g,ctx,depth-1-reduce,-alpha-1,-alpha,ply+1);
           if(!ctx.abort&&score>alpha&&(reduce||score<beta))score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         }
-      }finally{g.fastUndo();ctx.material+=materialDelta;}
+      }finally{sf55cUndo(g,ctx,m,ply+1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
       if(score>best){best=score;bestMove=sf55cMoveId(m);}
       if(score>alpha)alpha=score;
@@ -382,7 +443,7 @@ function sf55cHost(g,replyPolicy=null){
   const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],replyPolicy};
   ctx.material=0;for(const piece of g.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
-  for(const e of roots){g.fastApply(e.raw);try{e.score=-sf55cEvaluate(g);}finally{g.fastUndo();}}
+  for(const e of roots){sf55cApply(g,ctx,e.raw,1);try{e.score=-sf55cEvaluate(g);}finally{sf55cUndo(g,ctx,e.raw,1);}}
   roots.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
   let complete=roots;
   for(let depth=1;depth<=depthLimit;depth++){
@@ -390,7 +451,7 @@ function sf55cHost(g,replyPolicy=null){
     const next=[];let threshold=-SF55C.mate;
     for(const previous of complete){
       const e={...previous};const materialDelta=sf55cMaterialMoveDelta(e.raw);ctx.material-=materialDelta;g.fastApply(e.raw);
-      try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{g.fastUndo();ctx.material+=materialDelta;}
+      try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{sf55cUndo(g,ctx,m,ply+1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
       e.exact=e.score>threshold || threshold===-SF55C.mate;
       e.deep=e.score;e.preliminary=e.score;
