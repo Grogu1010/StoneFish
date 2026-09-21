@@ -384,7 +384,40 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   return best;
 }
 
+function sf55cNativeAcceleratedHost(g,replyPolicy){
+  const k=SF55C_KERNEL;
+  if(!k||!k.api.search_all||!k.scores||!k.policyWeights)return null;
+  sf55cSyncKernelConfig();
+  k.board.set(g.boardState);
+  k.policyWeights.fill(0);
+  if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
+  const limit=Math.max(SF55C.nodes,Math.round(replyPolicy.nativeSearchNodes||SF55C.nodes));
+  const depthLimit=Math.max(SF55C.maxDepth,Math.round(replyPolicy.nativeSearchDepth||SF55C.maxDepth));
+  const count=k.api.search_all(
+    g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
+    depthLimit,limit,SF55C.qDepth,1);
+  const finished=new Array(count);
+  for(let i=0;i<count;i++){
+    const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
+      captured:(m>>>15)&7,promotion:(m>>>18)&7,flags:m>>>21};
+    const score=k.scores[i];
+    finished[i]={raw,uci:stonefishV45RawUci(g,raw),score,deep:score,
+      preliminary:score,tactical:0,knowledge:0,conversion:0,exact:true};
+  }
+  const result={finished,fastLeader:finished.length?finished[0].raw:null,
+    refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
+    nodes:k.api.search_nodes?k.api.search_nodes():limit,
+    depth:k.api.search_depth?k.api.search_depth():depthLimit,
+    searchBudget:limit,depthLimit};
+  globalThis.SF55C_LAST=result;
+  return result;
+}
+
 function sf55cHost(g,replyPolicy=null){
+  if(replyPolicy&&replyPolicy.nativeAccelerated){
+    const accelerated=sf55cNativeAcceleratedHost(g,replyPolicy);
+    if(accelerated)return accelerated;
+  }
   sf55cSyncKernelConfig();
   const legal=sf55cLegalMoves(g);if(!legal.length)return {finished:[],fastLeader:null,refutationGuard:null};
   const requested=replyPolicy&&replyPolicy.searchBudget;
@@ -870,7 +903,9 @@ try {
   const api=new WebAssembly.Instance(new WebAssembly.Module(SF55C_WASM_BYTES),{}).exports;
   SF55C_KERNEL={api,board:new Int8Array(api.memory.buffer,api.board_ptr(),64),
    config:new Int32Array(api.memory.buffer,api.config_ptr(),903),
-   moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512)};
+   moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512),
+   scores:api.scores_ptr?new Int32Array(api.memory.buffer,api.scores_ptr(),512):null,
+   policyWeights:api.policy_ptr?new Float64Array(api.memory.buffer,api.policy_ptr(),13):null};
  }
 } catch (_) { /* Use the identical JS implementation if compilation is blocked. */ }
 function sf55cSyncKernelConfig(){
