@@ -22,6 +22,7 @@ on:
       - 'benchmark_v5_5_testunit1.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_candidate_vs_main.js'
       - 'benchmark_armx_fast_vs_current.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
@@ -44,6 +45,7 @@ on:
       - 'benchmark_v5_5_testunit1.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_candidate_vs_main.js'
       - 'benchmark_armx_fast_vs_current.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
@@ -95,6 +97,10 @@ jobs:
           ARMX_FAST_DEPTH: '4'
           ARMX_FAST_POLICY_LMR: '1'
         run: node benchmark_v5_5_testunit1.js
+      - name: Compare optimized ARMX against current main
+        env:
+          ARMX_MAIN_H2H_GAMES: '100'
+        run: node benchmark_armx_candidate_vs_main.js
       - name: Compare fast ARMX against current ARMX
         env:
           ARMX_H2H_GAMES: '100'
