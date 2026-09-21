@@ -347,7 +347,13 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
       try {
         if(index===0)score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         else{
-          const reduce=depth>=3&&index>=4&&!check&&!m.captured&&!m.promotion&&!sf55cInCheck(g)?1:0;
+          const quietLate=!check&&!m.captured&&!m.promotion&&!sf55cInCheck(g);
+          const learnedFastReduction=Boolean(
+            typeof process!=='undefined'&&process.env&&process.env.ARMX_FAST_SCREEN==='1'
+              &&process.env.ARMX_FAST_POLICY_LMR==='1'&&ctx.replyPolicy&&(ply&1)
+              &&depth>=3&&index>=2&&quietLate&&ctx.replyPolicy.isLowPriority(m)
+          );
+          const reduce=learnedFastReduction?Math.min(2,depth-1):(depth>=3&&index>=4&&quietLate?1:0);
           score=-sf55cSearch(g,ctx,depth-1-reduce,-alpha-1,-alpha,ply+1);
           if(!ctx.abort&&score>alpha&&(reduce||score<beta))score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         }
