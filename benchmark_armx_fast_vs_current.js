@@ -45,7 +45,20 @@ function withFastMode(enabled,fn){
   if(enabled)process.env.ARMX_FAST_SCREEN='1';else delete process.env.ARMX_FAST_SCREEN;
   try{return fn();}finally{if(had)process.env.ARMX_FAST_SCREEN=old;else delete process.env.ARMX_FAST_SCREEN;}
 }
-function fastMove(game){return withFastMode(true,()=>getStonefishV55Testunit1Move(game));}
+const selectiveStats={cheapCalls:0,fullVerifications:0,gapTriggers:0,rejectionTriggers:0};
+function fastMove(game){
+  selectiveStats.cheapCalls++;
+  const cheap=withFastMode(true,()=>getStonefishV55Testunit1Move(game));
+  const review=stonefishV55Testunit1LastARMX();
+  const gapLimit=Number.parseInt(process.env.ARMX_SELECTIVE_GAP||'-1',10);
+  const gapTrigger=Boolean(review&&review.searchGuidanceActive&&Number.isFinite(review.hostScoreGap)&&gapLimit>=0&&review.hostScoreGap<=gapLimit);
+  const rejectionTrigger=Boolean(process.env.ARMX_SELECTIVE_REJECT==='1'&&review&&review.searchGuidanceActive&&review.adaptationRejected);
+  if(!gapTrigger&&!rejectionTrigger)return cheap;
+  if(gapTrigger)selectiveStats.gapTriggers++;
+  if(rejectionTrigger)selectiveStats.rejectionTriggers++;
+  selectiveStats.fullVerifications++;
+  return withFastMode(false,()=>getStonefishV55Testunit1Move(game));
+}
 function currentMove(game){return withFastMode(false,()=>getStonefishV55Testunit1Move(game));}
 function perfSummary(moves,ms){return{moves,thinkMs:ms,averageTimePerMoveMs:moves?ms/moves:0};}
 function simulate(index){
@@ -73,6 +86,6 @@ for(let i=0;i<games;i++){
 const result={games,win:totals.win,loss:totals.loss,draw:totals.draw,score:(totals.win+totals.draw*0.5)/games,
   fast:perfSummary(totals.fastMoves,totals.fastMs),current:perfSummary(totals.currentMoves,totals.currentMs),
   fastVsCurrentTimeRatio:totals.currentMoves&&totals.fastMoves?(totals.fastMs/totals.fastMoves)/(totals.currentMs/totals.currentMoves):0,
-  acceptance:{minWins:40,maxLosses:40},records};
+  acceptance:{minWins:40,maxLosses:40},selectiveStats,records};
 console.log('ARMX_FAST_VS_CURRENT '+JSON.stringify(result));
 if(games>=100&&(result.win<40||result.loss>40))process.exitCode=2;
