@@ -88,17 +88,17 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
-      - name: Measure persistent full-budget ARMX versus No-ARMX
+      - name: Measure null-move full-budget ARMX versus No-ARMX
         env:
           SAMPLES: '20'
           GAMES: '8'
           MATCHUP: 'armxVsNoArmx'
-          ARMX_PERSISTENT_TT: '1'
+          ARMX_NULL_MOVE: '1'
         run: node benchmark_v5_5_testunit1.js
-      - name: Screen persistent full-budget ARMX against current ARMX
+      - name: Screen null-move full-budget ARMX against current ARMX
         env:
           ARMX_H2H_GAMES: '40'
-          ARMX_CANDIDATE_PERSISTENT: '1'
+          ARMX_CANDIDATE_NULL: '1'
           ARMX_SELECTIVE_GAP: '-1'
           ARMX_SELECTIVE_REJECT: '0'
         run: node benchmark_armx_fast_vs_current.js
