@@ -162,6 +162,9 @@ static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
 typedef struct {u64 key;int depth,score,move,flag;} SearchTTEntry;
 static SearchTTEntry search_tt[65536];
+static u64 search_piece_keys[64][13],search_side_keys[2],search_castle_keys[16];
+static u64 search_ep_keys[65],search_halfmove_keys[101],search_ply_keys[64];
+static int search_keys_ready;
 
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
 int policy_ptr(void){return (int)(unsigned long)policy_weights;}
@@ -170,6 +173,7 @@ int search_depth(void){return search_depth_done;}
 
 typedef struct {
   int side,castling,ep,wk,bk,halfmove;
+  u64 hash;
 } SearchState;
 typedef struct {
   SearchState state;
@@ -183,14 +187,33 @@ static int move_captured(u32 m){return (m>>15)&7;}
 static int move_promotion(u32 m){return (m>>18)&7;}
 static int move_flags(u32 m){return (int)(m>>21);}
 static int move_id(u32 m){return move_from(m)|(move_to(m)<<6)|(move_promotion(m)<<12);}
+static u64 search_mix64(u64 x){
+  x^=x>>30;x*=0xbf58476d1ce4e5b9ULL;
+  x^=x>>27;x*=0x94d049bb133111ebULL;
+  return x^(x>>31);
+}
+static void search_init_keys(void){
+  if(search_keys_ready)return;
+  u64 seed=0x9e3779b97f4a7c15ULL;
+  #define NEXT_KEY() (seed+=0x9e3779b97f4a7c15ULL,search_mix64(seed))
+  for(int sq=0;sq<64;sq++)for(int p=0;p<13;p++)search_piece_keys[sq][p]=NEXT_KEY();
+  for(int i=0;i<2;i++)search_side_keys[i]=NEXT_KEY();
+  for(int i=0;i<16;i++)search_castle_keys[i]=NEXT_KEY();
+  for(int i=0;i<65;i++)search_ep_keys[i]=NEXT_KEY();
+  for(int i=0;i<101;i++)search_halfmove_keys[i]=NEXT_KEY();
+  for(int i=0;i<64;i++)search_ply_keys[i]=NEXT_KEY();
+  #undef NEXT_KEY
+  search_keys_ready=1;
+}
+static u64 search_board_hash(void){
+  u64 h=0;
+  for(int sq=0;sq<64;sq++){int p=board[sq];if(p)h^=search_piece_keys[sq][p+6];}
+  return h;
+}
 static u64 search_hash(const SearchState *s,int ply){
-  u64 h=1469598103934665603ULL;
-  for(int i=0;i<64;i++){h^=(u64)(unsigned char)(board[i]+7);h*=1099511628211ULL;}
-  h^=(u64)(s->side+2);h*=1099511628211ULL;
-  h^=(u64)(s->castling+1);h*=1099511628211ULL;
-  h^=(u64)(s->ep+2);h*=1099511628211ULL;
-  h^=(u64)(s->halfmove+1);h*=1099511628211ULL;
-  h^=(u64)(ply+1);h*=1099511628211ULL;
+  int hm=s->halfmove<100?s->halfmove:100,pi=ply<63?ply:63;
+  u64 h=s->hash^search_side_keys[s->side>0]^search_castle_keys[s->castling&15]
+    ^search_ep_keys[s->ep+1]^search_halfmove_keys[hm]^search_ply_keys[pi];
   return h?h:1;
 }
 
@@ -198,16 +221,24 @@ static void search_apply(SearchState *s,u32 m,SearchUndo *u){
   u->state=*s;
   int from=move_from(m),to=move_to(m),flags=move_flags(m);
   int moving=board[from],capture_sq=(flags&2)?to-s->side*8:to;
+  int placed=move_promotion(m)?s->side*move_promotion(m):moving;
   u->moving=(i8)moving;u->captured=board[capture_sq];
-  board[from]=0;board[to]=move_promotion(m)?(i8)(s->side*move_promotion(m)):(i8)moving;
+  s->hash^=search_piece_keys[from][moving+6];
+  if(u->captured)s->hash^=search_piece_keys[capture_sq][u->captured+6];
+  s->hash^=search_piece_keys[to][placed+6];
+  board[from]=0;board[to]=(i8)placed;
   if(flags&2)board[capture_sq]=0;
   if(absolute(moving)==6){
     if(s->side>0)s->wk=to;else s->bk=to;
     if(s->side>0)s->castling&=~3;else s->castling&=~12;
     if(flags&4){
-      int rf=s->side>0?7:63,rt=s->side>0?5:61;board[rt]=board[rf];board[rf]=0;
+      int rf=s->side>0?7:63,rt=s->side>0?5:61,rook=board[rf];
+      s->hash^=search_piece_keys[rf][rook+6]^search_piece_keys[rt][rook+6];
+      board[rt]=board[rf];board[rf]=0;
     }else if(flags&8){
-      int rf=s->side>0?0:56,rt=s->side>0?3:59;board[rt]=board[rf];board[rf]=0;
+      int rf=s->side>0?0:56,rt=s->side>0?3:59,rook=board[rf];
+      s->hash^=search_piece_keys[rf][rook+6]^search_piece_keys[rt][rook+6];
+      board[rt]=board[rf];board[rf]=0;
     }
   }
   if(from==0||to==0)s->castling&=~2;
@@ -398,7 +429,9 @@ static void root_insert(u32 *moves,int *scores,int *count,u32 move,int score){
 
 int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled){
-  SearchState s={side,castling,ep,wk,bk,halfmove};
+  search_init_keys();
+  SearchState s={side,castling,ep,wk,bk,halfmove,0};
+  s.hash=search_board_hash();
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
