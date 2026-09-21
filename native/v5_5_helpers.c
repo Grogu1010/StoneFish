@@ -286,25 +286,50 @@ static void search_hash_set_square(SearchState *s,int sq,int value){
   if(value){s->hash^=search_piece_token(sq,value);search_eval_piece(s,sq,value,1);}
   board[sq]=(i8)value;
 }
+static void search_move_piece_state(SearchState *s,int from,int to,int piece){
+  int side=piece>0?1:-1,type=absolute(piece);
+  int from_ps=side>0?from:from^56,to_ps=side>0?to:to^56;
+  const int *pst=config+7,*ending=config+7+448;
+  s->hash^=search_piece_token(from,piece)^search_piece_token(to,piece);
+  s->eval_mg+=side*(pst[type*64+to_ps]-pst[type*64+from_ps]);
+  s->eval_eg+=side*(ending[type*64+to_ps]-ending[type*64+from_ps]);
+  u64 bits=((u64)1<<from)|((u64)1<<to);
+  if(side>0)s->white_occ^=bits;else s->black_occ^=bits;
+  if(type==1){
+    if(side>0)s->white_pawns^=bits;else s->black_pawns^=bits;
+    int ff=from&7,tf=to&7;
+    if(ff!=tf){
+      if(side>0){search_file_adjust(&s->white_pawn_files,ff,-1);search_file_adjust(&s->white_pawn_files,tf,1);}
+      else{search_file_adjust(&s->black_pawn_files,ff,-1);search_file_adjust(&s->black_pawn_files,tf,1);}
+    }
+  }else if(type==4){
+    if(side>0)s->white_rooks^=bits;else s->black_rooks^=bits;
+  }
+  board[from]=0;board[to]=(i8)piece;
+}
 
 static void search_apply(SearchState *s,u32 m,SearchUndo *u){
   u->state=*s;
-  int from=move_from(m),to=move_to(m),flags=move_flags(m);
+  int from=move_from(m),to=move_to(m),flags=move_flags(m),promotion=move_promotion(m);
   int moving=board[from],capture_sq=(flags&2)?to-s->side*8:to;
   u->moving=(i8)moving;u->captured=board[capture_sq];
   s->hash^=search_meta_token(s->side,s->castling,s->ep);
-  search_hash_set_square(s,from,0);
-  if(flags&2)search_hash_set_square(s,capture_sq,0);
-  search_hash_set_square(s,to,move_promotion(m)?s->side*move_promotion(m):moving);
+  if(!u->captured&&!promotion&&!(flags&2)){
+    search_move_piece_state(s,from,to,moving);
+  }else{
+    search_hash_set_square(s,from,0);
+    if(flags&2)search_hash_set_square(s,capture_sq,0);
+    search_hash_set_square(s,to,promotion?s->side*promotion:moving);
+  }
   if(absolute(moving)==6){
     if(s->side>0)s->wk=to;else s->bk=to;
     if(s->side>0)s->castling&=~3;else s->castling&=~12;
     if(flags&4){
       int rf=s->side>0?7:63,rt=s->side>0?5:61;
-      int rook=board[rf];search_hash_set_square(s,rf,0);search_hash_set_square(s,rt,rook);
+      int rook=board[rf];search_move_piece_state(s,rf,rt,rook);
     }else if(flags&8){
       int rf=s->side>0?0:56,rt=s->side>0?3:59;
-      int rook=board[rf];search_hash_set_square(s,rf,0);search_hash_set_square(s,rt,rook);
+      int rook=board[rf];search_move_piece_state(s,rf,rt,rook);
     }
   }
   if(from==0||to==0)s->castling&=~2;
@@ -314,7 +339,7 @@ static void search_apply(SearchState *s,u32 m,SearchUndo *u){
   s->ep=-1;
   if(absolute(moving)==1&&absolute(to-from)==16)s->ep=(from+to)>>1;
   s->halfmove=(absolute(moving)==1||u->captured)?0:s->halfmove+1;
-  int captured_type=move_captured(m),promotion=move_promotion(m),piece=move_piece(m);
+  int captured_type=move_captured(m),piece=move_piece(m);
   if(captured_type==1||captured_type==4||captured_type==5)s->material--;
   if(piece==1&&promotion&&(promotion==2||promotion==3))s->material--;
   s->side=-s->side;
