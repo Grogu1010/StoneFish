@@ -1,4 +1,36 @@
-# Active checkpoint — adaptive ARMX horizon
+# Active checkpoint — ARMX evidence effort, September 21, 2026
+
+ARMX reached **72W-23L-5D /100** against No ARMX, then **74W-21L-5D /100**
+on the second opening set (146 actual wins /200). The integrated build scored
+**93W-4L-3D /100** against Pro. However, isolated engine timing was only
+**2.052x** faster than Pro, so the speed requirement still blocks release.
+Keep both testunit1 names and development-only availability. Push this stronger
+checkpoint to main; continue improving speed or reducing the effort cost while
+preserving the win targets. No blog.
+
+ARMX requests 1,200 base nodes plus up to 3,600 from prediction surprise and
+up to 4,800 from accumulated voluntary quiet choices (full allowance at eight).
+No policy exists before four such observations; notes reset every game.
+An active policy requests depth six. No ARMX remains at 1,200 nodes/depth four
+with exact original decisions. Both variants share lossless material, ordering,
+packed-key optimizations and a compiled evaluation/legal-move helper module.
+The original JavaScript implementation remains an exact fallback.
+
+Evidence: `evidence-effort-100.json.gz`, `evidence-effort-holdout-100.json.gz`,
+`evidence-effort-pro-100.json.gz`, and `evidence-effort-golden.json.gz` under
+`benchmarks/v5_5/`. The golden contract preserves 128 exact control/prototype
+searches. `benchmark_v5_5_kernel_contract.js` checks compiled/fallback parity,
+5,524 positions, packed identity and material accounting. Compiled source and
+rebuild instructions are in `native/`. A release still requires a complete
+isolated 100-game-per-matchup gate, preferably using fresh openings.
+
+The previous adaptive-horizon integrated run is now archived as
+`adaptive-horizon-integrated-100.json.gz`: 57 vs No ARMX, 88 vs Pro (3.247x),
+and 92 No ARMX wins vs Pro. Only its ARMX-vs-Pro timing ran in isolation.
+
+---
+
+# Previous checkpoint — adaptive ARMX horizon
 
 The adaptive-horizon build scored **57W-34L-9D /100** against No ARMX and **59W-31L-10D /100** on the second, non-overlapping opening set: **116W-65L-19D /200 (58% actual wins)**. This improves the preceding adaptive-effort build's 112/200. Against Pro it scored **88W-9L-3D /100**, with **3.249x** faster engine-only time per move in an isolated run. No ARMX retains exact score, move, depth and node-count parity with the original control; its latest full confirmation was 92W-7L-1D /100 against Pro. The 65/100 contribution target remains unmet. Keep both testunit1 names and development-only availability; do not release or write a blog. These full games tested the prototype; the integrated code exactly matches 128 saved prototype positions, including all learned state and the control. Full integrated confirmation follows.
 

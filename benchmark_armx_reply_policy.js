@@ -51,9 +51,9 @@ assert.notEqual(armxPreviewOpponentPolicy(knights, 1).priority(knight), remember
 const effortModel = armxPreviewSyncProfile(knights, 1).quietPolicy;
 effortModel.qualityWeight = 1;
 effortModel.qualitySum = 1;
-assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 1200);
+assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 3600);
 effortModel.qualitySum = -1;
-assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 4800);
+assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 7200);
 assert.equal(knightPolicy.searchBudget, rememberedBudget);
 assert.equal(armxPreviewOpponentPolicy(new Chess(), 1), null);
 knights.reset();
@@ -80,7 +80,7 @@ assert.equal(snapshot(clean), before);
 assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(clean)), expected);
 assert.equal(SF55C.nodes, 1200);
 assert.equal(SF55C.maxDepth, 4);
-for (const [request, budget] of [[-1, 1200], [99999, 4800], [NaN, 1200]]) {
+for (const [request, budget] of [[-1, 1200], [99999, 9600], [NaN, 1200]]) {
   const result = sf55cHost(clean, { searchBudget: request,
     priority() { return 0; }, isLowPriority() { return false; } });
   assert.equal(result.searchBudget, budget);
@@ -112,7 +112,7 @@ assert.equal(learningModel.qualityWeight, 1);
 // Golden results were generated before integration, with the old native host
 // and the separately tested prototype. Scores, ordering, depths, node counts,
 // learned weights, and board restoration must all agree exactly.
-const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('benchmarks/v5_5/adaptive-horizon-golden.json.gz')));
+const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('benchmarks/v5_5/evidence-effort-golden.json.gz')));
 for (const row of golden.positions) {
   const game = play(new Chess(), ...row.history);
   game.armxObservationStartPly = row.observationStartPly;

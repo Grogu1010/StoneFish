@@ -11,7 +11,7 @@
 
 const ARMX_PREVIEW = Object.freeze({
   name: 'ARMX-preview',
-  version: 'preview-adaptive-horizon',
+  version: 'preview-evidence-effort',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 3,
@@ -47,6 +47,8 @@ const ARMX_PREVIEW = Object.freeze({
   predictionQualityDecay: 0.9,
   predictionSurpriseScale: 0.3,
   maxExtraSearchNodes: 3600,
+  evidenceSearchNodes: 4800,
+  fullSearchEvidence: 8,
   maxExtraSearchDepth: 2,
 });
 
@@ -163,14 +165,15 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
   const uncertainty = armxPreviewClamp(
     -(model.qualityWeight ? model.qualitySum / model.qualityWeight : 0)
       / ARMX_PREVIEW.predictionSurpriseScale, 0, 1);
-  const searchBudget = SF55C.nodes + Math.round(ARMX_PREVIEW.maxExtraSearchNodes * uncertainty);
+  const searchBudget = SF55C.nodes + Math.round(ARMX_PREVIEW.maxExtraSearchNodes * uncertainty)
+    + Math.round(ARMX_PREVIEW.evidenceSearchNodes * Math.min(1, model.count / ARMX_PREVIEW.fullSearchEvidence));
   return {
     observations: model.count,
-    // An unpredictable opponent needs more verification. This is a frozen
-    // request from current-game notes, never an opponent-name difficulty boost.
+    // Accumulated voluntary choices activate deeper analysis of learned replies;
+    // surprising choices request additional verification. All evidence and
+    // preferences belong to this game, never to an opponent name.
     searchBudget,
-    maxDepth: SF55C.maxDepth + Math.round(ARMX_PREVIEW.maxExtraSearchDepth *
-      (searchBudget - SF55C.nodes) / ARMX_PREVIEW.maxExtraSearchNodes),
+    maxDepth: SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };
