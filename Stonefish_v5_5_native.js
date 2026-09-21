@@ -168,10 +168,53 @@ function sf55cPackHistoryKey(key){
     (key[0]==='w'?1:0)|(Number(tail[0])<<1)|((Number(tail[1])+1)<<5));
 }
 
+// Per-game stable path identities let an ARMX search reuse exact transposition
+// work after speculative moves become real moves on the following turns.
+function sf55cPersistentExtend(state,parent,key){
+  let positionId=state.positionIds.get(key);
+  if(positionId===undefined){positionId=state.positionIds.size+1;state.positionIds.set(key,positionId);}
+  let children=state.pathChildren.get(parent);
+  if(!children){children=new Map();state.pathChildren.set(parent,children);}
+  let signature=children.get(positionId);
+  if(signature===undefined){signature=state.nextSignature++;children.set(positionId,signature);}
+  return signature;
+}
+function sf55cPersistentState(g){
+  let state=g._sf55cPersistentARMX;
+  if(!state){
+    state=g._sf55cPersistentARMX={
+      positionIds:new Map(),pathChildren:new Map(),nextSignature:1,
+      historyLength:0,historySignature:0,tt:new Map(),ttEntries:0
+    };
+  }
+  if(state.historyLength>g.historyStack.length){
+    state.historyLength=0;state.historySignature=0;
+  }
+  while(state.historyLength<g.historyStack.length){
+    const frame=g.historyStack[state.historyLength++];
+    if(frame&&frame.repKey)state.historySignature=sf55cPersistentExtend(
+      state,state.historySignature,sf55cPackHistoryKey(frame.repKey)
+    );
+  }
+  return state;
+}
+function sf55cPersistentScoreToTT(score,ply){
+  if(score>SF55C.mate-1000)return score+ply;
+  if(score<-SF55C.mate+1000)return score-ply;
+  return score;
+}
+function sf55cPersistentScoreFromTT(score,ply){
+  if(score>SF55C.mate-1000)return score-ply;
+  if(score<-SF55C.mate+1000)return score+ply;
+  return score;
+}
+
 // Stable ordering evaluates each priority once without modifying move objects.
 function sf55cOrderMoves(moves,ctx,tt,ply){
  if(moves.length<2)return;
- const priorities=new Int32Array(moves.length);
+ const orderPriorities=ctx.orderPriorities||(ctx.orderPriorities=[]);
+ let priorities=orderPriorities[ply];
+ if(!priorities||priorities.length<moves.length)priorities=orderPriorities[ply]=new Int32Array(moves.length);
  priorities[0]=sf55cOrder(ctx,moves[0],tt,ply);
  for(let i=1;i<moves.length;i++){
   const move=moves[i],priority=sf55cOrder(ctx,move,tt,ply);let j=i-1;
@@ -185,6 +228,68 @@ function sf55cOrderMoves(moves,ctx,tt,ply){
 function sf55cMaterialMoveDelta(move){
  return (move.captured===1||move.captured===4||move.captured===5?1:0)
   +(move.piece===1&&move.promotion&&(move.promotion===2||move.promotion===3)?1:0);
+}
+
+// Search-local make/undo keeps the exact Chess state transitions while avoiding
+// generic history/cache-frame allocation at every speculative node. Real game
+// history and runtime memo fields remain untouched throughout the search.
+function sf55cEnsureUndo(ctx){
+ if(ctx.undoCaptured)return;
+ ctx.undoCaptured=new Int8Array(64);
+ ctx.undoCastling=new Int8Array(64);
+ ctx.undoEp=new Int8Array(64);
+ ctx.undoHalfmove=new Int32Array(64);
+ ctx.undoFullmove=new Int32Array(64);
+ ctx.undoKingW=new Int8Array(64);
+ ctx.undoKingB=new Int8Array(64);
+ ctx.undoSide=new Int8Array(64);
+ ctx.moveStack=new Array(64);
+}
+function sf55cApply(g,ctx,move,ply){
+ sf55cEnsureUndo(ctx);
+ const b=g.boardState,side=g.side;
+ const capturedPiece=move.flags&2?b[move.to+(side===1?-8:8)]:b[move.to];
+ ctx.undoCaptured[ply]=capturedPiece;
+ ctx.undoCastling[ply]=g.castling;
+ ctx.undoEp[ply]=g.ep;
+ ctx.undoHalfmove[ply]=g.halfmove;
+ ctx.undoFullmove[ply]=g.fullmove;
+ ctx.undoKingW[ply]=g.kingSq[1];
+ ctx.undoKingB[ply]=g.kingSq[-1];
+ ctx.undoSide[ply]=side;
+ ctx.moveStack[ply]=move;
+ const moving=b[move.from];
+ b[move.to]=moving;b[move.from]=0;
+ if(move.flags&2)b[move.to+(side===1?-8:8)]=0;
+ if(move.promotion)b[move.to]=side*move.promotion;
+ if(Math.abs(moving)===6){
+  g.kingSq[side]=move.to;
+  if(side===1)g.castling&=~3;else g.castling&=~12;
+  if(move.flags&4){const rf=side===1?7:63,rt=side===1?5:61;b[rt]=b[rf];b[rf]=0;}
+  else if(move.flags&8){const rf=side===1?0:56,rt=side===1?3:59;b[rt]=b[rf];b[rf]=0;}
+ }
+ if(move.from===0||move.to===0)g.castling&=~2;
+ if(move.from===7||move.to===7)g.castling&=~1;
+ if(move.from===56||move.to===56)g.castling&=~8;
+ if(move.from===63||move.to===63)g.castling&=~4;
+ g.ep=-1;
+ if(Math.abs(moving)===1&&Math.abs(move.to-move.from)===16)g.ep=(move.from+move.to)>>1;
+ g.halfmove=(Math.abs(moving)===1||capturedPiece)?0:g.halfmove+1;
+ if(side===-1)g.fullmove++;
+ g.side=-side;
+ if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=true;
+}
+function sf55cUndo(g,ctx,move,ply){
+ const side=ctx.undoSide[ply],b=g.boardState,capturedPiece=ctx.undoCaptured[ply];
+ g.side=side;g.castling=ctx.undoCastling[ply];g.ep=ctx.undoEp[ply];
+ g.halfmove=ctx.undoHalfmove[ply];g.fullmove=ctx.undoFullmove[ply];
+ g.kingSq[1]=ctx.undoKingW[ply];g.kingSq[-1]=ctx.undoKingB[ply];
+ b[move.from]=side*move.piece;b[move.to]=capturedPiece;
+ if(move.flags&2){b[move.to]=0;b[move.to+(side===1?-8:8)]=capturedPiece;}
+ if(move.flags&4){const rf=side===1?7:63,rt=side===1?5:61;b[rf]=b[rt];b[rt]=0;}
+ else if(move.flags&8){const rf=side===1?0:56,rt=side===1?3:59;b[rf]=b[rt];b[rt]=0;}
+ ctx.moveStack[ply]=null;
+ if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=true;
 }
 
 function sf55cDraw(g,ctx,key) {
@@ -204,15 +309,28 @@ function sf55cDraw(g,ctx,key) {
 
 function sf55cEnter(ctx,key) {
   if (key === null) return;
+  if(ctx.pathSignature===undefined){ctx.pathSignature=0;ctx.pathSignatureStack=[];ctx.pathSignatureIds=new Map();}
   ctx.path.set(key,(ctx.path.get(key)||0)+1);
-  if(!ctx.positionIds.has(key))ctx.positionIds.set(key,ctx.positionIds.size+1);
-  ctx.pathIds.push(ctx.positionIds.get(key));
+  let id=ctx.positionIds.get(key);
+  if(id===undefined){id=ctx.positionIds.size+1;ctx.positionIds.set(key,id);}
+  const parent=ctx.pathSignature,pair=parent*16384+id;
+  let signature=ctx.pathSignatureIds.get(pair);
+  if(signature===undefined){signature=ctx.pathSignatureIds.size+1;ctx.pathSignatureIds.set(pair,signature);}
+  ctx.pathSignatureStack.push(parent);
+  ctx.pathSignature=signature;
+  if(ctx.persistent){
+    ctx.persistentPathStack.push(ctx.persistentPathSignature);
+    ctx.persistentPathSignature=sf55cPersistentExtend(
+      ctx.persistent,ctx.persistentPathSignature,key
+    );
+  }
 }
 function sf55cExit(ctx,key) {
   if (key === null) return;
   const count=ctx.path.get(key)-1;
   if(count)ctx.path.set(key,count);else ctx.path.delete(key);
-  ctx.pathIds.pop();
+  ctx.pathSignature=ctx.pathSignatureStack.pop();
+  if(ctx.persistent)ctx.persistentPathSignature=ctx.persistentPathStack.pop();
 }
 
 // Capture/promotion-only legal generation for quiet quiescence nodes. Keep the
@@ -274,7 +392,7 @@ function sf55cQ(g,ctx,alpha,beta,ply,remaining){
   // Captures and pawn moves cannot repeat an earlier position. Avoid building
   // board keys in these common quiescence nodes.
   const key=g.halfmove ? sf55cPackedPositionKey(g) : null;
-  let moves=check ? sf55cLegalMoves(g) : null;
+  let moves=check ? sf55cLegalMoves(g,ctx,ply) : null;
   if(check && !moves.length)return -SF55C.mate+ply;
   if(sf55cDraw(g,ctx,key))return 0;
   if(ctx.nodes>ctx.limit&&ctx.depth>2){
@@ -286,7 +404,7 @@ function sf55cQ(g,ctx,alpha,beta,ply,remaining){
   if(!check){
     if(stand>=beta || remaining<=0)return sf55cHasLegalMove(g) ? stand : 0;
     if(stand>alpha)alpha=stand;
-    moves=sf55cTacticalMoves(g);
+    moves=sf55cTacticalMoves(g,ctx,ply);
     if(!moves.length)return sf55cHasLegalMove(g) ? stand : 0;
   }
   sf55cOrderMoves(moves,ctx,0,ply);
@@ -295,8 +413,8 @@ function sf55cQ(g,ctx,alpha,beta,ply,remaining){
     for(const m of moves){
       if(!check&&!m.promotion&&stand+SF55C.piece[m.captured]+160<alpha)continue;
       let score;
-      const materialDelta=sf55cMaterialMoveDelta(m);ctx.material-=materialDelta;g.fastApply(m);
-      try {score=-sf55cQ(g,ctx,-beta,-alpha,ply+1,remaining-1);}finally{g.fastUndo();ctx.material+=materialDelta;}
+      const materialDelta=sf55cMaterialMoveDelta(m);ctx.material-=materialDelta;sf55cApply(g,ctx,m,ply+1);
+      try {score=-sf55cQ(g,ctx,-beta,-alpha,ply+1,remaining-1);}finally{sf55cUndo(g,ctx,m,ply+1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
       if(score>stand)stand=score;if(score>alpha)alpha=score;if(alpha>=beta)break;
     }
@@ -310,7 +428,8 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   // probe. Verify at full depth whenever that probe favors the opponent.
   // With no learned policy this path is completely inactive.
   if(ctx.replyPolicy&&depth===1&&ply>=2&&!(ply&1)&&beta-alpha<=1){
-    const state=g.historyStack[g.historyStack.length-1],move=state&&state.move;
+    const state=g.historyStack[g.historyStack.length-1];
+    const move=ctx.moveStack&&ctx.moveStack[ply]||state&&state.move;
     if(move&&!move.captured&&!move.promotion&&move.piece!==6&&!sf55cInCheck(g)
       &&ctx.replyPolicy.isLowPriority(move)){
       const probe=sf55cQ(g,ctx,alpha,beta,ply,SF55C.qDepth);
@@ -318,31 +437,81 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
     }
   }
   ctx.nodes++;
-  const check=sf55cInCheck(g),moves=sf55cLegalMoves(g);
-  if(!moves.length)return check?-SF55C.mate+ply:0;
   const key=sf55cPackedPositionKey(g);
-  if(sf55cDraw(g,ctx,key))return 0;
-  if(ctx.nodes>ctx.limit&&ctx.depth>2){ctx.abort=true;return sf55cEvaluate(g);}
   // Halfmove clock, mate distance, and the speculative repetition path are part
   // of the cache identity. A value from another history cannot hide a draw.
-  const ttKey=key+'|'+g.halfmove+'|'+ply+'|'+ctx.pathIds.join(',');
-  const hit=ctx.tt.get(ttKey),original=alpha;
-  if(hit&&hit.depth>=depth){if(hit.flag===0)return hit.score;if(hit.flag===1&&hit.score>=beta)return hit.score;if(hit.flag===-1&&hit.score<=alpha)return hit.score;}
-  sf55cOrderMoves(moves,ctx,hit?hit.move:0,ply);
+  const ttMeta=g.halfmove+(ply<<7)+(ctx.pathSignature<<13);
+  const ttBucket=ctx.tt.get(key);
+  const hit=ttBucket?ttBucket.get(ttMeta):null,original=alpha;
+  const persistentMeta=ctx.persistent?g.halfmove+(ctx.persistentPathSignature*128):0;
+  const persistentBucket=ctx.persistent?ctx.persistent.tt.get(key):null;
+  const persistentHit=persistentBucket?persistentBucket.get(persistentMeta):null;
+  // A stored entry can only come from a non-terminal, non-draw node. While the
+  // node budget is still live, the exact same TT cutoff can therefore happen
+  // before legal-move generation. Over-budget nodes retain the original order.
+  const budgetLive=ctx.nodes<=ctx.limit||ctx.depth<=2;
+  if(budgetLive&&hit&&hit.depth>=depth){
+    if(hit.flag===0)return hit.score;
+    if(hit.flag===1&&hit.score>=beta)return hit.score;
+    if(hit.flag===-1&&hit.score<=alpha)return hit.score;
+  }
+  if(budgetLive&&persistentHit&&persistentHit.depth>=depth){
+    const persistentScore=sf55cPersistentScoreFromTT(persistentHit.score,ply);
+    if(persistentHit.flag===0)return persistentScore;
+    if(persistentHit.flag===1&&persistentScore>=beta)return persistentScore;
+    if(persistentHit.flag===-1&&persistentScore<=alpha)return persistentScore;
+  }
+  const check=sf55cInCheck(g),moves=sf55cLegalMoves(g,ctx,ply);
+  if(!moves.length)return check?-SF55C.mate+ply:0;
+  if(sf55cDraw(g,ctx,key))return 0;
+  if(!budgetLive){ctx.abort=true;return sf55cEvaluate(g);}
+  const nullMoveEnabled=Boolean(
+    typeof process!=='undefined'&&process.env
+      &&(process.env.ARMX_NULL_MOVE==='1'
+        ||(process.env.ARMX_FAST_SCREEN==='1'&&process.env.ARMX_FAST_NULL_MOVE==='1'))
+      &&ctx.replyPolicy&&!ctx.nullActive&&depth>=3&&beta-alpha<=1&&!check
+      &&ctx.material>2&&beta<SF55C.mate-100
+  );
+  if(nullMoveEnabled){
+    const oldSide=g.side,oldEp=g.ep,oldHalfmove=g.halfmove,oldFullmove=g.fullmove;
+    g.side=-oldSide;g.ep=-1;g.halfmove=oldHalfmove+1;
+    if(oldSide===-1)g.fullmove=oldFullmove+1;
+    if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=true;
+    const oldNull=ctx.nullActive;ctx.nullActive=true;
+    const reduction=depth>=5?2:1;
+    let nullScore;
+    try{
+      nullScore=-sf55cSearch(g,ctx,Math.max(0,depth-1-reduction),-beta,-beta+1,ply+1);
+    }finally{
+      ctx.nullActive=oldNull;
+      g.side=oldSide;g.ep=oldEp;g.halfmove=oldHalfmove;g.fullmove=oldFullmove;
+      if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=true;
+    }
+    if(ctx.abort)return nullScore;
+    if(nullScore>=beta)return nullScore;
+  }
+  sf55cOrderMoves(moves,ctx,hit?hit.move:persistentHit?persistentHit.move:0,ply);
   let best=-Infinity,bestMove=0,index=0;
   sf55cEnter(ctx,key);
   try {
     for(const m of moves){
       let score;
-      const materialDelta=sf55cMaterialMoveDelta(m);ctx.material-=materialDelta;g.fastApply(m);
+      const materialDelta=sf55cMaterialMoveDelta(m);ctx.material-=materialDelta;sf55cApply(g,ctx,m,ply+1);
       try {
         if(index===0)score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         else{
-          const reduce=depth>=3&&index>=4&&!check&&!m.captured&&!m.promotion&&!sf55cInCheck(g)?1:0;
+          const quietLate=!check&&!m.captured&&!m.promotion&&!sf55cInCheck(g);
+          const learnedFastReduction=Boolean(
+            typeof process!=='undefined'&&process.env&&ctx.replyPolicy&&(ply&1)
+              &&(process.env.ARMX_POLICY_LMR==='1'
+                ||(process.env.ARMX_FAST_SCREEN==='1'&&process.env.ARMX_FAST_POLICY_LMR==='1'))
+              &&depth>=3&&index>=2&&quietLate&&ctx.replyPolicy.isLowPriority(m)
+          );
+          const reduce=learnedFastReduction?Math.min(2,depth-1):(depth>=3&&index>=4&&quietLate?1:0);
           score=-sf55cSearch(g,ctx,depth-1-reduce,-alpha-1,-alpha,ply+1);
           if(!ctx.abort&&score>alpha&&(reduce||score<beta))score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         }
-      }finally{g.fastUndo();ctx.material+=materialDelta;}
+      }finally{sf55cUndo(g,ctx,m,ply+1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
       if(score>best){best=score;bestMove=sf55cMoveId(m);}
       if(score>alpha)alpha=score;
@@ -350,29 +519,60 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
       index++;
     }
   }finally{sf55cExit(ctx,key);}
-  if(!ctx.abort)ctx.tt.set(ttKey,{depth,score:best,move:bestMove,flag:best<=original?-1:best>=beta?1:0});
+  if(!ctx.abort){
+    const flag=best<=original?-1:best>=beta?1:0;
+    let bucket=ctx.tt.get(key);if(!bucket){bucket=new Map();ctx.tt.set(key,bucket);}
+    bucket.set(ttMeta,{depth,score:best,move:bestMove,flag});
+    if(ctx.persistent){
+      let bucket2=ctx.persistent.tt.get(key);
+      if(!bucket2){bucket2=new Map();ctx.persistent.tt.set(key,bucket2);}
+      if(!bucket2.has(persistentMeta))ctx.persistent.ttEntries++;
+      bucket2.set(persistentMeta,{
+        depth,score:sf55cPersistentScoreToTT(best,ply),move:bestMove,flag
+      });
+      if(ctx.persistent.ttEntries>160000){
+        ctx.persistent.tt.clear();ctx.persistent.ttEntries=0;
+      }
+    }
+  }
   return best;
 }
 
 function sf55cHost(g,replyPolicy=null){
   sf55cSyncKernelConfig();
-  const legal=sf55cLegalMoves(g);if(!legal.length)return {finished:[],fastLeader:null,refutationGuard:null};
+  g._sf55cKernelSearchActive=true;g._sf55cKernelDirty=true;
+  const legal=sf55cLegalMoves(g);if(!legal.length){g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;return {finished:[],fastLeader:null,refutationGuard:null};}
   const requested=replyPolicy&&replyPolicy.searchBudget;
   const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(requested))):SF55C.nodes;
   const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
   const depthLimit=Number.isFinite(requestedDepth)?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(requestedDepth))):SF55C.maxDepth;
-  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768),replyPolicy};
+  const persistent=replyPolicy&&typeof process!=='undefined'&&process.env&&process.env.ARMX_PERSISTENT_TT==='1'
+    ? sf55cPersistentState(g) : null;
+  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],replyPolicy,
+    persistent,persistentPathSignature:persistent?persistent.historySignature:0,persistentPathStack:[]};
   ctx.material=0;for(const piece of g.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
-  for(const e of roots){g.fastApply(e.raw);try{e.score=-sf55cEvaluate(g);}finally{g.fastUndo();}}
+  for(const e of roots){sf55cApply(g,ctx,e.raw,1);try{e.score=-sf55cEvaluate(g);}finally{sf55cUndo(g,ctx,e.raw,1);}}
   roots.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
   let complete=roots;
   for(let depth=1;depth<=depthLimit;depth++){
     ctx.depth=depth;
+    const configuredBeam=replyPolicy&&typeof process!=='undefined'&&process.env
+      ? Number.parseInt(
+          process.env.ARMX_FAST_SCREEN==='1'
+            ? (process.env.ARMX_FAST_ROOT_BEAM||'0')
+            : (process.env.ARMX_ROOT_BEAM||'0'),
+          10
+        )||0 : 0;
+    const useBeam=depth>=3&&configuredBeam>=SF55C.multiPV&&complete.length>configuredBeam;
+    const active=useBeam?complete.slice(0,configuredBeam):complete;
+    const sidelined=useBeam?complete.slice(configuredBeam).map(previous=>({
+      ...previous,score:-Infinity,deep:null,exact:false
+    })):[];
     const next=[];let threshold=-SF55C.mate;
-    for(const previous of complete){
-      const e={...previous};const materialDelta=sf55cMaterialMoveDelta(e.raw);ctx.material-=materialDelta;g.fastApply(e.raw);
-      try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{g.fastUndo();ctx.material+=materialDelta;}
+    for(const previous of active){
+      const e={...previous};const materialDelta=sf55cMaterialMoveDelta(e.raw);ctx.material-=materialDelta;sf55cApply(g,ctx,e.raw,1);
+      try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{sf55cUndo(g,ctx,e.raw,1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
       e.exact=e.score>threshold || threshold===-SF55C.mate;
       e.deep=e.score;e.preliminary=e.score;
@@ -380,7 +580,8 @@ function sf55cHost(g,replyPolicy=null){
       if(next.length>=SF55C.multiPV)threshold=next[SF55C.multiPV-1].score;
     }
     if(ctx.abort)break;
-    complete=next;
+    complete=next.concat(sidelined);
+    complete.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
     if(Math.abs(complete[0].score)>SF55C.mate-100)break;
   }
   // Only completed, exact root scores are eligible for opponent adaptation.
@@ -392,6 +593,7 @@ function sf55cHost(g,replyPolicy=null){
   result.searchBudget=ctx.limit;
   result.depthLimit=depthLimit;
   globalThis.SF55C_LAST=result;
+  g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;
   return result;
 }
 

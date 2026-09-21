@@ -22,6 +22,8 @@ on:
       - 'benchmark_v5_5_testunit1.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_candidate_vs_main.js'
+      - 'benchmark_armx_fast_vs_current.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
   pull_request:
@@ -43,6 +45,8 @@ on:
       - 'benchmark_v5_5_testunit1.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_candidate_vs_main.js'
+      - 'benchmark_armx_fast_vs_current.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
   workflow_dispatch:
@@ -84,8 +88,22 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
-      - name: Run v5.5 dev benchmark
+      - name: Measure focused null-move ARMX versus No-ARMX
         env:
           SAMPLES: '20'
           GAMES: '8'
+          MATCHUP: 'armxVsNoArmx'
+          ARMX_FAST_SCREEN: '1'
+          ARMX_FAST_NODES: '1700'
+          ARMX_FAST_DEPTH: '6'
+          ARMX_FAST_NULL_MOVE: '1'
         run: node benchmark_v5_5_testunit1.js
+      - name: Screen focused null-move ARMX against current ARMX
+        env:
+          ARMX_H2H_GAMES: '40'
+          ARMX_FAST_NODES: '1700'
+          ARMX_FAST_DEPTH: '6'
+          ARMX_FAST_NULL_MOVE: '1'
+          ARMX_SELECTIVE_GAP: '-1'
+          ARMX_SELECTIVE_REJECT: '0'
+        run: node benchmark_armx_fast_vs_current.js

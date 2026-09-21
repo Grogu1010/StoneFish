@@ -250,16 +250,19 @@ function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, 
   let plies = opening.length;
   const playedMoves = [];
   const enginePerf = {
-    contender: { moves: 0, thinkMs: 0 },
-    opponent: { moves: 0, thinkMs: 0 }
+    contender: { moves: 0, thinkMs: 0, searchNodes: 0, searchBudget: 0, depthSum: 0, depthLimitSum: 0, fullDepth: 0, searches: 0 },
+    opponent: { moves: 0, thinkMs: 0, searchNodes: 0, searchBudget: 0, depthSum: 0, depthLimitSum: 0, fullDepth: 0, searches: 0 }
   };
 
   return withSeed(seed, () => {
     while (!game.game_over() && plies < maxPlies) {
       const contenderTurn = (game.side === 1) === contenderIsWhite;
+      const moveFn = contenderTurn ? contenderFn : opponentFn;
+      const isV55 = moveFn === getStonefishV55Testunit1Move || moveFn === getStonefishV55Testunit1NoARMXMove;
       const started = performance.now();
-      const move = contenderTurn ? contenderFn(game) : opponentFn(game);
+      const move = moveFn(game);
       const elapsed = performance.now() - started;
+      const searchMeta = isV55 && typeof SF55C_LAST !== 'undefined' ? SF55C_LAST : null;
       if (!play(game, move)) {
         throw new Error(`Invalid move at ply ${plies}: ${JSON.stringify(move)}`);
       }
@@ -267,6 +270,14 @@ function simulateGame(contenderIsWhite, opening, seed, contenderFn, opponentFn, 
       const bucket = contenderTurn ? enginePerf.contender : enginePerf.opponent;
       bucket.moves += 1;
       bucket.thinkMs += elapsed;
+      if (searchMeta) {
+        bucket.searches += 1;
+        bucket.searchNodes += Number(searchMeta.nodes) || 0;
+        bucket.searchBudget += Number(searchMeta.searchBudget) || 0;
+        bucket.depthSum += Number(searchMeta.depth) || 0;
+        bucket.depthLimitSum += Number(searchMeta.depthLimit) || 0;
+        if ((Number(searchMeta.depth) || 0) >= (Number(searchMeta.depthLimit) || Infinity)) bucket.fullDepth += 1;
+      }
       plies += 1;
     }
     if (game.in_checkmate()) {
@@ -297,7 +308,19 @@ function variedHeadToHead(games, label, contenderFn, opponentFn) {
     contenderMoves: 0,
     contenderThinkMs: 0,
     opponentMoves: 0,
-    opponentThinkMs: 0
+    opponentThinkMs: 0,
+    contenderSearches: 0,
+    contenderSearchNodes: 0,
+    contenderSearchBudget: 0,
+    contenderDepthSum: 0,
+    contenderDepthLimitSum: 0,
+    contenderFullDepth: 0,
+    opponentSearches: 0,
+    opponentSearchNodes: 0,
+    opponentSearchBudget: 0,
+    opponentDepthSum: 0,
+    opponentDepthLimitSum: 0,
+    opponentFullDepth: 0
   };
   const records = [];
   const startIndex = Number.parseInt(process.env.START_INDEX || '0', 10);
@@ -318,6 +341,18 @@ function variedHeadToHead(games, label, contenderFn, opponentFn) {
     totals.contenderThinkMs += result.enginePerf.contender.thinkMs;
     totals.opponentMoves += result.enginePerf.opponent.moves;
     totals.opponentThinkMs += result.enginePerf.opponent.thinkMs;
+    totals.contenderSearches += result.enginePerf.contender.searches;
+    totals.contenderSearchNodes += result.enginePerf.contender.searchNodes;
+    totals.contenderSearchBudget += result.enginePerf.contender.searchBudget;
+    totals.contenderDepthSum += result.enginePerf.contender.depthSum;
+    totals.contenderDepthLimitSum += result.enginePerf.contender.depthLimitSum;
+    totals.contenderFullDepth += result.enginePerf.contender.fullDepth;
+    totals.opponentSearches += result.enginePerf.opponent.searches;
+    totals.opponentSearchNodes += result.enginePerf.opponent.searchNodes;
+    totals.opponentSearchBudget += result.enginePerf.opponent.searchBudget;
+    totals.opponentDepthSum += result.enginePerf.opponent.depthSum;
+    totals.opponentDepthLimitSum += result.enginePerf.opponent.depthLimitSum;
+    totals.opponentFullDepth += result.enginePerf.opponent.fullDepth;
     records.push({ index: i, pair, contenderIsWhite, opening, ...result });
     console.log(`${label} game ${i + 1}: pair=${pair + 1} side=${contenderIsWhite ? 'W' : 'B'} ${result.result} ${result.reason} ${result.plies} plies`);
   }
@@ -328,8 +363,22 @@ function variedHeadToHead(games, label, contenderFn, opponentFn) {
     draw: totals.draw,
     score: games ? (totals.win + totals.draw * 0.5) / games : 0,
     performance: {
-      contender: enginePerformanceSummary(games, totals.contenderMoves, totals.contenderThinkMs),
-      opponent: enginePerformanceSummary(games, totals.opponentMoves, totals.opponentThinkMs)
+      contender: Object.assign(enginePerformanceSummary(games, totals.contenderMoves, totals.contenderThinkMs), {
+        searchNodes: totals.contenderSearchNodes,
+        averageNodesPerSearch: totals.contenderSearches ? totals.contenderSearchNodes / totals.contenderSearches : 0,
+        averageBudgetPerSearch: totals.contenderSearches ? totals.contenderSearchBudget / totals.contenderSearches : 0,
+        averageDepth: totals.contenderSearches ? totals.contenderDepthSum / totals.contenderSearches : 0,
+        averageDepthLimit: totals.contenderSearches ? totals.contenderDepthLimitSum / totals.contenderSearches : 0,
+        fullDepthRate: totals.contenderSearches ? totals.contenderFullDepth / totals.contenderSearches : 0
+      }),
+      opponent: Object.assign(enginePerformanceSummary(games, totals.opponentMoves, totals.opponentThinkMs), {
+        searchNodes: totals.opponentSearchNodes,
+        averageNodesPerSearch: totals.opponentSearches ? totals.opponentSearchNodes / totals.opponentSearches : 0,
+        averageBudgetPerSearch: totals.opponentSearches ? totals.opponentSearchBudget / totals.opponentSearches : 0,
+        averageDepth: totals.opponentSearches ? totals.opponentDepthSum / totals.opponentSearches : 0,
+        averageDepthLimit: totals.opponentSearches ? totals.opponentDepthLimitSum / totals.opponentSearches : 0,
+        fullDepthRate: totals.opponentSearches ? totals.opponentFullDepth / totals.opponentSearches : 0
+      })
     }
   };
 }
