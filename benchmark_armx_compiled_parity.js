@@ -23,12 +23,20 @@ for(let index=0;index<golden.positions.length;index++){
  const policy=armxPreviewOpponentPolicy(game,game.side);
  if(!policy)continue;
  active++;
+ const had=Object.prototype.hasOwnProperty.call(process.env,'ARMX_COMPILED_EXPERIMENT');
+ const previous=process.env.ARMX_COMPILED_EXPERIMENT;
+ process.env.ARMX_COMPILED_EXPERIMENT='1';
  const started=performance.now();
- const result=sf55cNativeAcceleratedHost(game,policy);
+ let entries;
+ try{entries=stonefishV55Testunit1ScoreAllMoves(game);}
+ finally{if(had)process.env.ARMX_COMPILED_EXPERIMENT=previous;else delete process.env.ARMX_COMPILED_EXPERIMENT;}
  totalMs+=performance.now()-started;
- assert(result,'compiled search unavailable');
+ const result=SF55C_LAST;
+ assert(result&&result.refutationGuard&&result.refutationGuard.compiledSearch,'compiled search unavailable');
  assert.equal(snap(game),before,'compiled search mutated game '+index);
- const got=summary(result),want=row.armx;
+ const got={depth:result.depth,nodes:result.nodes,entries:entries.map(row=>({
+  uci:row.uci,score:Number.isFinite(row.score)?row.score||0:null,deep:Number.isFinite(row.deep)?row.deep||0:null,exact:!!row.exact
+ }))},want=row.armx;
  const same=JSON.stringify(got)===JSON.stringify(want);
  if(same)exact++;
  const gotMove=got.entries[0]&&got.entries[0].uci,wantMove=want.entries[0]&&want.entries[0].uci;
