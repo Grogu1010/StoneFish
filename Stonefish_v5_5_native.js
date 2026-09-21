@@ -236,6 +236,7 @@ function sf55cApply(g,ctx,move,ply){
  g.halfmove=(Math.abs(moving)===1||capturedPiece)?0:g.halfmove+1;
  if(side===-1)g.fullmove++;
  g.side=-side;
+ if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=true;
 }
 function sf55cUndo(g,ctx,move,ply){
  const side=ctx.undoSide[ply],b=g.boardState,capturedPiece=ctx.undoCaptured[ply];
@@ -247,6 +248,7 @@ function sf55cUndo(g,ctx,move,ply){
  if(move.flags&4){const rf=side===1?7:63,rt=side===1?5:61;b[rf]=b[rt];b[rt]=0;}
  else if(move.flags&8){const rf=side===1?0:56,rt=side===1?3:59;b[rf]=b[rt];b[rt]=0;}
  ctx.moveStack[ply]=null;
+ if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=true;
 }
 
 function sf55cDraw(g,ctx,key) {
@@ -435,7 +437,8 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
 
 function sf55cHost(g,replyPolicy=null){
   sf55cSyncKernelConfig();
-  const legal=sf55cLegalMoves(g);if(!legal.length)return {finished:[],fastLeader:null,refutationGuard:null};
+  g._sf55cKernelSearchActive=true;g._sf55cKernelDirty=true;
+  const legal=sf55cLegalMoves(g);if(!legal.length){g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;return {finished:[],fastLeader:null,refutationGuard:null};}
   const requested=replyPolicy&&replyPolicy.searchBudget;
   const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(requested))):SF55C.nodes;
   const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
@@ -471,6 +474,7 @@ function sf55cHost(g,replyPolicy=null){
   result.searchBudget=ctx.limit;
   result.depthLimit=depthLimit;
   globalThis.SF55C_LAST=result;
+  g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;
   return result;
 }
 
