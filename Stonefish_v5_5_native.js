@@ -261,7 +261,11 @@ function sf55cDraw(g,ctx,key) {
       if(!ctx.compactCounts)ctx.compactCounts=new Map(Array.from(g.positionCounts,([k,v])=>[sf55cPackHistoryKey(k),v]));
       counts=ctx.compactCounts;
     }
-    if((counts.get(key)||0)+(ctx.path.get(key)||0)+1>=3)return true;
+    const pathId=ctx.positionIds.get(key);
+    const pathCount=ctx.pathCounts
+      ?(pathId===undefined?0:(ctx.pathCounts[pathId]||0))
+      :(ctx.path?(ctx.path.get(key)||0):0);
+    if((counts.get(key)||0)+pathCount+1>=3)return true;
   }
   return !(ctx.material>0)&&sf55cInsufficient(g);
 }
@@ -269,9 +273,10 @@ function sf55cDraw(g,ctx,key) {
 function sf55cEnter(ctx,key) {
   if (key === null) return;
   if(ctx.pathSignature===undefined){ctx.pathSignature=0;ctx.pathSignatureStack=[];ctx.pathSignatureIds=new Map();}
-  ctx.path.set(key,(ctx.path.get(key)||0)+1);
   let id=ctx.positionIds.get(key);
   if(id===undefined){id=ctx.positionIds.size+1;ctx.positionIds.set(key,id);}
+  if(ctx.pathCounts)ctx.pathCounts[id]=(ctx.pathCounts[id]||0)+1;
+  else if(ctx.path)ctx.path.set(key,(ctx.path.get(key)||0)+1);
   const parent=ctx.pathSignature,pair=parent*16384+id;
   let signature=ctx.pathSignatureIds.get(pair);
   if(signature===undefined){signature=ctx.pathSignatureIds.size+1;ctx.pathSignatureIds.set(pair,signature);}
@@ -280,8 +285,12 @@ function sf55cEnter(ctx,key) {
 }
 function sf55cExit(ctx,key) {
   if (key === null) return;
-  const count=ctx.path.get(key)-1;
-  if(count)ctx.path.set(key,count);else ctx.path.delete(key);
+  const id=ctx.positionIds.get(key);
+  if(ctx.pathCounts)ctx.pathCounts[id]--;
+  else if(ctx.path){
+    const count=ctx.path.get(key)-1;
+    if(count)ctx.path.set(key,count);else ctx.path.delete(key);
+  }
   ctx.pathSignature=ctx.pathSignatureStack.pop();
 }
 
@@ -394,22 +403,25 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   // of the cache identity. A value from another history cannot hide a draw.
   const ttMeta=g.halfmove+(ply<<7)+(ctx.pathSignature<<13);
   const ttBucket=ctx.tt.get(key);
-  const hit=ttBucket?ttBucket.get(ttMeta):null,original=alpha;
+  let hit=-1;
+  if(ttBucket)for(let i=0;i<ttBucket.length;i+=5){if(ttBucket[i]===ttMeta){hit=i;break;}}
+  const original=alpha;
   // A stored entry can only come from a non-terminal, non-draw node. While the
   // node budget is still live, the exact same TT cutoff can therefore happen
   // before legal-move generation. Over-budget nodes retain the original order:
   // terminal -> draw -> abort -> TT.
   const budgetLive=ctx.nodes<=ctx.limit||ctx.depth<=2;
-  if(budgetLive&&hit&&hit.depth>=depth){
-    if(hit.flag===0)return hit.score;
-    if(hit.flag===1&&hit.score>=beta)return hit.score;
-    if(hit.flag===-1&&hit.score<=alpha)return hit.score;
+  if(budgetLive&&hit>=0&&ttBucket[hit+1]>=depth){
+    const hitScore=ttBucket[hit+2],hitFlag=ttBucket[hit+4];
+    if(hitFlag===0)return hitScore;
+    if(hitFlag===1&&hitScore>=beta)return hitScore;
+    if(hitFlag===-1&&hitScore<=alpha)return hitScore;
   }
   const check=sf55cInCheck(g),moves=sf55cLegalMoves(g,ctx,ply);
   if(!moves.length)return check?-SF55C.mate+ply:0;
   if(sf55cDraw(g,ctx,key))return 0;
   if(!budgetLive){ctx.abort=true;return sf55cEvaluate(g);}
-  sf55cOrderMoves(moves,ctx,hit?hit.move:0,ply);
+  sf55cOrderMoves(moves,ctx,hit>=0?ttBucket[hit+3]:0,ply);
   let best=-Infinity,bestMove=0,index=0;
   sf55cEnter(ctx,key);
   try {
@@ -439,13 +451,65 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
     }
   }finally{sf55cExit(ctx,key);}
   if(!ctx.abort){
-    let bucket=ctx.tt.get(key);if(!bucket){bucket=new Map();ctx.tt.set(key,bucket);}
-    bucket.set(ttMeta,{depth,score:best,move:bestMove,flag:best<=original?-1:best>=beta?1:0});
+    let bucket=ctx.tt.get(key);if(!bucket){bucket=[];ctx.tt.set(key,bucket);}
+    let slot=-1;
+    for(let i=0;i<bucket.length;i+=5){if(bucket[i]===ttMeta){slot=i;break;}}
+    if(slot<0){slot=bucket.length;bucket.length+=5;}
+    bucket[slot]=ttMeta;bucket[slot+1]=depth;bucket[slot+2]=best;bucket[slot+3]=bestMove;
+    bucket[slot+4]=best<=original?-1:best>=beta?1:0;
   }
   return best;
 }
 
+
+function sf55cNativeAcceleratedHost(g,replyPolicy){
+  const k=SF55C_KERNEL;
+  if(!k||!k.api.search_all||!k.scores||!k.policyWeights||!replyPolicy)return null;
+  sf55cSyncKernelConfig();
+  k.board.set(g.boardState);
+  k.policyWeights.fill(0);
+  if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
+  const limit=Number.isFinite(replyPolicy.searchBudget)
+    ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(replyPolicy.searchBudget))):SF55C.nodes;
+  const depthLimit=Number.isFinite(replyPolicy.maxDepth)
+    ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(replyPolicy.maxDepth))):SF55C.maxDepth;
+  let publicHistoryCount=0;
+  if(k.publicKeys&&k.publicCounts){
+    for(const [historyKey,countValue] of g.positionCounts){
+      if(publicHistoryCount>=512)break;
+      const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
+      const offset=publicHistoryCount*17;
+      for(let i=0;i<17;i++)k.publicKeys[offset+i]=packed.charCodeAt(i);
+      k.publicCounts[publicHistoryCount]=countValue;
+      publicHistoryCount++;
+    }
+  }
+  const count=k.api.search_all(
+    g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
+    depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
+  const finished=new Array(count);
+  for(let i=0;i<count;i++){
+    const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
+      captured:(m>>>15)&7,promotion:(m>>>18)&7,flags:m>>>21};
+    const exact=!k.exact||k.exact[i]!==0;
+    const score=exact?k.scores[i]:-Infinity;
+    finished[i]={raw,uci:stonefishV45RawUci(g,raw),score,deep:exact?k.scores[i]:null,
+      preliminary:exact?k.scores[i]:null,tactical:0,knowledge:0,conversion:0,exact};
+  }
+  finished.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
+  const result={finished,fastLeader:finished.length?finished[0].raw:null,
+    refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
+    nodes:k.api.search_nodes?k.api.search_nodes():limit,
+    depth:k.api.search_depth?k.api.search_depth():depthLimit,
+    searchBudget:limit,depthLimit};
+  return result;
+}
+
 function sf55cHost(g,replyPolicy=null){
+  if(replyPolicy&&typeof process!=='undefined'&&process.env&&process.env.ARMX_COMPILED_EXPERIMENT==='1'){
+    const accelerated=sf55cNativeAcceleratedHost(g,replyPolicy);
+    if(accelerated){globalThis.SF55C_LAST=accelerated;return accelerated;}
+  }
   sf55cSyncKernelConfig();
   g._sf55cKernelSearchActive=true;g._sf55cKernelDirty=true;
   const legal=sf55cLegalMoves(g);if(!legal.length){g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;return {finished:[],fastLeader:null,refutationGuard:null};}
@@ -453,7 +517,7 @@ function sf55cHost(g,replyPolicy=null){
   const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(requested))):SF55C.nodes;
   const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
   const depthLimit=Number.isFinite(requestedDepth)?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(requestedDepth))):SF55C.maxDepth;
-  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],replyPolicy};
+  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),pathCounts:[],pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],moveBuffers:[],replyPolicy};
   ctx.material=0;for(const piece of g.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
   for(const e of roots){sf55cApply(g,ctx,e.raw,1);try{e.score=-sf55cEvaluate(g);}finally{sf55cUndo(g,ctx,e.raw,1);}}
@@ -931,7 +995,12 @@ try {
   const api=new WebAssembly.Instance(new WebAssembly.Module(SF55C_WASM_BYTES),{}).exports;
   SF55C_KERNEL={api,board:new Int8Array(api.memory.buffer,api.board_ptr(),64),
    config:new Int32Array(api.memory.buffer,api.config_ptr(),903),
-   moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512)};
+   moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512),
+   scores:api.scores_ptr?new Int32Array(api.memory.buffer,api.scores_ptr(),512):null,
+   exact:api.exact_ptr?new Int32Array(api.memory.buffer,api.exact_ptr(),512):null,
+   policyWeights:api.policy_ptr?new Float64Array(api.memory.buffer,api.policy_ptr(),13):null,
+   publicKeys:api.public_keys_ptr?new Uint16Array(api.memory.buffer,api.public_keys_ptr(),512*17):null,
+   publicCounts:api.public_counts_ptr?new Int32Array(api.memory.buffer,api.public_counts_ptr(),512):null};
  }
 } catch (_) { /* Use the identical JS implementation if compilation is blocked. */ }
 function sf55cSyncKernelConfig(){
@@ -940,25 +1009,43 @@ function sf55cSyncKernelConfig(){
  for(let t=0;t<7;t++){kernel.config.set(SF55C_PST[t],7+t*64);kernel.config.set(SF55C_EG[t],455+t*64);}
 }
 sf55cSyncKernelConfig();
+function sf55cSyncKernelBoard(g){
+ const k=SF55C_KERNEL;if(!k)return null;
+ if(!g._sf55cKernelSearchActive||g._sf55cKernelDirty){
+  k.board.set(g.boardState);
+  if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=false;
+ }
+ return k;
+}
 function sf55cEvaluate(g){
- const k=SF55C_KERNEL;if(!k)return sf55cEvaluateJS(g);
- k.board.set(g.boardState);return k.api.evaluate(g.side,g.kingSq[1],g.kingSq[-1]);
+ const k=sf55cSyncKernelBoard(g);if(!k)return sf55cEvaluateJS(g);
+ return k.api.evaluate(g.side,g.kingSq[1],g.kingSq[-1]);
 }
 function sf55cInCheck(g){
- const k=SF55C_KERNEL;if(!k)return g.in_check();
- k.board.set(g.boardState);return !!k.api.in_check(g.side,g.kingSq[g.side]);
+ const k=sf55cSyncKernelBoard(g);if(!k)return g.in_check();
+ return !!k.api.in_check(g.side,g.kingSq[g.side]);
 }
-function sf55cKernelMoves(g,mode){
- const k=SF55C_KERNEL;k.board.set(g.boardState);
+function sf55cKernelMoves(g,mode,ctx=null,ply=0){
+ const k=sf55cSyncKernelBoard(g);
  const count=k.api.generate(g.side,g.castling,g.ep,g.kingSq[g.side],mode);
  if(mode===2)return !!count;
- const moves=new Array(count);
+ let moves;
+ if(ctx){
+  const buffers=ctx.moveBuffers||(ctx.moveBuffers=[]);
+  moves=buffers[ply];
+  if(!moves)moves=buffers[ply]=[];
+  while(moves.length<count)moves.push({from:0,to:0,piece:0,captured:0,promotion:0,flags:0});
+  moves.length=count;
+ }else moves=new Array(count);
  for(let i=0;i<count;i++){
-  const m=k.moves[i];moves[i]={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
-   captured:(m>>>15)&7,promotion:(m>>>18)&7,flags:m>>>21};
+  const packed=k.moves[i];
+  let move=moves[i];
+  if(!move)move=moves[i]={from:0,to:0,piece:0,captured:0,promotion:0,flags:0};
+  move.from=packed&63;move.to=(packed>>>6)&63;move.piece=(packed>>>12)&7;
+  move.captured=(packed>>>15)&7;move.promotion=(packed>>>18)&7;move.flags=packed>>>21;
  }
  return moves;
 }
-function sf55cLegalMoves(g){return SF55C_KERNEL?sf55cKernelMoves(g,0):g.fastMoves();}
-function sf55cTacticalMoves(g){return SF55C_KERNEL?sf55cKernelMoves(g,1):sf55cTacticalMovesJS(g);}
+function sf55cLegalMoves(g,ctx=null,ply=0){return SF55C_KERNEL?sf55cKernelMoves(g,0,ctx,ply):g.fastMoves();}
+function sf55cTacticalMoves(g,ctx=null,ply=0){return SF55C_KERNEL?sf55cKernelMoves(g,1,ctx,ply):sf55cTacticalMovesJS(g);}
 function sf55cHasLegalMove(g){return SF55C_KERNEL?sf55cKernelMoves(g,2):g.fastHasLegalMove();}

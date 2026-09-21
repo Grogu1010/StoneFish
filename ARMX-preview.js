@@ -202,6 +202,9 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
     maxDepth: (typeof process !== 'undefined' && process.env && process.env.ARMX_FAST_SCREEN === '1')
       ? Math.max(SF55C.maxDepth, Number.parseInt(process.env.ARMX_FAST_DEPTH || String(SF55C.maxDepth), 10) || SF55C.maxDepth)
       : SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
+    // Expose the frozen per-search weights to the optional compiled parity experiment.
+    // This is data-only; the normal JS search continues to use priority()/isLowPriority().
+    weights,
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };

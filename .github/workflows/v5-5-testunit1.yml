@@ -60,6 +60,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Build compiled ARMX search experiment
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
       - name: Syntax check ARMX-preview
         run: node --check ARMX-preview.js
       - name: Syntax check v5.5 native search
@@ -88,6 +92,16 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
+      - name: Diagnose compiled ARMX parity
+        run: node benchmark_armx_compiled_parity.js
+      - name: Compare compiled ARMX with current ARMX
+        env:
+          ARMX_H2H_GAMES: '40'
+        run: node benchmark_armx_compiled_vs_current.js
+      - name: Measure compiled ARMX versus No-ARMX
+        env:
+          ARMX_H2H_GAMES: '12'
+        run: node benchmark_armx_compiled_vs_noarmx.js
       - name: Measure full ARMX versus No-ARMX
         env:
           SAMPLES: '20'
