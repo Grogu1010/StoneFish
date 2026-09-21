@@ -189,8 +189,9 @@ typedef struct {
 } SearchTTEntry;
 typedef struct {
   u32 generation,hash;
-  u16 key[17];
   int count;
+  u16 meta,pad;
+  u64 packed[4];
 } SearchPublicEntry;
 static SearchPositionEntry search_positions[SEARCH_POS_CAP];
 static SearchPathEntry search_paths[SEARCH_PATH_CAP];
@@ -391,13 +392,32 @@ static u32 search_public_key_hash(const u16 *key){
   for(int i=0;i<17;i++){h^=(u32)key[i];h*=16777619u;}
   return h;
 }
-static int search_public_key_equal(const u16 *a,const u16 *b){
-  for(int i=0;i<17;i++)if(a[i]!=b[i])return 0;
+static void search_public_store_key(SearchPublicEntry *e,const u16 *key){
+  for(int word=0;word<4;word++){
+    int i=word<<2;
+    e->packed[word]=(u64)key[i]|((u64)key[i+1]<<16)|((u64)key[i+2]<<32)|((u64)key[i+3]<<48);
+  }
+  e->meta=key[16];
+}
+static int search_public_input_equal(const SearchPublicEntry *e,const u16 *key){
+  if(e->meta!=key[16])return 0;
+  for(int word=0;word<4;word++){
+    int i=word<<2;
+    u64 packed=(u64)key[i]|((u64)key[i+1]<<16)|((u64)key[i+2]<<32)|((u64)key[i+3]<<48);
+    if(e->packed[word]!=packed)return 0;
+  }
   return 1;
 }
-static void search_pack_state(const SearchState *s,u16 *key){
-  for(int i=0;i<16;i++)key[i]=(u16)(s->packed[i>>2]>>((i&3)<<4));
-  key[16]=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5));
+static u32 search_public_state_hash(const SearchState *s){
+  u32 h=2166136261u;
+  for(int i=0;i<16;i++){h^=(u16)(s->packed[i>>2]>>((i&3)<<4));h*=16777619u;}
+  h^=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5));h*=16777619u;
+  return h;
+}
+static int search_public_state_equal(const SearchPublicEntry *e,const SearchState *s){
+  if(e->meta!=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5)))return 0;
+  for(int i=0;i<4;i++)if(e->packed[i]!=s->packed[i])return 0;
+  return 1;
 }
 static void search_public_build(int count){
   if(count<0)count=0;if(count>SEARCH_PUBLIC_INPUT_CAP)count=SEARCH_PUBLIC_INPUT_CAP;
@@ -408,20 +428,18 @@ static void search_public_build(int count){
       SearchPublicEntry *e=&search_public[slot];
       if(e->generation!=search_generation){
         e->generation=search_generation;e->hash=hash;e->count=search_public_counts_input[i];
-        for(int j=0;j<17;j++)e->key[j]=key[j];
-        break;
+        search_public_store_key(e,key);break;
       }
-      if(e->hash==hash&&search_public_key_equal(e->key,key)){e->count=search_public_counts_input[i];break;}
+      if(e->hash==hash&&search_public_input_equal(e,key)){e->count=search_public_counts_input[i];break;}
     }
   }
 }
 static int search_public_lookup(const SearchState *s){
-  u16 key[17];search_pack_state(s,key);
-  u32 hash=search_public_key_hash(key),slot=hash&(SEARCH_PUBLIC_CAP-1);
+  u32 hash=search_public_state_hash(s),slot=hash&(SEARCH_PUBLIC_CAP-1);
   for(int probe=0;probe<SEARCH_PUBLIC_CAP;probe++,slot=(slot+1)&(SEARCH_PUBLIC_CAP-1)){
     SearchPublicEntry *e=&search_public[slot];
     if(e->generation!=search_generation)return 0;
-    if(e->hash==hash&&search_public_key_equal(e->key,key))return e->count;
+    if(e->hash==hash&&search_public_state_equal(e,s))return e->count;
   }
   return 0;
 }
