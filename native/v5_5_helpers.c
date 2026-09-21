@@ -117,8 +117,8 @@ static int pawn_emit(int from,int to,int promotion_rank){
   if((to>>3)!=promotion_rank)return emit(from,to,0,0);
   return emit(from,to,5,0)||emit(from,to,4,0)||emit(from,to,3,0)||emit(from,to,2,0);
 }
-int generate(int side,int castling,int ep,int king,int mode){
-  gen_side=side;gen_king=king;gen_mode=mode;gen_count=0;gen_check=attacked(king,-side);
+static int generate_known(int side,int castling,int ep,int king,int mode,int known_check){
+  gen_side=side;gen_king=king;gen_mode=mode;gen_count=0;gen_check=known_check;
   for(int from=0;from<64;from++){
     int p=board[from];if(!p||(p>0?1:-1)!=side)continue;
     int type=absolute(p),file=from&7,rank=from>>3;
@@ -158,6 +158,9 @@ int generate(int side,int castling,int ep,int king,int mode){
     }
   }
   return gen_mode==2?0:gen_count;
+}
+int generate(int side,int castling,int ep,int king,int mode){
+  return generate_known(side,castling,ep,king,mode,attacked(king,-side));
 }
 
 
@@ -583,22 +586,22 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   int pos=s->halfmove?search_position_id(s):0;
   u32 *moves=search_move_stack[ply<32?ply:31];int n=0;
   if(check){
-    n=generate(s->side,s->castling,s->ep,king,0);
+    n=generate_known(s->side,s->castling,s->ep,king,0,1);
     if(!n)return -SEARCH_MATE+ply;
     for(int i=0;i<n;i++)moves[i]=output[i];
   }
   if(search_draw(s,pos))return 0;
   if(search_nodes_count>search_node_limit&&search_iter_depth>2){
-    if(!check&&!generate(s->side,s->castling,s->ep,king,2))return 0;
+    if(!check&&!generate_known(s->side,s->castling,s->ep,king,2,0))return 0;
     search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);
   }
   int stand=check?-SEARCH_MATE:search_evaluate_fast(s->side,s->wk,s->bk);
-  if(ply>20)return !check&&!generate(s->side,s->castling,s->ep,king,2)?0:search_evaluate_fast(s->side,s->wk,s->bk);
+  if(ply>20)return !check&&!generate_known(s->side,s->castling,s->ep,king,2,0)?0:search_evaluate_fast(s->side,s->wk,s->bk);
   if(!check){
-    if(stand>=beta||remaining<=0)return generate(s->side,s->castling,s->ep,king,2)?stand:0;
+    if(stand>=beta||remaining<=0)return generate_known(s->side,s->castling,s->ep,king,2,0)?stand:0;
     if(stand>alpha)alpha=stand;
-    n=generate(s->side,s->castling,s->ep,king,1);
-    if(!n)return generate(s->side,s->castling,s->ep,king,2)?stand:0;
+    n=generate_known(s->side,s->castling,s->ep,king,1,0);
+    if(!n)return generate_known(s->side,s->castling,s->ep,king,2,0)?stand:0;
     for(int i=0;i<n;i++)moves[i]=output[i];
   }
   search_sort(moves,n,ply,0);
@@ -636,7 +639,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(hit->flag==-1&&hit->score<=alpha)return hit->score;
   }
   int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
-  int n=generate(s->side,s->castling,s->ep,king,0);
+  int n=generate_known(s->side,s->castling,s->ep,king,0,check);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);}
