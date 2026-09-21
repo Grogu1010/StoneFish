@@ -146,3 +146,263 @@ int generate(int side,int castling,int ep,int king,int mode){
   }
   return gen_mode==2?0:gen_count;
 }
+
+
+/* ARMX compiled search accelerator. Search stays self-contained inside the
+   helper module so extra depth does not pay the JavaScript/WASM boundary on
+   every node. No persistent opponent state is stored here; JS supplies only
+   the frozen per-search quiet-choice weights. */
+static int root_scores[512];
+static double policy_weights[13];
+static int search_history[32768],search_killers[32];
+static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
+static int search_depth_done,search_policy_enabled,search_policy_side;
+static const int SEARCH_MATE=20000000;
+
+int scores_ptr(void){return (int)(unsigned long)root_scores;}
+int policy_ptr(void){return (int)(unsigned long)policy_weights;}
+int search_nodes(void){return search_nodes_count;}
+int search_depth(void){return search_depth_done;}
+
+typedef struct {
+  int side,castling,ep,wk,bk,halfmove;
+} SearchState;
+typedef struct {
+  SearchState state;
+  i8 moving,captured;
+} SearchUndo;
+
+static int move_from(u32 m){return m&63;}
+static int move_to(u32 m){return (m>>6)&63;}
+static int move_piece(u32 m){return (m>>12)&7;}
+static int move_captured(u32 m){return (m>>15)&7;}
+static int move_promotion(u32 m){return (m>>18)&7;}
+static int move_flags(u32 m){return (int)(m>>21);}
+static int move_id(u32 m){return move_from(m)|(move_to(m)<<6)|(move_promotion(m)<<12);}
+
+static void search_apply(SearchState *s,u32 m,SearchUndo *u){
+  u->state=*s;
+  int from=move_from(m),to=move_to(m),flags=move_flags(m);
+  int moving=board[from],capture_sq=(flags&2)?to-s->side*8:to;
+  u->moving=(i8)moving;u->captured=board[capture_sq];
+  board[from]=0;board[to]=move_promotion(m)?(i8)(s->side*move_promotion(m)):(i8)moving;
+  if(flags&2)board[capture_sq]=0;
+  if(absolute(moving)==6){
+    if(s->side>0)s->wk=to;else s->bk=to;
+    if(s->side>0)s->castling&=~3;else s->castling&=~12;
+    if(flags&4){
+      int rf=s->side>0?7:63,rt=s->side>0?5:61;board[rt]=board[rf];board[rf]=0;
+    }else if(flags&8){
+      int rf=s->side>0?0:56,rt=s->side>0?3:59;board[rt]=board[rf];board[rf]=0;
+    }
+  }
+  if(from==0||to==0)s->castling&=~2;
+  if(from==7||to==7)s->castling&=~1;
+  if(from==56||to==56)s->castling&=~8;
+  if(from==63||to==63)s->castling&=~4;
+  s->ep=-1;
+  if(absolute(moving)==1&&absolute(to-from)==16)s->ep=(from+to)>>1;
+  s->halfmove=(absolute(moving)==1||u->captured)?0:s->halfmove+1;
+  s->side=-s->side;
+}
+static void search_undo(SearchState *s,u32 m,const SearchUndo *u){
+  int flags=move_flags(m),from=move_from(m),to=move_to(m),side=u->state.side;
+  if(flags&4){
+    int rf=side>0?7:63,rt=side>0?5:61;board[rf]=board[rt];board[rt]=0;
+  }else if(flags&8){
+    int rf=side>0?0:56,rt=side>0?3:59;board[rf]=board[rt];board[rt]=0;
+  }
+  board[from]=u->moving;
+  if(flags&2){board[to]=0;board[to-side*8]=u->captured;}
+  else board[to]=u->captured;
+  *s=u->state;
+}
+
+static int search_insufficient(void){
+  int minors=0,knights=0,color=-1,mixed=0;
+  for(int sq=0;sq<64;sq++){
+    int p=absolute(board[sq]);
+    if(p==1||p==4||p==5)return 0;
+    if(p==2){minors++;knights++;}
+    else if(p==3){
+      minors++;int c=((sq&7)+(sq>>3))&1;
+      if(color!=-1&&color!=c)mixed=1;color=c;
+    }
+  }
+  return minors<=1||(!knights&&!mixed);
+}
+
+static int quiet_activity(int piece,int sq){
+  int f=sq&7,r=sq>>3,center=7-absolute(2*f-7)-absolute(2*r-7),fc=7-absolute(2*f-7);
+  if(piece==1)return r*7+fc*3+((r>=3&&f>=2&&f<=5)?14:0);
+  if(piece==2)return center*7-(r==0?15:0);
+  if(piece==3)return center*4+r*3;
+  if(piece==4)return r==6?30:r*2;
+  if(piece==5)return center*2-(r>2?8:0);
+  return -center*5-r*12+((r==0&&(f==6||f==2))?45:0);
+}
+static int quiet_ending(int piece,int sq){
+  int f=sq&7,r=sq>>3,center=7-absolute(2*f-7)-absolute(2*r-7),fc=7-absolute(2*f-7);
+  if(piece==1)return r*r*5+fc;
+  if(piece==2)return center*5;
+  if(piece==3)return center*3;
+  if(piece==4)return center*2+r*2;
+  if(piece==5)return center*3;
+  return center*8;
+}
+static double policy_logit(u32 m){
+  int piece=move_piece(m),from=move_from(m),to=move_to(m);
+  if(search_policy_side<0){from^=56;to^=56;}
+  double v=policy_weights[piece-1];
+  v+=((double)(quiet_activity(piece,to)-quiet_activity(piece,from))/100.0)*policy_weights[6];
+  v+=((double)(quiet_ending(piece,to)-quiet_ending(piece,from))/100.0)*policy_weights[7];
+  int adv=(to>>3)-(from>>3);if(adv>3)adv=3;if(adv<-3)adv=-3;
+  v+=((double)adv/3.0)*policy_weights[8];
+  if(move_flags(m)&12)v+=policy_weights[9];
+  if((piece==2||piece==3)&&(from>>3)==0)v+=policy_weights[10];
+  double center_gain=(double)(absolute(2*(from&7)-7)-absolute(2*(to&7)-7))/8.0;
+  v+=center_gain*policy_weights[11];
+  if(piece==1&&(to>>3)>=4)v+=policy_weights[12];
+  return v;
+}
+static int search_order(u32 m,int ply){
+  int promotion=move_promotion(m),captured=move_captured(m),piece=move_piece(m),id=move_id(m);
+  if(promotion)return 200000+config[promotion];
+  if(captured)return 100000+config[captured]*16-config[piece];
+  if(ply<32&&search_killers[ply]==id)return 90000;
+  int value=search_history[id];
+  if(search_policy_enabled&&(ply&1))value+=(int)(300.0*policy_logit(m));
+  return value;
+}
+static void search_sort(u32 *moves,int n,int ply){
+  int priorities[512];
+  for(int i=0;i<n;i++){
+    u32 m=moves[i];int p=search_order(m,ply),j=i-1;
+    while(j>=0&&priorities[j]<p){moves[j+1]=moves[j];priorities[j+1]=priorities[j];j--;}
+    moves[j+1]=m;priorities[j+1]=p;
+  }
+}
+
+static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
+  search_nodes_count++;
+  int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
+  if(s->halfmove>=100||search_insufficient())return 0;
+  if(search_nodes_count>search_node_limit&&search_iter_depth>2){
+    search_abort=1;return evaluate(s->side,s->wk,s->bk);
+  }
+  int stand=check?-SEARCH_MATE:evaluate(s->side,s->wk,s->bk);
+  if(ply>20)return stand;
+  u32 moves[512];int n;
+  if(check){
+    n=generate(s->side,s->castling,s->ep,king,0);
+    if(!n)return -SEARCH_MATE+ply;
+    for(int i=0;i<n;i++)moves[i]=output[i];
+  }else{
+    if(stand>=beta||remaining<=0){
+      return generate(s->side,s->castling,s->ep,king,2)?stand:0;
+    }
+    if(stand>alpha)alpha=stand;
+    n=generate(s->side,s->castling,s->ep,king,1);
+    if(!n)return generate(s->side,s->castling,s->ep,king,2)?stand:0;
+    for(int i=0;i<n;i++)moves[i]=output[i];
+  }
+  search_sort(moves,n,ply);
+  for(int i=0;i<n;i++){
+    u32 m=moves[i];
+    if(!check&&!move_promotion(m)&&stand+config[move_captured(m)]+160<alpha)continue;
+    SearchUndo u;search_apply(s,m,&u);
+    int score=-search_q(s,-beta,-alpha,ply+1,remaining-1);
+    search_undo(s,m,&u);
+    if(search_abort)break;
+    if(score>stand)stand=score;if(score>alpha)alpha=score;if(alpha>=beta)break;
+  }
+  return stand;
+}
+
+static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply){
+  if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
+  search_nodes_count++;
+  if(s->halfmove>=100||search_insufficient())return 0;
+  if(search_nodes_count>search_node_limit&&search_iter_depth>2){
+    search_abort=1;return evaluate(s->side,s->wk,s->bk);
+  }
+  int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
+  int n=generate(s->side,s->castling,s->ep,king,0);
+  if(!n)return check?-SEARCH_MATE+ply:0;
+  u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
+  search_sort(moves,n,ply);
+  int best=-SEARCH_MATE,index=0;
+  for(int i=0;i<n;i++){
+    u32 m=moves[i];SearchUndo u;search_apply(s,m,&u);
+    int quiet=!move_captured(m)&&!move_promotion(m),score;
+    if(index==0)score=-search_ab(s,depth-1,-beta,-alpha,ply+1);
+    else{
+      int childking=s->side>0?s->wk:s->bk;
+      int gives_check=in_check(s->side,childking);
+      int standard_reduce=depth>=3&&index>=4&&!check&&quiet&&!gives_check;
+      int guided_reduce=search_policy_enabled&&(ply&1)&&depth>=2&&index>=2&&!check&&quiet
+        &&policy_logit(m)<0&&!gives_check;
+      int reduce=(standard_reduce||guided_reduce)?1:0;
+      score=-search_ab(s,depth-1-reduce,-alpha-1,-alpha,ply+1);
+      if(!search_abort&&score>alpha&&(reduce||score<beta))
+        score=-search_ab(s,depth-1,-beta,-alpha,ply+1);
+    }
+    search_undo(s,m,&u);
+    if(search_abort)break;
+    if(score>best)best=score;
+    if(score>alpha)alpha=score;
+    if(alpha>=beta){
+      if(quiet&&ply<32){int id=move_id(m);search_killers[ply]=id;search_history[id]+=depth*depth;}
+      break;
+    }
+    index++;
+  }
+  return best;
+}
+
+static void root_insert(u32 *moves,int *scores,int *count,u32 move,int score){
+  int i=*count;
+  while(i>0&&scores[i-1]<score){moves[i]=moves[i-1];scores[i]=scores[i-1];i--;}
+  moves[i]=move;scores[i]=score;(*count)++;
+}
+
+int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
+               int max_depth,int node_limit,int qdepth,int policy_enabled){
+  SearchState s={side,castling,ep,wk,bk,halfmove};
+  search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
+  search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
+  search_policy_side=-side;
+  for(int i=0;i<32768;i++)search_history[i]=0;
+  for(int i=0;i<32;i++)search_killers[i]=0;
+  int king=side>0?wk:bk,n=generate(side,castling,ep,king,0);
+  if(!n)return 0;
+  u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512];
+  for(int i=0;i<n;i++){
+    current_moves[i]=output[i];SearchUndo u;search_apply(&s,current_moves[i],&u);
+    current_scores[i]=-evaluate(s.side,s.wk,s.bk);search_undo(&s,current_moves[i],&u);
+  }
+  for(int i=1;i<n;i++){
+    u32 m=current_moves[i];int sc=current_scores[i],j=i-1;
+    while(j>=0&&current_scores[j]<sc){current_moves[j+1]=current_moves[j];current_scores[j+1]=current_scores[j];j--;}
+    current_moves[j+1]=m;current_scores[j+1]=sc;
+  }
+  int current_count=n;
+  for(int depth=1;depth<=max_depth;depth++){
+    search_iter_depth=depth;search_abort=0;int next_count=0,threshold=-SEARCH_MATE;
+    for(int i=0;i<current_count;i++){
+      u32 m=current_moves[i];SearchUndo u;search_apply(&s,m,&u);
+      int score=-search_ab(&s,depth-1,-SEARCH_MATE,-threshold,1);
+      search_undo(&s,m,&u);
+      if(search_abort)break;
+      root_insert(next_moves,next_scores,&next_count,m,score);
+      if(next_count>=3)threshold=next_scores[2];
+    }
+    if(search_abort)break;
+    current_count=next_count;
+    for(int i=0;i<current_count;i++){current_moves[i]=next_moves[i];current_scores[i]=next_scores[i];}
+    search_depth_done=depth;
+    if(current_count&&absolute(current_scores[0])>SEARCH_MATE-100)break;
+  }
+  for(int i=0;i<current_count;i++){output[i]=current_moves[i];root_scores[i]=current_scores[i];}
+  return current_count;
+}
