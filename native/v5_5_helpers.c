@@ -2,6 +2,7 @@
    Prototype: no imports, no search, no opponent state, no runtime allocation. */
 typedef signed char i8;
 typedef unsigned int u32;
+typedef unsigned short u16;
 static i8 board[64];
 static int config[903]; /* piece[7], middlegame[7][64], endgame[7][64] */
 static u32 output[512];
@@ -155,6 +156,10 @@ int generate(int side,int castling,int ep,int king,int mode){
    the frozen per-search quiet-choice weights. */
 static int root_scores[512];
 static double policy_weights[13];
+#define SEARCH_PUBLIC_INPUT_CAP 512
+#define SEARCH_PUBLIC_CAP 1024
+static u16 search_public_keys_input[SEARCH_PUBLIC_INPUT_CAP*17];
+static int search_public_counts_input[SEARCH_PUBLIC_INPUT_CAP];
 static int search_history[32768],search_killers[32];
 static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
 static int search_depth_done,search_policy_enabled,search_policy_side;
@@ -176,9 +181,16 @@ typedef struct {
   u32 generation;
   int pos,halfmove,ply,path,depth,score,move,flag;
 } SearchTTEntry;
+typedef struct {
+  u32 generation,hash;
+  u16 key[17];
+  int count;
+} SearchPublicEntry;
 static SearchPositionEntry search_positions[SEARCH_POS_CAP];
 static SearchPathEntry search_paths[SEARCH_PATH_CAP];
 static SearchTTEntry search_tt[SEARCH_TT_CAP];
+static SearchPublicEntry search_public[SEARCH_PUBLIC_CAP];
+static int search_position_public_counts[SEARCH_POS_CAP+1];
 static int search_path_counts[SEARCH_POS_CAP+1];
 static int search_path_stack[64],search_path_top,search_path_signature;
 static int search_position_count,search_signature_count;
@@ -186,6 +198,8 @@ static u32 search_generation;
 
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
 int policy_ptr(void){return (int)(unsigned long)policy_weights;}
+int public_keys_ptr(void){return (int)(unsigned long)search_public_keys_input;}
+int public_counts_ptr(void){return (int)(unsigned long)search_public_counts_input;}
 int search_nodes(void){return search_nodes_count;}
 int search_depth(void){return search_depth_done;}
 
@@ -260,6 +274,49 @@ static int search_insufficient(void){
   return minors<=1||(!knights&&!mixed);
 }
 
+static u32 search_public_key_hash(const u16 *key){
+  u32 h=2166136261u;
+  for(int i=0;i<17;i++){h^=(u32)key[i];h*=16777619u;}
+  return h;
+}
+static int search_public_key_equal(const u16 *a,const u16 *b){
+  for(int i=0;i<17;i++)if(a[i]!=b[i])return 0;
+  return 1;
+}
+static void search_pack_state(const SearchState *s,u16 *key){
+  for(int i=0;i<16;i++){
+    int j=i*4;
+    key[i]=(u16)((board[j]+6)|((board[j+1]+6)<<4)|((board[j+2]+6)<<8)|((board[j+3]+6)<<12));
+  }
+  key[16]=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5));
+}
+static void search_public_build(int count){
+  if(count<0)count=0;if(count>SEARCH_PUBLIC_INPUT_CAP)count=SEARCH_PUBLIC_INPUT_CAP;
+  for(int i=0;i<count;i++){
+    const u16 *key=search_public_keys_input+i*17;
+    u32 hash=search_public_key_hash(key),slot=hash&(SEARCH_PUBLIC_CAP-1);
+    for(int probe=0;probe<SEARCH_PUBLIC_CAP;probe++,slot=(slot+1)&(SEARCH_PUBLIC_CAP-1)){
+      SearchPublicEntry *e=&search_public[slot];
+      if(e->generation!=search_generation){
+        e->generation=search_generation;e->hash=hash;e->count=search_public_counts_input[i];
+        for(int j=0;j<17;j++)e->key[j]=key[j];
+        break;
+      }
+      if(e->hash==hash&&search_public_key_equal(e->key,key)){e->count=search_public_counts_input[i];break;}
+    }
+  }
+}
+static int search_public_lookup(const SearchState *s){
+  u16 key[17];search_pack_state(s,key);
+  u32 hash=search_public_key_hash(key),slot=hash&(SEARCH_PUBLIC_CAP-1);
+  for(int probe=0;probe<SEARCH_PUBLIC_CAP;probe++,slot=(slot+1)&(SEARCH_PUBLIC_CAP-1)){
+    SearchPublicEntry *e=&search_public[slot];
+    if(e->generation!=search_generation)return 0;
+    if(e->hash==hash&&search_public_key_equal(e->key,key))return e->count;
+  }
+  return 0;
+}
+
 static u32 search_position_hash(const SearchState *s){
   u32 h=2166136261u;
   for(int i=0;i<64;i++){h^=(u32)(board[i]+7);h*=16777619u;}
@@ -281,6 +338,7 @@ static int search_position_id(const SearchState *s){
       e->generation=search_generation;e->hash=hash;e->side=s->side;e->castling=s->castling;e->ep=s->ep;
       for(int i=0;i<64;i++)e->squares[i]=board[i];
       e->id=++search_position_count;
+      search_position_public_counts[e->id]=search_public_lookup(s);
       return e->id;
     }
     if(e->hash==hash&&search_position_equal(e,s))return e->id;
@@ -336,7 +394,7 @@ static SearchTTEntry *search_tt_slot(int pos,int halfmove,int ply,int path){
 }
 static int search_draw(const SearchState *s,int pos){
   if(s->halfmove>=100)return 1;
-  if(s->halfmove>=8&&pos&&search_path_counts[pos]+1>=3)return 1;
+  if(s->halfmove>=8&&pos&&search_position_public_counts[pos]+search_path_counts[pos]+1>=3)return 1;
   return s->material==0&&search_insufficient();
 }
 static int js_round(double x){return (int)__builtin_floor(x+0.5);}
@@ -516,7 +574,7 @@ static void root_insert(u32 *moves,int *scores,int *count,u32 move,int score){
 }
 
 int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
-               int max_depth,int node_limit,int qdepth,int policy_enabled){
+               int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
   int material=0;
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
   SearchState s={side,castling,ep,wk,bk,halfmove,material};
@@ -524,6 +582,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
   search_generation++;if(!search_generation)search_generation=1;
+  search_public_build(public_history_count);
   search_position_count=0;search_signature_count=0;search_path_signature=0;search_path_top=0;
   for(int i=0;i<=SEARCH_POS_CAP;i++)search_path_counts[i]=0;
   for(int i=0;i<32768;i++)search_history[i]=0;
