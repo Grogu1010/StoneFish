@@ -154,7 +154,7 @@ int generate(int side,int castling,int ep,int king,int mode){
    helper module so extra depth does not pay the JavaScript/WASM boundary on
    every node. No persistent opponent state is stored here; JS supplies only
    the frozen per-search quiet-choice weights. */
-static int root_scores[512];
+static int root_scores[512],root_exact[512];
 static double policy_weights[13];
 #define SEARCH_PUBLIC_INPUT_CAP 512
 #define SEARCH_PUBLIC_CAP 1024
@@ -174,7 +174,7 @@ static SearchPolicyCacheEntry search_policy_cache[SEARCH_POLICY_CACHE_CAP];
 typedef struct {
   u32 generation,hash;
   int side,castling,ep,id;
-  i8 squares[64];
+  u16 packed[16];
 } SearchPositionEntry;
 typedef struct {
   u32 generation;
@@ -200,6 +200,7 @@ static int search_position_count,search_signature_count;
 static u32 search_generation;
 
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
+int exact_ptr(void){return (int)(unsigned long)root_exact;}
 int policy_ptr(void){return (int)(unsigned long)policy_weights;}
 int public_keys_ptr(void){return (int)(unsigned long)search_public_keys_input;}
 int public_counts_ptr(void){return (int)(unsigned long)search_public_counts_input;}
@@ -414,10 +415,14 @@ static int search_public_lookup(const SearchState *s){
   return 0;
 }
 
+static u16 search_board_word(int word){
+  int j=word<<2;
+  return (u16)((board[j]+6)|((board[j+1]+6)<<4)|((board[j+2]+6)<<8)|((board[j+3]+6)<<12));
+}
 static u32 search_position_hash(const SearchState *s){return s->hash;}
 static int search_position_equal(const SearchPositionEntry *e,const SearchState *s){
   if(e->side!=s->side||e->castling!=s->castling||e->ep!=s->ep)return 0;
-  for(int i=0;i<64;i++)if(e->squares[i]!=board[i])return 0;
+  for(int i=0;i<16;i++)if(e->packed[i]!=search_board_word(i))return 0;
   return 1;
 }
 static int search_position_id(const SearchState *s){
@@ -426,9 +431,9 @@ static int search_position_id(const SearchState *s){
     SearchPositionEntry *e=&search_positions[slot];
     if(e->generation!=search_generation){
       e->generation=search_generation;e->hash=hash;e->side=s->side;e->castling=s->castling;e->ep=s->ep;
-      for(int i=0;i<64;i++)e->squares[i]=board[i];
+      for(int i=0;i<16;i++)e->packed[i]=search_board_word(i);
       e->id=++search_position_count;
-      search_position_public_counts[e->id]=search_public_lookup(s);
+      search_position_public_counts[e->id]=s->halfmove>=8?search_public_lookup(s):0;
       return e->id;
     }
     if(e->hash==hash&&search_position_equal(e,s))return e->id;
@@ -669,12 +674,12 @@ static int root_uci_compare(u32 a,u32 b){
   for(int i=0;i<5;i++){if(av[i]<bv[i])return -1;if(av[i]>bv[i])return 1;}
   return 0;
 }
-static void root_insert(u32 *moves,int *scores,int *count,u32 move,int score){
+static void root_insert(u32 *moves,int *scores,int *exact,int *count,u32 move,int score,int is_exact){
   int i=*count;
   while(i>0&&(scores[i-1]<score||(scores[i-1]==score&&root_uci_compare(moves[i-1],move)>0))){
-    moves[i]=moves[i-1];scores[i]=scores[i-1];i--;
+    moves[i]=moves[i-1];scores[i]=scores[i-1];exact[i]=exact[i-1];i--;
   }
-  moves[i]=move;scores[i]=score;(*count)++;
+  moves[i]=move;scores[i]=score;exact[i]=is_exact;(*count)++;
 }
 
 int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
@@ -694,17 +699,17 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<32;i++)search_killers[i]=0;
   int king=side>0?wk:bk,n=generate(side,castling,ep,king,0);
   if(!n)return 0;
-  u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512];
+  u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
   for(int i=0;i<n;i++){
-    current_moves[i]=output[i];SearchUndo u;search_apply(&s,current_moves[i],&u);
+    current_moves[i]=output[i];current_exact[i]=0;SearchUndo u;search_apply(&s,current_moves[i],&u);
     current_scores[i]=-search_evaluate_fast(s.side,s.wk,s.bk);search_undo(&s,current_moves[i],&u);
   }
   for(int i=1;i<n;i++){
     u32 m=current_moves[i];int sc=current_scores[i],j=i-1;
     while(j>=0&&(current_scores[j]<sc||(current_scores[j]==sc&&root_uci_compare(current_moves[j],m)>0))){
-      current_moves[j+1]=current_moves[j];current_scores[j+1]=current_scores[j];j--;
+      current_moves[j+1]=current_moves[j];current_scores[j+1]=current_scores[j];current_exact[j+1]=current_exact[j];j--;
     }
-    current_moves[j+1]=m;current_scores[j+1]=sc;
+    current_moves[j+1]=m;current_scores[j+1]=sc;current_exact[j+1]=0;
   }
   int current_count=n;
   for(int depth=1;depth<=max_depth;depth++){
@@ -714,15 +719,16 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
       int score=-search_ab(&s,depth-1,-SEARCH_MATE,-threshold,1,m);
       search_undo(&s,m,&u);
       if(search_abort)break;
-      root_insert(next_moves,next_scores,&next_count,m,score);
+      int is_exact=threshold==-SEARCH_MATE||score>threshold;
+      root_insert(next_moves,next_scores,next_exact,&next_count,m,score,is_exact);
       if(next_count>=3)threshold=next_scores[2];
     }
     if(search_abort)break;
     current_count=next_count;
-    for(int i=0;i<current_count;i++){current_moves[i]=next_moves[i];current_scores[i]=next_scores[i];}
+    for(int i=0;i<current_count;i++){current_moves[i]=next_moves[i];current_scores[i]=next_scores[i];current_exact[i]=next_exact[i];}
     search_depth_done=depth;
     if(current_count&&absolute(current_scores[0])>SEARCH_MATE-100)break;
   }
-  for(int i=0;i<current_count;i++){output[i]=current_moves[i];root_scores[i]=current_scores[i];}
+  for(int i=0;i<current_count;i++){output[i]=current_moves[i];root_scores[i]=current_scores[i];root_exact[i]=current_exact[i];}
   return current_count;
 }
