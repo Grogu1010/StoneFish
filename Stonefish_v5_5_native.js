@@ -389,17 +389,26 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
     }
   }
   ctx.nodes++;
-  const check=sf55cInCheck(g),moves=sf55cLegalMoves(g,ctx,ply);
-  if(!moves.length)return check?-SF55C.mate+ply:0;
   const key=sf55cPackedPositionKey(g);
-  if(sf55cDraw(g,ctx,key))return 0;
-  if(ctx.nodes>ctx.limit&&ctx.depth>2){ctx.abort=true;return sf55cEvaluate(g);}
   // Halfmove clock, mate distance, and the speculative repetition path are part
   // of the cache identity. A value from another history cannot hide a draw.
   const ttMeta=g.halfmove+(ply<<7)+(ctx.pathSignature<<13);
   const ttBucket=ctx.tt.get(key);
   const hit=ttBucket?ttBucket.get(ttMeta):null,original=alpha;
-  if(hit&&hit.depth>=depth){if(hit.flag===0)return hit.score;if(hit.flag===1&&hit.score>=beta)return hit.score;if(hit.flag===-1&&hit.score<=alpha)return hit.score;}
+  // A stored entry can only come from a non-terminal, non-draw node. While the
+  // node budget is still live, the exact same TT cutoff can therefore happen
+  // before legal-move generation. Over-budget nodes retain the original order:
+  // terminal -> draw -> abort -> TT.
+  const budgetLive=ctx.nodes<=ctx.limit||ctx.depth<=2;
+  if(budgetLive&&hit&&hit.depth>=depth){
+    if(hit.flag===0)return hit.score;
+    if(hit.flag===1&&hit.score>=beta)return hit.score;
+    if(hit.flag===-1&&hit.score<=alpha)return hit.score;
+  }
+  const check=sf55cInCheck(g),moves=sf55cLegalMoves(g,ctx,ply);
+  if(!moves.length)return check?-SF55C.mate+ply:0;
+  if(sf55cDraw(g,ctx,key))return 0;
+  if(!budgetLive){ctx.abort=true;return sf55cEvaluate(g);}
   sf55cOrderMoves(moves,ctx,hit?hit.move:0,ply);
   let best=-Infinity,bestMove=0,index=0;
   sf55cEnter(ctx,key);
