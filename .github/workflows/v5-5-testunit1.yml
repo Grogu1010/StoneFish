@@ -88,10 +88,9 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
-      - name: Measure full-budget learned-LMR ARMX versus No-ARMX
+      - name: Measure full ARMX versus No-ARMX
         env:
           SAMPLES: '20'
           GAMES: '8'
           MATCHUP: 'armxVsNoArmx'
-          ARMX_POLICY_LMR: '1'
         run: node benchmark_v5_5_testunit1.js
