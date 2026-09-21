@@ -11,6 +11,7 @@ static const int dirs[16]={1,1,1,-1,-1,1,-1,-1,1,0,-1,0,0,1,0,-1};
 static int absolute(int x){return x<0?-x:x;}
 static int maximum(int a,int b){return a>b?a:b;}
 void *memset(void *p,int value,unsigned long count){unsigned char *b=p;for(unsigned long i=0;i<count;i++)b[i]=(unsigned char)value;return p;}
+void *memcpy(void *dst,const void *src,unsigned long count){unsigned char *d=dst;const unsigned char *s=src;for(unsigned long i=0;i<count;i++)d[i]=s[i];return dst;}
 int board_ptr(void){return (int)(unsigned long)board;}
 int config_ptr(void){return (int)(unsigned long)config;}
 int moves_ptr(void){return (int)(unsigned long)output;}
