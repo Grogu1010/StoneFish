@@ -6,8 +6,8 @@ const root=__dirname,source=path.join(root,'native','v5_5_helpers.c');
 const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'stonefish-kernel-'));
 try {
  const output=path.join(temporary,'helpers.wasm');
- const exports=['board_ptr','config_ptr','moves_ptr','scores_ptr','policy_ptr','evaluate','in_check','generate',
-  'search_all','search_nodes','search_depth'];
+ const exports=['board_ptr','config_ptr','moves_ptr','scores_ptr','policy_ptr','public_keys_ptr','public_counts_ptr',
+  'evaluate','in_check','generate','search_all','search_nodes','search_depth'];
  const directCC=process.env.STONEFISH_CC;
  const compiler=directCC||(process.env.ZIG||'zig');
  const args=directCC
