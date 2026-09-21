@@ -7,6 +7,8 @@
 // Release targets per 100 games: 65 No-ARMX wins vs Pro, 85 ARMX wins vs
 // Pro, and 65 ARMX wins vs No-ARMX. Both v5.5 variants must also average at
 // least 3x less engine think-time per move than v5 Pro in their direct games.
+// ARMX must also add no more than 40% to the control's engine time. Behavioral
+// changes must win >=40 and lose <=40 per 100 against the frozen c9abd3e ARMX.
 
 const fs = require('fs');
 const vm = require('vm');
@@ -356,11 +358,51 @@ const definitions = {
   noArmxVsPro: ['NoARMX-vs-Pro', getStonefishV55Testunit1NoARMXMove, getStonefishV5ProMove],
   armxVsNoArmx: ['ARMX-vs-NoARMX', getStonefishV55Testunit1Move, getStonefishV55Testunit1NoARMXMove]
 };
+let strengthBaseline = null;
+let exactBehaviorProof = null;
+if (process.env.COMPARE_BASELINE === '1' || process.env.MATCHUP === 'armxVsBaseline' || process.env.RELEASE_GATE === '1') {
+  strengthBaseline = JSON.parse(require('node:zlib').gunzipSync(fs.readFileSync('benchmarks/v5_5/armx-strength-baseline.json.gz')));
+  for (const entry of strengthBaseline.sources) {
+    if (crypto.createHash('sha256').update(entry.source).digest('hex') !== entry.sha256) throw new Error('Corrupt frozen ARMX baseline');
+  }
+  const baselineContext = vm.createContext({ console, performance, Math });
+  vm.runInContext(strengthBaseline.sources.map(entry => entry.source).join('\n\n'), baselineContext);
+  const baselineMove = vm.runInContext('getStonefishV55Testunit1Move', baselineContext);
+  // A shared game object is safe only while its rules and runtime methods are
+  // identical to the frozen baseline. Fail if a future change invalidates this.
+  for (const file of ['StonefishChess.js', 'Stonefish_runtime_speed_patch.js', 'Stonefish_fast_moves_experiment.js']) {
+    const frozen = strengthBaseline.sources.find(entry => entry.file === file);
+    const current = loadedSources.find(entry => entry.file === file);
+    if (!frozen || !current || current.source.replace(/\r\n/g, '\n') !== frozen.source.replace(/\r\n/g, '\n')) {
+      throw new Error('Frozen comparison requires identical game rules/runtime: ' + file);
+    }
+  }
+  if (process.env.EXACT_BEHAVIOR_PARITY === '1') {
+    // Use only for reviewed lossless optimizations. Fixtures supply positions,
+    // not expected answers: both implementations are executed independently.
+    const fixtures = JSON.parse(require('node:zlib').gunzipSync(fs.readFileSync('benchmarks/v5_5/evidence-effort-golden.json.gz'))).positions;
+    const baselineScore = vm.runInContext('stonefishV55Testunit1ScoreAllMoves', baselineContext);
+    const summarize = (entries, result) => JSON.stringify({ depth: result.depth, nodes: result.nodes,
+      entries: entries.map(row => ({uci: row.uci, score: row.score, deep: row.deep, exact: !!row.exact})) });
+    for (const row of fixtures) {
+      const game = new Chess();
+      for (const uci of row.history) if (!play(game, {from: uci.slice(0,2), to: uci.slice(2,4), promotion: uci[4] || 'q'})) throw new Error('Invalid parity fixture');
+      game.armxObservationStartPly = row.observationStartPly;
+      const current = summarize(stonefishV55Testunit1ScoreAllMoves(game), SF55C_LAST);
+      const frozenEntries = baselineScore(game);
+      const frozen = summarize(frozenEntries, vm.runInContext('SF55C_LAST', baselineContext));
+      if (current !== frozen) throw new Error('Behavior differs from frozen ARMX; run the 100-game strength comparison');
+    }
+    exactBehaviorProof = {positions: fixtures.length, baselineCommit: strengthBaseline.commit};
+  } else {
+    definitions.armxVsBaseline = ['ARMX-vs-FrozenARMX', getStonefishV55Testunit1Move, baselineMove];
+  }
+}
 if (process.env.MATCHUP && !definitions[process.env.MATCHUP]) throw new Error('Unknown MATCHUP');
 const matchups = games ? Object.fromEntries(Object.entries(definitions)
   .filter(([name]) => !process.env.MATCHUP || name === process.env.MATCHUP)
   .map(([name, args]) => [name, variedHeadToHead(games, ...args)])) : null;
-const fullMatchups = matchups && Object.keys(matchups).length === 3;
+const fullMatchups = matchups && ['armxVsPro', 'noArmxVsPro', 'armxVsNoArmx'].every(name => matchups[name]);
 
 const hierarchy = fullMatchups ? {
   hostBeatsPro: matchups.noArmxVsPro.score > 0.5,
@@ -393,8 +435,14 @@ const targets = {
   noArmxWinsPer100VsPro: 65,
   armxWinsPer100VsPro: 85,
   armxWinsPer100VsNoArmx: 65,
-  realGameSpeedupVsPro: 3
+  realGameSpeedupVsPro: 3,
+  maximumArmxTimeRatioToControl: 1.4,
+  minimumWinsPer100VsFrozenArmx: 40,
+  maximumLossesPer100VsFrozenArmx: 40
 };
+const contributionTiming = matchups && matchups.armxVsNoArmx && matchups.armxVsNoArmx.performance;
+const armxTimeRatioToControl = contributionTiming
+  ? contributionTiming.contender.averageTimePerMoveMs / contributionTiming.opponent.averageTimePerMoveMs : null;
 
 const result = {
   gamesPerMatchup: games,
@@ -409,6 +457,9 @@ const result = {
   latency,
   gamePerformanceByModel,
   realGameSpeedups,
+  armxTimeRatioToControl,
+  strengthBaselineCommit: strengthBaseline && strengthBaseline.commit,
+  exactBehaviorProof,
   matchups,
   hierarchy,
   targets
@@ -435,5 +486,12 @@ if (process.env.RELEASE_GATE === '1' && games >= 100) {
   }
   if (realGameSpeedups.armxVsPro < targets.realGameSpeedupVsPro) {
     throw new Error(`v5.5 + ARMX real-game speed gate failed: ${realGameSpeedups.armxVsPro.toFixed(3)}x; need >=3x`);
+  }
+  if (!(armxTimeRatioToControl <= targets.maximumArmxTimeRatioToControl)) {
+    throw new Error(`ARMX overhead gate failed: ${armxTimeRatioToControl}x control time; need <=1.4x`);
+  }
+  const baseline = matchups.armxVsBaseline;
+  if (!exactBehaviorProof && (!baseline || baseline.win < Math.ceil(games * 0.4) || baseline.loss > Math.floor(games * 0.4))) {
+    throw new Error('ARMX strength preservation failed: need >=40 wins and <=40 losses per 100 against frozen ARMX');
   }
 }

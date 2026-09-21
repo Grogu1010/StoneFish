@@ -1,5 +1,34 @@
 # Active checkpoint — ARMX evidence effort, September 21, 2026
 
+## Updated user requirements
+
+ARMX may add **at most 40%** to No ARMX's engine-only time (ratio <=1.4).
+Do not weaken ARMX to meet that limit. Freeze commit
+`c9abd3ee361583c32e86d9890b4a3143f195d661` as the strength floor. Any behavioral
+change must score **at least 40 wins and at most 40 losses /100** against it.
+Reviewed optimizations that preserve behavior exactly are exempt from those
+games, as the user requested. Existing 65/85/65 win targets remain in force.
+The present build fails the new overhead target and remains unreleased.
+
+`benchmarks/v5_5/armx-strength-baseline.json.gz` freezes all 18 engine sources
+and hashes from that commit. `MATCHUP=armxVsBaseline` compares against it in an
+independent engine context. Full `RELEASE_GATE=1` runs include this matchup and
+enforce the 1.4 timing ratio measured within ARMX-vs-NoARMX games. For reviewed
+lossless changes only, `EXACT_BEHAVIOR_PARITY=1` executes both implementations
+on 128 positions and requires exact scores, ordering, nodes and depth before
+skipping the strength-floor games. This is regression evidence, not a proof
+that arbitrary code changes are equivalent; behavioral experiments must run
+the frozen matchup. Never use an opening-only timing sample as overhead proof.
+
+Do not promote smaller budgets without satisfying the strength floor. Search
+allowances of 1,800, 2,400, 3,000 and 3,600 extra evidence nodes scored 55, 62,
+64 and 70 wins /100 vs No ARMX respectively, with substantial overhead still.
+They were not promoted. The native pin shortcut had no measured timing gain
+(0.988x); it was reverted. Speculative frame pooling measured only 1.031x in a
+paired diagnostic and remains a scratch experiment. Main retains the stronger
+72/74-win build. Continue work, push verified improvements, and do not release
+or write a blog before every required gate passes.
+
 ARMX reached **72W-23L-5D /100** against No ARMX, then **74W-21L-5D /100**
 on the second opening set (146 actual wins /200). The integrated build scored
 **93W-4L-3D /100** against Pro. However, isolated engine timing was only

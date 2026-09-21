@@ -18,6 +18,19 @@ The reply policy learns which quiet moves the opponent selects from the availabl
 
 ## Measurement
 
+The user added a stricter speed requirement on September 21: ARMX engine time
+must be <=1.4 times No ARMX in their direct games. Preserve the strength of
+commit `c9abd3ee361583c32e86d9890b4a3143f195d661`: behavioral changes must win
+at least 40 and lose at most 40 per 100 against its frozen ARMX implementation.
+Exact behavior-preserving optimizations are exempt from that matchup. Both
+the frozen sources and their hashes are saved in armx-strength-baseline.json.gz.
+`MATCHUP=armxVsBaseline` runs that comparison; `RELEASE_GATE=1` includes it by
+default. Reviewed lossless changes can use `EXACT_BEHAVIOR_PARITY=1`, which
+independently executes current and frozen engines on 128 positions and refuses
+the exemption if any score, ordering, node count or depth differs. Retain all
+existing win targets and the 3x Pro speed check. The current build does not meet
+the 40% overhead limit and must not be released.
+
 Use 'GAMES=100 RELEASE_GATE=1 node benchmark_v5_5_testunit1.js' (environment-variable syntax depends on shell). All three matchups must run at least 100 games with color swaps. Required actual wins are 65/100 No ARMX vs Pro, 85/100 ARMX vs Pro, and 65/100 ARMX vs No ARMX. Both variants must average at least 3x faster real engine time per move than Pro. Draws do not count as wins.
 
 'RESULT_JSON' saves complete move records, openings, timings, and hashes of the exact source loaded before play. 'START_INDEX' selects additional varied opening pairs. 'MATCHUP' supports focused diagnostics, which cannot satisfy the release gate. Browser tests use the same ten-ply varied opening generator and 360-ply limit as the command-line benchmark.

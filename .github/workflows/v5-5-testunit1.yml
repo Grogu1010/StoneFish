@@ -84,6 +84,12 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
+      - name: Smoke test the frozen ARMX strength baseline
+        env:
+          SAMPLES: '4'
+          GAMES: '2'
+          MATCHUP: 'armxVsBaseline'
+        run: node benchmark_v5_5_testunit1.js
       - name: Run v5.5 dev benchmark
         env:
           SAMPLES: '20'
