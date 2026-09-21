@@ -29,6 +29,14 @@ function getStonefishV55ARMX140Move(game) {
         maxDepth: SF55C.maxDepth,
       });
     }
+    if (STONEFISH_V5_5_ARMX_140_MODE === 'hybrid') {
+      return Object.assign({}, policy, {
+        searchBudget: Math.max(SF55C.nodes, STONEFISH_V5_5_ARMX_140_NODE_BUDGET),
+        maxDepth: SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
+        deepRootLimit: STONEFISH_V5_5_ARMX_140_ROOTS,
+        deepRootFromDepth: STONEFISH_V5_5_ARMX_140_ROOT_DEPTH,
+      });
+    }
     return Object.assign({}, policy, {
       deepRootLimit: STONEFISH_V5_5_ARMX_140_ROOTS,
       deepRootFromDepth: STONEFISH_V5_5_ARMX_140_ROOT_DEPTH,
