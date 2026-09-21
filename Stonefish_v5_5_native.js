@@ -359,7 +359,16 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
       try {
         if(index===0)score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         else{
-          const reduce=depth>=3&&index>=4&&!check&&!m.captured&&!m.promotion&&!sf55cInCheck(g)?1:0;
+          const quiet=!m.captured&&!m.promotion;
+          const standardReduce=depth>=3&&index>=4&&!check&&quiet&&!sf55cInCheck(g);
+          // Candidate-only policy LMR: predicted low-priority opponent replies
+          // get a one-ply null-window reduction sooner. Any reply that improves
+          // alpha is immediately re-searched at full depth, so the model only
+          // saves work on replies that fail low as predicted.
+          const guidedReduce=ctx.replyPolicy&&ctx.replyPolicy.policyGuidedReduction
+            &&(ply&1)&&depth>=2&&index>=2&&!check&&quiet
+            &&ctx.replyPolicy.isLowPriority(m)&&!sf55cInCheck(g);
+          const reduce=standardReduce||guidedReduce?1:0;
           score=-sf55cSearch(g,ctx,depth-1-reduce,-alpha-1,-alpha,ply+1);
           if(!ctx.abort&&score>alpha&&(reduce||score<beta))score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         }
