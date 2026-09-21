@@ -162,6 +162,8 @@ static double policy_weights[13];
 static u16 search_public_keys_input[SEARCH_PUBLIC_INPUT_CAP*17];
 static int search_public_counts_input[SEARCH_PUBLIC_INPUT_CAP];
 static int search_history[32768],search_killers[32];
+static u32 search_move_stack[32][512];
+static int search_sort_priorities[512];
 static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
@@ -557,7 +559,7 @@ static int search_order(u32 m,int ply,int tt_move){
   return value;
 }
 static void search_sort(u32 *moves,int n,int ply,int tt_move){
-  int priorities[512];
+  int *priorities=search_sort_priorities;
   for(int i=0;i<n;i++){
     u32 m=moves[i];int p=search_order(m,ply,tt_move),j=i-1;
     while(j>=0&&priorities[j]<p){moves[j+1]=moves[j];priorities[j+1]=priorities[j];j--;}
@@ -569,7 +571,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   search_nodes_count++;
   int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
   int pos=s->halfmove?search_position_id(s):0;
-  u32 moves[512];int n=0;
+  u32 *moves=search_move_stack[ply<32?ply:31];int n=0;
   if(check){
     n=generate(s->side,s->castling,s->ep,king,0);
     if(!n)return -SEARCH_MATE+ply;
@@ -628,7 +630,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);}
-  u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
+  u32 *moves=search_move_stack[ply<32?ply:31];for(int i=0;i<n;i++)moves[i]=output[i];
   search_sort(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
