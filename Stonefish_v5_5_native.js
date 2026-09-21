@@ -171,7 +171,8 @@ function sf55cPackHistoryKey(key){
 // Stable ordering evaluates each priority once without modifying move objects.
 function sf55cOrderMoves(moves,ctx,tt,ply){
  if(moves.length<2)return;
- const priorities=new Int32Array(moves.length);
+ let priorities=ctx.orderPriorities[ply];
+ if(!priorities||priorities.length<moves.length)priorities=ctx.orderPriorities[ply]=new Int32Array(moves.length);
  priorities[0]=sf55cOrder(ctx,moves[0],tt,ply);
  for(let i=1;i<moves.length;i++){
   const move=moves[i],priority=sf55cOrder(ctx,move,tt,ply);let j=i-1;
@@ -205,14 +206,16 @@ function sf55cDraw(g,ctx,key) {
 function sf55cEnter(ctx,key) {
   if (key === null) return;
   ctx.path.set(key,(ctx.path.get(key)||0)+1);
-  if(!ctx.positionIds.has(key))ctx.positionIds.set(key,ctx.positionIds.size+1);
-  ctx.pathIds.push(ctx.positionIds.get(key));
+  let id=ctx.positionIds.get(key);
+  if(id===undefined){id=ctx.positionIds.size+1;ctx.positionIds.set(key,id);}
+  ctx.pathKeyLengths.push(ctx.pathKey.length);
+  ctx.pathKey+=ctx.pathKey?','+id:String(id);
 }
 function sf55cExit(ctx,key) {
   if (key === null) return;
   const count=ctx.path.get(key)-1;
   if(count)ctx.path.set(key,count);else ctx.path.delete(key);
-  ctx.pathIds.pop();
+  ctx.pathKey=ctx.pathKey.slice(0,ctx.pathKeyLengths.pop());
 }
 
 // Capture/promotion-only legal generation for quiet quiescence nodes. Keep the
@@ -325,7 +328,7 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   if(ctx.nodes>ctx.limit&&ctx.depth>2){ctx.abort=true;return sf55cEvaluate(g);}
   // Halfmove clock, mate distance, and the speculative repetition path are part
   // of the cache identity. A value from another history cannot hide a draw.
-  const ttKey=key+'|'+g.halfmove+'|'+ply+'|'+ctx.pathIds.join(',');
+  const ttKey=key+'|'+g.halfmove+'|'+ply+'|'+ctx.pathKey;
   const hit=ctx.tt.get(ttKey),original=alpha;
   if(hit&&hit.depth>=depth){if(hit.flag===0)return hit.score;if(hit.flag===1&&hit.score>=beta)return hit.score;if(hit.flag===-1&&hit.score<=alpha)return hit.score;}
   sf55cOrderMoves(moves,ctx,hit?hit.move:0,ply);
@@ -361,7 +364,7 @@ function sf55cHost(g,replyPolicy=null){
   const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(requested))):SF55C.nodes;
   const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
   const depthLimit=Number.isFinite(requestedDepth)?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(requestedDepth))):SF55C.maxDepth;
-  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768),replyPolicy};
+  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathKey:'',pathKeyLengths:[],positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],replyPolicy};
   ctx.material=0;for(const piece of g.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
   for(const e of roots){g.fastApply(e.raw);try{e.score=-sf55cEvaluate(g);}finally{g.fastUndo();}}
