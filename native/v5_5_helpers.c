@@ -707,6 +707,7 @@ static int search_order(u32 m,int ply,int tt_move){
   return value;
 }
 static int search_order_priorities[32][512];
+static u32 search_move_buffers[32][512];
 static int *search_prepare_order(u32 *moves,int n,int ply,int tt_move){
   int *priorities=search_order_priorities[ply<32?ply:31];
   for(int i=0;i<n;i++)priorities[i]=search_order(moves[i],ply,tt_move);
@@ -727,7 +728,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   search_nodes_count++;
   int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
   int pos=s->halfmove?search_position_id(s):0;
-  u32 moves[512];int n=0;
+  u32 *moves=search_move_buffers[ply<32?ply:31];int n=0;
   if(check){
     n=search_generate(s,0);
     if(!n)return -SEARCH_MATE+ply;
@@ -786,7 +787,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_state(s);}
-  u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
+  u32 *moves=search_move_buffers[ply<32?ply:31];for(int i=0;i<n;i++)moves[i]=output[i];
   int *priorities=search_prepare_order(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
