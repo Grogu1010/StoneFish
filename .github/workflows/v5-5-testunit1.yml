@@ -60,6 +60,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Build compiled ARMX search experiment
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
       - name: Syntax check ARMX-preview
         run: node --check ARMX-preview.js
       - name: Syntax check v5.5 native search
