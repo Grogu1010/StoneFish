@@ -171,8 +171,9 @@ function sf55cPackHistoryKey(key){
 // Stable ordering evaluates each priority once without modifying move objects.
 function sf55cOrderMoves(moves,ctx,tt,ply){
  if(moves.length<2)return;
- let priorities=ctx.orderPriorities[ply];
- if(!priorities||priorities.length<moves.length)priorities=ctx.orderPriorities[ply]=new Int32Array(moves.length);
+ const orderPriorities=ctx.orderPriorities||(ctx.orderPriorities=[]);
+ let priorities=orderPriorities[ply];
+ if(!priorities||priorities.length<moves.length)priorities=orderPriorities[ply]=new Int32Array(moves.length);
  priorities[0]=sf55cOrder(ctx,moves[0],tt,ply);
  for(let i=1;i<moves.length;i++){
   const move=moves[i],priority=sf55cOrder(ctx,move,tt,ply);let j=i-1;
@@ -208,6 +209,8 @@ function sf55cEnter(ctx,key) {
   ctx.path.set(key,(ctx.path.get(key)||0)+1);
   let id=ctx.positionIds.get(key);
   if(id===undefined){id=ctx.positionIds.size+1;ctx.positionIds.set(key,id);}
+  if(ctx.pathKey===undefined)ctx.pathKey='';
+  if(!ctx.pathKeyLengths)ctx.pathKeyLengths=[];
   ctx.pathKeyLengths.push(ctx.pathKey.length);
   ctx.pathKey+=ctx.pathKey?','+id:String(id);
 }
@@ -215,7 +218,8 @@ function sf55cExit(ctx,key) {
   if (key === null) return;
   const count=ctx.path.get(key)-1;
   if(count)ctx.path.set(key,count);else ctx.path.delete(key);
-  ctx.pathKey=ctx.pathKey.slice(0,ctx.pathKeyLengths.pop());
+  if(ctx.pathKeyLengths&&ctx.pathKeyLengths.length)ctx.pathKey=ctx.pathKey.slice(0,ctx.pathKeyLengths.pop());
+  else ctx.pathKey='';
 }
 
 // Capture/promotion-only legal generation for quiet quiescence nodes. Keep the
