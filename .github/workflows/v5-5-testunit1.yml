@@ -15,6 +15,7 @@ on:
       - 'benchmark_armx_contract.js'
       - 'benchmark_armx_reply_policy.js'
       - 'benchmark_armx_efficiency.js'
+      - 'benchmark_armx_efficiency_probe.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
@@ -37,6 +38,7 @@ on:
       - 'benchmark_armx_contract.js'
       - 'benchmark_armx_reply_policy.js'
       - 'benchmark_armx_efficiency.js'
+      - 'benchmark_armx_efficiency_probe.js'
       - 'Stonefish_v5_5_refutation_guard.js'
       - 'Stonefish_v5_5_testunit1.js'
       - 'Stonefish_v5_5_testunit1_dev_ui.js'
@@ -86,6 +88,8 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
+      - name: Probe ARMX cheap deep-search triggers
+        run: node benchmark_armx_efficiency_probe.js
       - name: Screen ARMX efficiency candidate against current
         env:
           ARMX_EFF_GAMES: '20'
