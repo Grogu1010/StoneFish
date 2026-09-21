@@ -171,7 +171,7 @@ function sf55cPackHistoryKey(key){
 // Stable ordering evaluates each priority once without modifying move objects.
 function sf55cOrderMoves(moves,ctx,tt,ply){
  if(moves.length<2)return;
- const priorities=ctx.orderPriorities;
+ const priorities=ctx.orderPriorities||(ctx.orderPriorities=new Int32Array(512));
  priorities[0]=sf55cOrder(ctx,moves[0],tt,ply);
  for(let i=1;i<moves.length;i++){
   const move=moves[i],priority=sf55cOrder(ctx,move,tt,ply);let j=i-1;
@@ -205,6 +205,11 @@ function sf55cDraw(g,ctx,key) {
 function sf55cEnter(ctx,key) {
   if (key === null) return;
   ctx.path.set(key,(ctx.path.get(key)||0)+1);
+  if(!ctx.pathTransitions){
+    ctx.pathTransitions=[new Map()];
+    ctx.pathSeqId=0;
+    ctx.pathSeqStack=[];
+  }
   let positionId=ctx.positionIds.get(key);
   if(positionId===undefined){
     positionId=ctx.positionIds.size+1;
