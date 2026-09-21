@@ -491,9 +491,10 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   for(let i=0;i<count;i++){
     const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
       captured:(m>>>15)&7,promotion:(m>>>18)&7,flags:m>>>21};
-    const score=k.scores[i];
-    finished[i]={raw,uci:stonefishV45RawUci(g,raw),score,deep:score,
-      preliminary:score,tactical:0,knowledge:0,conversion:0,exact:true};
+    const exact=!k.exact||k.exact[i]!==0;
+    const score=exact?k.scores[i]:-Infinity;
+    finished[i]={raw,uci:stonefishV45RawUci(g,raw),score,deep:exact?k.scores[i]:null,
+      preliminary:exact?k.scores[i]:null,tactical:0,knowledge:0,conversion:0,exact};
   }
   finished.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
   const result={finished,fastLeader:finished.length?finished[0].raw:null,
@@ -996,6 +997,7 @@ try {
    config:new Int32Array(api.memory.buffer,api.config_ptr(),903),
    moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512),
    scores:api.scores_ptr?new Int32Array(api.memory.buffer,api.scores_ptr(),512):null,
+   exact:api.exact_ptr?new Int32Array(api.memory.buffer,api.exact_ptr(),512):null,
    policyWeights:api.policy_ptr?new Float64Array(api.memory.buffer,api.policy_ptr(),13):null,
    publicKeys:api.public_keys_ptr?new Uint16Array(api.memory.buffer,api.public_keys_ptr(),512*17):null,
    publicCounts:api.public_counts_ptr?new Int32Array(api.memory.buffer,api.public_counts_ptr(),512):null};
