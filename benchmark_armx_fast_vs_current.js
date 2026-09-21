@@ -41,9 +41,19 @@ function generateOpening(pairIndex,plies=10){
 }
 function positionAfter(opening){const game=new Chess();for(const move of opening)if(!play(game,move))throw new Error('Invalid opening');game.armxObservationStartPly=game.historyStack.length;return game;}
 function withFastMode(enabled,fn){
-  const had=Object.prototype.hasOwnProperty.call(process.env,'ARMX_FAST_SCREEN'),old=process.env.ARMX_FAST_SCREEN;
-  if(enabled)process.env.ARMX_FAST_SCREEN='1';else delete process.env.ARMX_FAST_SCREEN;
-  try{return fn();}finally{if(had)process.env.ARMX_FAST_SCREEN=old;else delete process.env.ARMX_FAST_SCREEN;}
+  const persistentCandidate=process.env.ARMX_CANDIDATE_PERSISTENT==='1';
+  const hadFast=Object.prototype.hasOwnProperty.call(process.env,'ARMX_FAST_SCREEN'),oldFast=process.env.ARMX_FAST_SCREEN;
+  const hadPersistent=Object.prototype.hasOwnProperty.call(process.env,'ARMX_PERSISTENT_TT'),oldPersistent=process.env.ARMX_PERSISTENT_TT;
+  if(persistentCandidate){
+    delete process.env.ARMX_FAST_SCREEN;
+    if(enabled)process.env.ARMX_PERSISTENT_TT='1';else delete process.env.ARMX_PERSISTENT_TT;
+  }else{
+    if(enabled)process.env.ARMX_FAST_SCREEN='1';else delete process.env.ARMX_FAST_SCREEN;
+  }
+  try{return fn();}finally{
+    if(hadFast)process.env.ARMX_FAST_SCREEN=oldFast;else delete process.env.ARMX_FAST_SCREEN;
+    if(hadPersistent)process.env.ARMX_PERSISTENT_TT=oldPersistent;else delete process.env.ARMX_PERSISTENT_TT;
+  }
 }
 const selectiveStats={cheapCalls:0,fullVerifications:0,gapTriggers:0,rejectionTriggers:0};
 function fastMove(game){
