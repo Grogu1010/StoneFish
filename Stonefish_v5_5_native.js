@@ -395,7 +395,7 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   const depthLimit=Math.max(SF55C.maxDepth,Math.round(replyPolicy.nativeSearchDepth||SF55C.maxDepth));
   const count=k.api.search_all(
     g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-    depthLimit,limit,SF55C.qDepth,1);
+    depthLimit,limit,SF55C.qDepth,0);
   const finished=new Array(count);
   for(let i=0;i<count;i++){
     const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
