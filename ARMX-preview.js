@@ -111,6 +111,30 @@ function armxPreviewQuietLogit(features, weights) {
   return value;
 }
 
+// Search scoring uses the exact same 13 feature values and accumulation order
+// as armxPreviewQuietFeatures()+armxPreviewQuietLogit(), without allocating a
+// Float64Array for every new move geometry encountered during a search.
+function armxPreviewQuietMoveLogit(move, side, weights) {
+  const piece = move.piece;
+  const from = side === 1 ? move.from : move.from ^ 56;
+  const to = side === 1 ? move.to : move.to ^ 56;
+  let value = 0;
+  value += (piece === 1 ? 1 : 0) * weights[0];
+  value += (piece === 2 ? 1 : 0) * weights[1];
+  value += (piece === 3 ? 1 : 0) * weights[2];
+  value += (piece === 4 ? 1 : 0) * weights[3];
+  value += (piece === 5 ? 1 : 0) * weights[4];
+  value += (piece === 6 ? 1 : 0) * weights[5];
+  value += ((ARMX_PREVIEW_QUIET_ACTIVITY[piece][to] - ARMX_PREVIEW_QUIET_ACTIVITY[piece][from]) / 100) * weights[6];
+  value += ((ARMX_PREVIEW_QUIET_ENDGAME[piece][to] - ARMX_PREVIEW_QUIET_ENDGAME[piece][from]) / 100) * weights[7];
+  value += Math.max(-1, Math.min(1, ((to >> 3) - (from >> 3)) / 3)) * weights[8];
+  value += (move.flags & (4 | 8) ? 1 : 0) * weights[9];
+  value += ((piece === 2 || piece === 3) && (from >> 3) === 0 ? 1 : 0) * weights[10];
+  value += ((Math.abs((from & 7) - 3.5) - Math.abs((to & 7) - 3.5)) / 4) * weights[11];
+  value += (piece === 1 && (to >> 3) >= 4 ? 1 : 0) * weights[12];
+  return value;
+}
+
 function armxPreviewObserveQuietChoice(profile, game, chosen) {
   if (chosen.captured || chosen.promotion || game.in_check()) return;
   const moves = game.fastMoves().filter(move => !move.captured && !move.promotion);
@@ -157,7 +181,7 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
       | ((move.promotion || 0) << 15) | ((move.flags || 0) << 18);
     let value = cache.get(key);
     if (value === undefined) {
-      value = armxPreviewQuietLogit(armxPreviewQuietFeatures(move, -perspective), weights);
+      value = armxPreviewQuietMoveLogit(move, -perspective, weights);
       cache.set(key, value);
     }
     return value;
