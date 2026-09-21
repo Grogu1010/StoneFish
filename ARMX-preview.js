@@ -174,6 +174,8 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
     // preferences belong to this game, never to an opponent name.
     searchBudget,
     maxDepth: SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
+    // Frozen per-search weights let the compiled ARMX search reproduce the same learned reply ordering.
+    weights,
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };
