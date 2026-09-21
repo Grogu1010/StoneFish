@@ -175,7 +175,7 @@ static SearchPolicyCacheEntry search_policy_cache[SEARCH_POLICY_CACHE_CAP];
 typedef struct {
   u32 generation,hash;
   int side,castling,ep,id;
-  u16 packed[16];
+  u64 packed[4];
 } SearchPositionEntry;
 typedef struct {
   u32 generation;
@@ -187,8 +187,9 @@ typedef struct {
 } SearchTTEntry;
 typedef struct {
   u32 generation,hash;
-  u16 key[17];
   int count;
+  u16 meta,pad;
+  u64 packed[4];
 } SearchPublicEntry;
 static SearchPositionEntry search_positions[SEARCH_POS_CAP];
 static SearchPathEntry search_paths[SEARCH_PATH_CAP];
@@ -211,6 +212,7 @@ int search_depth(void){return search_depth_done;}
 typedef struct {
   int side,castling,ep,wk,bk,halfmove,material;
   u32 hash;
+  u64 packed[4];
   int eval_mg,eval_eg,eval_phase,white_bishops,black_bishops;
   u32 white_pawn_files,black_pawn_files;
   u64 white_pawns,black_pawns,white_rooks,black_rooks,white_occ,black_occ;
@@ -241,6 +243,13 @@ static u32 search_initial_hash(const SearchState *s){
   u32 h=search_meta_token(s->side,s->castling,s->ep);
   for(int sq=0;sq<64;sq++)if(board[sq])h^=search_piece_token(sq,board[sq]);
   return h;
+}
+static void search_initial_packed(SearchState *s){
+  for(int word=0;word<4;word++){
+    u64 value=0;
+    for(int i=0;i<16;i++)value|=(u64)(board[(word<<4)+i]+6)<<(i<<2);
+    s->packed[word]=value;
+  }
 }
 static int search_phase_piece(int type){return type==2||type==3?1:type==4?2:type==5?4:0;}
 static int search_file_count(u32 packed,int file){return (int)((packed>>(file<<2))&15u);}
@@ -284,6 +293,9 @@ static void search_hash_set_square(SearchState *s,int sq,int value){
   int old=board[sq];
   if(old){s->hash^=search_piece_token(sq,old);search_eval_piece(s,sq,old,-1);}
   if(value){s->hash^=search_piece_token(sq,value);search_eval_piece(s,sq,value,1);}
+  int word=sq>>4,shift=(sq&15)<<2;
+  u64 mask=(u64)15<<shift;
+  s->packed[word]=(s->packed[word]&~mask)|((u64)(value+6)<<shift);
   board[sq]=(i8)value;
 }
 
@@ -532,16 +544,32 @@ static u32 search_public_key_hash(const u16 *key){
   for(int i=0;i<17;i++){h^=(u32)key[i];h*=16777619u;}
   return h;
 }
-static int search_public_key_equal(const u16 *a,const u16 *b){
-  for(int i=0;i<17;i++)if(a[i]!=b[i])return 0;
+static void search_public_store_key(SearchPublicEntry *e,const u16 *key){
+  for(int word=0;word<4;word++){
+    int i=word<<2;
+    e->packed[word]=(u64)key[i]|((u64)key[i+1]<<16)|((u64)key[i+2]<<32)|((u64)key[i+3]<<48);
+  }
+  e->meta=key[16];
+}
+static int search_public_input_equal(const SearchPublicEntry *e,const u16 *key){
+  if(e->meta!=key[16])return 0;
+  for(int word=0;word<4;word++){
+    int i=word<<2;
+    u64 packed=(u64)key[i]|((u64)key[i+1]<<16)|((u64)key[i+2]<<32)|((u64)key[i+3]<<48);
+    if(e->packed[word]!=packed)return 0;
+  }
   return 1;
 }
-static void search_pack_state(const SearchState *s,u16 *key){
-  for(int i=0;i<16;i++){
-    int j=i*4;
-    key[i]=(u16)((board[j]+6)|((board[j+1]+6)<<4)|((board[j+2]+6)<<8)|((board[j+3]+6)<<12));
-  }
-  key[16]=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5));
+static u32 search_public_state_hash(const SearchState *s){
+  u32 h=2166136261u;
+  for(int i=0;i<16;i++){h^=(u16)(s->packed[i>>2]>>((i&3)<<4));h*=16777619u;}
+  h^=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5));h*=16777619u;
+  return h;
+}
+static int search_public_state_equal(const SearchPublicEntry *e,const SearchState *s){
+  if(e->meta!=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5)))return 0;
+  for(int i=0;i<4;i++)if(e->packed[i]!=s->packed[i])return 0;
+  return 1;
 }
 static void search_public_build(int count){
   if(count<0)count=0;if(count>SEARCH_PUBLIC_INPUT_CAP)count=SEARCH_PUBLIC_INPUT_CAP;
@@ -552,32 +580,25 @@ static void search_public_build(int count){
       SearchPublicEntry *e=&search_public[slot];
       if(e->generation!=search_generation){
         e->generation=search_generation;e->hash=hash;e->count=search_public_counts_input[i];
-        for(int j=0;j<17;j++)e->key[j]=key[j];
-        break;
+        search_public_store_key(e,key);break;
       }
-      if(e->hash==hash&&search_public_key_equal(e->key,key)){e->count=search_public_counts_input[i];break;}
+      if(e->hash==hash&&search_public_input_equal(e,key)){e->count=search_public_counts_input[i];break;}
     }
   }
 }
 static int search_public_lookup(const SearchState *s){
-  u16 key[17];search_pack_state(s,key);
-  u32 hash=search_public_key_hash(key),slot=hash&(SEARCH_PUBLIC_CAP-1);
+  u32 hash=search_public_state_hash(s),slot=hash&(SEARCH_PUBLIC_CAP-1);
   for(int probe=0;probe<SEARCH_PUBLIC_CAP;probe++,slot=(slot+1)&(SEARCH_PUBLIC_CAP-1)){
     SearchPublicEntry *e=&search_public[slot];
     if(e->generation!=search_generation)return 0;
-    if(e->hash==hash&&search_public_key_equal(e->key,key))return e->count;
+    if(e->hash==hash&&search_public_state_equal(e,s))return e->count;
   }
   return 0;
-}
-
-static u16 search_board_word(int word){
-  int j=word<<2;
-  return (u16)((board[j]+6)|((board[j+1]+6)<<4)|((board[j+2]+6)<<8)|((board[j+3]+6)<<12));
 }
 static u32 search_position_hash(const SearchState *s){return s->hash;}
 static int search_position_equal(const SearchPositionEntry *e,const SearchState *s){
   if(e->side!=s->side||e->castling!=s->castling||e->ep!=s->ep)return 0;
-  for(int i=0;i<16;i++)if(e->packed[i]!=search_board_word(i))return 0;
+  for(int i=0;i<4;i++)if(e->packed[i]!=s->packed[i])return 0;
   return 1;
 }
 static int search_position_id(const SearchState *s){
@@ -586,7 +607,7 @@ static int search_position_id(const SearchState *s){
     SearchPositionEntry *e=&search_positions[slot];
     if(e->generation!=search_generation){
       e->generation=search_generation;e->hash=hash;e->side=s->side;e->castling=s->castling;e->ep=s->ep;
-      for(int i=0;i<16;i++)e->packed[i]=search_board_word(i);
+      for(int i=0;i<4;i++)e->packed[i]=s->packed[i];
       e->id=++search_position_count;
       search_path_counts[e->id]=0;
       search_position_public_counts[e->id]=s->halfmove>=8?search_public_lookup(s):0;
@@ -856,7 +877,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
   SearchState s={0};
   s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;s.material=material;
-  s.hash=search_initial_hash(&s);search_initial_eval(&s);
+  s.hash=search_initial_hash(&s);search_initial_eval(&s);search_initial_packed(&s);
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
