@@ -377,7 +377,13 @@ function sf55cHost(g,replyPolicy=null){
   for(let depth=1;depth<=depthLimit;depth++){
     ctx.depth=depth;
     const next=[];let threshold=-SF55C.mate;
-    for(const previous of complete){
+    const deepRootLimit=replyPolicy&&Number.isFinite(replyPolicy.deepRootLimit)
+      ? Math.max(SF55C.multiPV,Math.round(replyPolicy.deepRootLimit)) : 0;
+    const deepRootFromDepth=replyPolicy&&Number.isFinite(replyPolicy.deepRootFromDepth)
+      ? Math.max(1,Math.round(replyPolicy.deepRootFromDepth)) : Infinity;
+    const iterationRoots=deepRootLimit&&depth>=deepRootFromDepth
+      ? complete.slice(0,deepRootLimit) : complete;
+    for(const previous of iterationRoots){
       const e={...previous};const materialDelta=sf55cMaterialMoveDelta(e.raw);ctx.material-=materialDelta;g.fastApply(e.raw);
       try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{g.fastUndo();ctx.material+=materialDelta;}
       if(ctx.abort)break;
