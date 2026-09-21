@@ -168,6 +168,47 @@ function sf55cPackHistoryKey(key){
     (key[0]==='w'?1:0)|(Number(tail[0])<<1)|((Number(tail[1])+1)<<5));
 }
 
+// Per-game stable path identities let an ARMX search reuse exact transposition
+// work after speculative moves become real moves on the following turns.
+function sf55cPersistentExtend(state,parent,key){
+  let positionId=state.positionIds.get(key);
+  if(positionId===undefined){positionId=state.positionIds.size+1;state.positionIds.set(key,positionId);}
+  let children=state.pathChildren.get(parent);
+  if(!children){children=new Map();state.pathChildren.set(parent,children);}
+  let signature=children.get(positionId);
+  if(signature===undefined){signature=state.nextSignature++;children.set(positionId,signature);}
+  return signature;
+}
+function sf55cPersistentState(g){
+  let state=g._sf55cPersistentARMX;
+  if(!state){
+    state=g._sf55cPersistentARMX={
+      positionIds:new Map(),pathChildren:new Map(),nextSignature:1,
+      historyLength:0,historySignature:0,tt:new Map(),ttEntries:0
+    };
+  }
+  if(state.historyLength>g.historyStack.length){
+    state.historyLength=0;state.historySignature=0;
+  }
+  while(state.historyLength<g.historyStack.length){
+    const frame=g.historyStack[state.historyLength++];
+    if(frame&&frame.repKey)state.historySignature=sf55cPersistentExtend(
+      state,state.historySignature,sf55cPackHistoryKey(frame.repKey)
+    );
+  }
+  return state;
+}
+function sf55cPersistentScoreToTT(score,ply){
+  if(score>SF55C.mate-1000)return score+ply;
+  if(score<-SF55C.mate+1000)return score-ply;
+  return score;
+}
+function sf55cPersistentScoreFromTT(score,ply){
+  if(score>SF55C.mate-1000)return score-ply;
+  if(score<-SF55C.mate+1000)return score+ply;
+  return score;
+}
+
 // Stable ordering evaluates each priority once without modifying move objects.
 function sf55cOrderMoves(moves,ctx,tt,ply){
  if(moves.length<2)return;
@@ -277,12 +318,19 @@ function sf55cEnter(ctx,key) {
   if(signature===undefined){signature=ctx.pathSignatureIds.size+1;ctx.pathSignatureIds.set(pair,signature);}
   ctx.pathSignatureStack.push(parent);
   ctx.pathSignature=signature;
+  if(ctx.persistent){
+    ctx.persistentPathStack.push(ctx.persistentPathSignature);
+    ctx.persistentPathSignature=sf55cPersistentExtend(
+      ctx.persistent,ctx.persistentPathSignature,key
+    );
+  }
 }
 function sf55cExit(ctx,key) {
   if (key === null) return;
   const count=ctx.path.get(key)-1;
   if(count)ctx.path.set(key,count);else ctx.path.delete(key);
   ctx.pathSignature=ctx.pathSignatureStack.pop();
+  if(ctx.persistent)ctx.persistentPathSignature=ctx.persistentPathStack.pop();
 }
 
 // Capture/promotion-only legal generation for quiet quiescence nodes. Keep the
@@ -395,21 +443,29 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   const ttMeta=g.halfmove+(ply<<7)+(ctx.pathSignature<<13);
   const ttBucket=ctx.tt.get(key);
   const hit=ttBucket?ttBucket.get(ttMeta):null,original=alpha;
+  const persistentMeta=ctx.persistent?g.halfmove+(ctx.persistentPathSignature*128):0;
+  const persistentBucket=ctx.persistent?ctx.persistent.tt.get(key):null;
+  const persistentHit=persistentBucket?persistentBucket.get(persistentMeta):null;
   // A stored entry can only come from a non-terminal, non-draw node. While the
   // node budget is still live, the exact same TT cutoff can therefore happen
-  // before legal-move generation. Over-budget nodes retain the original order:
-  // terminal -> draw -> abort -> TT.
+  // before legal-move generation. Over-budget nodes retain the original order.
   const budgetLive=ctx.nodes<=ctx.limit||ctx.depth<=2;
   if(budgetLive&&hit&&hit.depth>=depth){
     if(hit.flag===0)return hit.score;
     if(hit.flag===1&&hit.score>=beta)return hit.score;
     if(hit.flag===-1&&hit.score<=alpha)return hit.score;
   }
+  if(budgetLive&&persistentHit&&persistentHit.depth>=depth){
+    const persistentScore=sf55cPersistentScoreFromTT(persistentHit.score,ply);
+    if(persistentHit.flag===0)return persistentScore;
+    if(persistentHit.flag===1&&persistentScore>=beta)return persistentScore;
+    if(persistentHit.flag===-1&&persistentScore<=alpha)return persistentScore;
+  }
   const check=sf55cInCheck(g),moves=sf55cLegalMoves(g,ctx,ply);
   if(!moves.length)return check?-SF55C.mate+ply:0;
   if(sf55cDraw(g,ctx,key))return 0;
   if(!budgetLive){ctx.abort=true;return sf55cEvaluate(g);}
-  sf55cOrderMoves(moves,ctx,hit?hit.move:0,ply);
+  sf55cOrderMoves(moves,ctx,hit?hit.move:persistentHit?persistentHit.move:0,ply);
   let best=-Infinity,bestMove=0,index=0;
   sf55cEnter(ctx,key);
   try {
@@ -439,8 +495,20 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
     }
   }finally{sf55cExit(ctx,key);}
   if(!ctx.abort){
+    const flag=best<=original?-1:best>=beta?1:0;
     let bucket=ctx.tt.get(key);if(!bucket){bucket=new Map();ctx.tt.set(key,bucket);}
-    bucket.set(ttMeta,{depth,score:best,move:bestMove,flag:best<=original?-1:best>=beta?1:0});
+    bucket.set(ttMeta,{depth,score:best,move:bestMove,flag});
+    if(ctx.persistent){
+      let bucket2=ctx.persistent.tt.get(key);
+      if(!bucket2){bucket2=new Map();ctx.persistent.tt.set(key,bucket2);}
+      if(!bucket2.has(persistentMeta))ctx.persistent.ttEntries++;
+      bucket2.set(persistentMeta,{
+        depth,score:sf55cPersistentScoreToTT(best,ply),move:bestMove,flag
+      });
+      if(ctx.persistent.ttEntries>160000){
+        ctx.persistent.tt.clear();ctx.persistent.ttEntries=0;
+      }
+    }
   }
   return best;
 }
@@ -453,7 +521,10 @@ function sf55cHost(g,replyPolicy=null){
   const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(requested))):SF55C.nodes;
   const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
   const depthLimit=Number.isFinite(requestedDepth)?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(requestedDepth))):SF55C.maxDepth;
-  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],replyPolicy};
+  const persistent=replyPolicy&&typeof process!=='undefined'&&process.env&&process.env.ARMX_PERSISTENT_TT==='1'
+    ? sf55cPersistentState(g) : null;
+  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],replyPolicy,
+    persistent,persistentPathSignature:persistent?persistent.historySignature:0,persistentPathStack:[]};
   ctx.material=0;for(const piece of g.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
   for(const e of roots){sf55cApply(g,ctx,e.raw,1);try{e.score=-sf55cEvaluate(g);}finally{sf55cUndo(g,ctx,e.raw,1);}}
