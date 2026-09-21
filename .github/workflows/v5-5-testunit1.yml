@@ -88,9 +88,10 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
-      - name: Measure full ARMX versus No-ARMX
+      - name: Measure focused deep-root ARMX versus No-ARMX
         env:
           SAMPLES: '20'
           GAMES: '8'
           MATCHUP: 'armxVsNoArmx'
+          ARMX_ROOT_BEAM: '6'
         run: node benchmark_v5_5_testunit1.js
