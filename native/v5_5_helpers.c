@@ -568,10 +568,14 @@ static int search_public_input_equal(const SearchPublicEntry *e,const u16 *key){
   }
   return 1;
 }
-static u32 search_public_state_hash(const SearchState *s){
-  u32 h=2166136261u;
-  for(int i=0;i<16;i++){h^=(u16)(search_packed_board[i>>2]>>((i&3)<<4));h*=16777619u;}
-  h^=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5));h*=16777619u;
+static u32 search_public_key_position_hash(const u16 *key){
+  int meta=key[16];
+  int side=(meta&1)?1:-1,castling=(meta>>1)&15,ep=((meta>>5)&127)-1;
+  u32 h=search_meta_token(side,castling,ep);
+  for(int sq=0;sq<64;sq++){
+    int piece=((key[sq>>2]>>((sq&3)<<2))&15)-6;
+    if(piece)h^=search_piece_token(sq,piece);
+  }
   return h;
 }
 static int search_public_state_equal(const SearchPublicEntry *e,const SearchState *s){
@@ -583,7 +587,7 @@ static void search_public_build(int count){
   if(count<0)count=0;if(count>SEARCH_PUBLIC_INPUT_CAP)count=SEARCH_PUBLIC_INPUT_CAP;
   for(int i=0;i<count;i++){
     const u16 *key=search_public_keys_input+i*17;
-    u32 hash=search_public_key_hash(key),slot=hash&(SEARCH_PUBLIC_CAP-1);
+    u32 hash=search_public_key_position_hash(key),slot=hash&(SEARCH_PUBLIC_CAP-1);
     for(int probe=0;probe<SEARCH_PUBLIC_CAP;probe++,slot=(slot+1)&(SEARCH_PUBLIC_CAP-1)){
       SearchPublicEntry *e=&search_public[slot];
       if(e->generation!=search_generation){
@@ -595,7 +599,7 @@ static void search_public_build(int count){
   }
 }
 static int search_public_lookup(const SearchState *s){
-  u32 hash=search_public_state_hash(s),slot=hash&(SEARCH_PUBLIC_CAP-1);
+  u32 hash=s->hash,slot=hash&(SEARCH_PUBLIC_CAP-1);
   for(int probe=0;probe<SEARCH_PUBLIC_CAP;probe++,slot=(slot+1)&(SEARCH_PUBLIC_CAP-1)){
     SearchPublicEntry *e=&search_public[slot];
     if(e->generation!=search_generation)return 0;
