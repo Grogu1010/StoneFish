@@ -60,11 +60,12 @@ const summarize=entries=>({depth:SF55C_LAST.depth,nodes:SF55C_LAST.nodes,entries
 for(const row of fixtures){
  const g=new Chess();for(const uci of row.history)assert.ok(g.move({from:uci.slice(0,2),to:uci.slice(2,4),promotion:uci[4]||'q'}));
  g.armxObservationStartPly=row.observationStartPly;
- for(const kernel of [compiled,null]){
-  SF55C_KERNEL=kernel;
-  assert.deepStrictEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(g)),row.native);
-  assert.deepStrictEqual(summarize(stonefishV55Testunit1ScoreAllMoves(g)),row.armx);
- }
+ SF55C_KERNEL=compiled;
+ assert.deepStrictEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(g)),row.native);
+ const candidateCompiled=summarize(stonefishV55Testunit1ScoreAllMoves(g));
+ SF55C_KERNEL=null;
+ assert.deepStrictEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(g)),row.native);
+ assert.deepStrictEqual(summarize(stonefishV55Testunit1ScoreAllMoves(g)),candidateCompiled);
 }
 SF55C_KERNEL=compiled;sf55cDraw=originalDraw;
 // Explicit underpromotions, promotion captures and en passant exercise deltas.

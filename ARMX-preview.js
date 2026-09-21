@@ -46,10 +46,14 @@ const ARMX_PREVIEW = Object.freeze({
   quietChoiceWeightLimit: 6,
   predictionQualityDecay: 0.9,
   predictionSurpriseScale: 0.3,
-  maxExtraSearchNodes: 3600,
-  evidenceSearchNodes: 4800,
+  // Efficiency candidate: spend a modest extra node budget, then recover
+  // depth with verified policy-guided reductions of predicted quiet replies.
+  maxExtraSearchNodes: 320,
+  evidenceSearchNodes: 400,
   fullSearchEvidence: 8,
-  maxExtraSearchDepth: 2,
+  maxExtraSearchDepth: 1,
+  nativeSearchNodes: 30000,
+  nativeSearchDepth: 6,
 });
 
 const ARMX_PREVIEW_GAME_PROFILES = new WeakMap();
@@ -174,6 +178,11 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
     // preferences belong to this game, never to an opponent name.
     searchBudget,
     maxDepth: SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
+    policyGuidedReduction: true,
+    nativeAccelerated: true,
+    nativeSearchNodes: ARMX_PREVIEW.nativeSearchNodes,
+    nativeSearchDepth: ARMX_PREVIEW.nativeSearchDepth,
+    weights,
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };

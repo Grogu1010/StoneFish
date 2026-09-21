@@ -171,7 +171,7 @@ function sf55cPackHistoryKey(key){
 // Stable ordering evaluates each priority once without modifying move objects.
 function sf55cOrderMoves(moves,ctx,tt,ply){
  if(moves.length<2)return;
- const priorities=new Int32Array(moves.length);
+ const priorities=ctx.orderPriorities||(ctx.orderPriorities=new Int32Array(512));
  priorities[0]=sf55cOrder(ctx,moves[0],tt,ply);
  for(let i=1;i<moves.length;i++){
   const move=moves[i],priority=sf55cOrder(ctx,move,tt,ply);let j=i-1;
@@ -205,14 +205,31 @@ function sf55cDraw(g,ctx,key) {
 function sf55cEnter(ctx,key) {
   if (key === null) return;
   ctx.path.set(key,(ctx.path.get(key)||0)+1);
-  if(!ctx.positionIds.has(key))ctx.positionIds.set(key,ctx.positionIds.size+1);
-  ctx.pathIds.push(ctx.positionIds.get(key));
+  if(!ctx.pathTransitions){
+    ctx.pathTransitions=[new Map()];
+    ctx.pathSeqId=0;
+    ctx.pathSeqStack=[];
+  }
+  let positionId=ctx.positionIds.get(key);
+  if(positionId===undefined){
+    positionId=ctx.positionIds.size+1;
+    ctx.positionIds.set(key,positionId);
+  }
+  const transitions=ctx.pathTransitions[ctx.pathSeqId];
+  let next=transitions.get(positionId);
+  if(next===undefined){
+    next=ctx.pathTransitions.length;
+    transitions.set(positionId,next);
+    ctx.pathTransitions.push(new Map());
+  }
+  ctx.pathSeqStack.push(ctx.pathSeqId);
+  ctx.pathSeqId=next;
 }
 function sf55cExit(ctx,key) {
   if (key === null) return;
   const count=ctx.path.get(key)-1;
   if(count)ctx.path.set(key,count);else ctx.path.delete(key);
-  ctx.pathIds.pop();
+  ctx.pathSeqId=ctx.pathSeqStack.pop();
 }
 
 // Capture/promotion-only legal generation for quiet quiescence nodes. Keep the
@@ -325,7 +342,11 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   if(ctx.nodes>ctx.limit&&ctx.depth>2){ctx.abort=true;return sf55cEvaluate(g);}
   // Halfmove clock, mate distance, and the speculative repetition path are part
   // of the cache identity. A value from another history cannot hide a draw.
-  const ttKey=key+'|'+g.halfmove+'|'+ply+'|'+ctx.pathIds.join(',');
+  // Intern the exact ancestor-position sequence once, then encode its stable
+  // per-search id in fixed-width code units instead of rebuilding a comma-
+  // separated path string at every node. This preserves the same TT identity.
+  const ttKey=key+String.fromCharCode(
+    g.halfmove,ply,ctx.pathSeqId&65535,(ctx.pathSeqId>>>16)&65535);
   const hit=ctx.tt.get(ttKey),original=alpha;
   if(hit&&hit.depth>=depth){if(hit.flag===0)return hit.score;if(hit.flag===1&&hit.score>=beta)return hit.score;if(hit.flag===-1&&hit.score<=alpha)return hit.score;}
   sf55cOrderMoves(moves,ctx,hit?hit.move:0,ply);
@@ -338,7 +359,16 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
       try {
         if(index===0)score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         else{
-          const reduce=depth>=3&&index>=4&&!check&&!m.captured&&!m.promotion&&!sf55cInCheck(g)?1:0;
+          const quiet=!m.captured&&!m.promotion;
+          const standardReduce=depth>=3&&index>=4&&!check&&quiet&&!sf55cInCheck(g);
+          // Candidate-only policy LMR: predicted low-priority opponent replies
+          // get a one-ply null-window reduction sooner. Any reply that improves
+          // alpha is immediately re-searched at full depth, so the model only
+          // saves work on replies that fail low as predicted.
+          const guidedReduce=ctx.replyPolicy&&ctx.replyPolicy.policyGuidedReduction
+            &&(ply&1)&&depth>=2&&index>=2&&!check&&quiet
+            &&ctx.replyPolicy.isLowPriority(m)&&!sf55cInCheck(g);
+          const reduce=standardReduce||guidedReduce?1:0;
           score=-sf55cSearch(g,ctx,depth-1-reduce,-alpha-1,-alpha,ply+1);
           if(!ctx.abort&&score>alpha&&(reduce||score<beta))score=-sf55cSearch(g,ctx,depth-1,-beta,-alpha,ply+1);
         }
@@ -354,14 +384,49 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   return best;
 }
 
+function sf55cNativeAcceleratedHost(g,replyPolicy){
+  const k=SF55C_KERNEL;
+  if(!k||!k.api.search_all||!k.scores||!k.policyWeights)return null;
+  sf55cSyncKernelConfig();
+  k.board.set(g.boardState);
+  k.policyWeights.fill(0);
+  if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
+  const limit=Math.max(SF55C.nodes,Math.round(replyPolicy.nativeSearchNodes||SF55C.nodes));
+  const depthLimit=Math.max(SF55C.maxDepth,Math.round(replyPolicy.nativeSearchDepth||SF55C.maxDepth));
+  const count=k.api.search_all(
+    g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
+    depthLimit,limit,SF55C.qDepth,1);
+  const finished=new Array(count);
+  for(let i=0;i<count;i++){
+    const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
+      captured:(m>>>15)&7,promotion:(m>>>18)&7,flags:m>>>21};
+    const score=k.scores[i];
+    finished[i]={raw,uci:stonefishV45RawUci(g,raw),score,deep:score,
+      preliminary:score,tactical:0,knowledge:0,conversion:0,exact:true};
+  }
+  const result={finished,fastLeader:finished.length?finished[0].raw:null,
+    refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
+    nodes:k.api.search_nodes?k.api.search_nodes():limit,
+    depth:k.api.search_depth?k.api.search_depth():depthLimit,
+    searchBudget:limit,depthLimit};
+  globalThis.SF55C_LAST=result;
+  return result;
+}
+
 function sf55cHost(g,replyPolicy=null){
+  if(replyPolicy&&replyPolicy.nativeAccelerated){
+    const accelerated=sf55cNativeAcceleratedHost(g,replyPolicy);
+    if(accelerated)return accelerated;
+  }
   sf55cSyncKernelConfig();
   const legal=sf55cLegalMoves(g);if(!legal.length)return {finished:[],fastLeader:null,refutationGuard:null};
   const requested=replyPolicy&&replyPolicy.searchBudget;
   const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(requested))):SF55C.nodes;
   const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
   const depthLimit=Number.isFinite(requestedDepth)?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(requestedDepth))):SF55C.maxDepth;
-  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768),replyPolicy};
+  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),path:new Map(),
+    positionIds:new Map(),pathTransitions:[new Map()],pathSeqId:0,pathSeqStack:[],
+    killers:[],history:new Int32Array(32768),orderPriorities:new Int32Array(512),replyPolicy};
   ctx.material=0;for(const piece of g.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
   for(const e of roots){g.fastApply(e.raw);try{e.score=-sf55cEvaluate(g);}finally{g.fastUndo();}}
@@ -838,7 +903,9 @@ try {
   const api=new WebAssembly.Instance(new WebAssembly.Module(SF55C_WASM_BYTES),{}).exports;
   SF55C_KERNEL={api,board:new Int8Array(api.memory.buffer,api.board_ptr(),64),
    config:new Int32Array(api.memory.buffer,api.config_ptr(),903),
-   moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512)};
+   moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512),
+   scores:api.scores_ptr?new Int32Array(api.memory.buffer,api.scores_ptr(),512):null,
+   policyWeights:api.policy_ptr?new Float64Array(api.memory.buffer,api.policy_ptr(),13):null};
  }
 } catch (_) { /* Use the identical JS implementation if compilation is blocked. */ }
 function sf55cSyncKernelConfig(){

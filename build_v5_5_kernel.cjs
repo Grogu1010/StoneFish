@@ -6,7 +6,8 @@ const root=__dirname,source=path.join(root,'native','v5_5_helpers.c');
 const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'stonefish-kernel-'));
 try {
  const output=path.join(temporary,'helpers.wasm');
- const exports=['board_ptr','config_ptr','moves_ptr','evaluate','in_check','generate'];
+ const exports=['board_ptr','config_ptr','moves_ptr','scores_ptr','policy_ptr','evaluate','in_check','generate',
+  'search_all','search_nodes','search_depth'];
  execFileSync(process.env.ZIG||'zig',['cc','-target','wasm32-freestanding','-O3','-nostdlib',
   '-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output],{stdio:'inherit'});
  const bytes=fs.readFileSync(output),module=new WebAssembly.Module(bytes);

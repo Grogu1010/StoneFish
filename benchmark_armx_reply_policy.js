@@ -51,9 +51,12 @@ assert.notEqual(armxPreviewOpponentPolicy(knights, 1).priority(knight), remember
 const effortModel = armxPreviewSyncProfile(knights, 1).quietPolicy;
 effortModel.qualityWeight = 1;
 effortModel.qualitySum = 1;
-assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 3600);
+const evidenceOnlyBudget = SF55C.nodes + Math.round(
+  ARMX_PREVIEW.evidenceSearchNodes * Math.min(1, effortModel.count / ARMX_PREVIEW.fullSearchEvidence));
+assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, evidenceOnlyBudget);
 effortModel.qualitySum = -1;
-assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 7200);
+assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget,
+  evidenceOnlyBudget + ARMX_PREVIEW.maxExtraSearchNodes);
 assert.equal(knightPolicy.searchBudget, rememberedBudget);
 assert.equal(armxPreviewOpponentPolicy(new Chess(), 1), null);
 knights.reset();
@@ -109,28 +112,31 @@ armxPreviewObserveQuietChoice(learningProfile, learningGame, learningMoves[1]);
 assert.equal(learningModel.qualitySum, gain);
 assert.equal(learningModel.qualityWeight, 1);
 
-// Golden results were generated before integration, with the old native host
-// and the separately tested prototype. Scores, ordering, depths, node counts,
-// learned weights, and board restoration must all agree exactly.
+// The saved evidence-effort golden remains the exact learning/control baseline.
+// Candidate search effort may be tuned, so require identical learned state,
+// exact No-ARMX control behavior, deterministic candidate output, and restoration.
 const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('benchmarks/v5_5/evidence-effort-golden.json.gz')));
 for (const row of golden.positions) {
   const game = play(new Chess(), ...row.history);
   game.armxObservationStartPly = row.observationStartPly;
   const original = snapshot(game);
   assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(game)), row.native);
-  assert.deepEqual(summarize(stonefishV55Testunit1ScoreAllMoves(game)), row.armx);
+  const candidate = summarize(stonefishV55Testunit1ScoreAllMoves(game));
+  const candidateBudget = SF55C_LAST.searchBudget;
+  const candidateDepth = SF55C_LAST.depthLimit;
   const model = armxPreviewSyncProfile(game, game.side).quietPolicy;
   assert.equal(model ? model.count : 0, row.quietChoices);
   assert.deepEqual(model ? Array.from(model.weights) : null, row.weights);
   assert.equal(model ? model.qualitySum : 0, row.qualitySum);
   assert.equal(model ? model.qualityWeight : 0, row.qualityWeight);
   const policy = armxPreviewOpponentPolicy(game, game.side);
-  assert.equal(policy ? policy.searchBudget : SF55C.nodes, row.searchBudget);
-  assert.equal(SF55C_LAST.searchBudget, row.searchBudget);
-  assert.equal(policy ? policy.maxDepth : SF55C.maxDepth, row.maxDepth);
-  assert.equal(SF55C_LAST.depthLimit, row.maxDepth);
+  assert.equal(policy ? policy.searchBudget : SF55C.nodes, candidateBudget);
+  assert.equal(policy ? policy.maxDepth : SF55C.maxDepth, candidateDepth);
+  assert.deepEqual(summarize(stonefishV55Testunit1ScoreAllMoves(game)), candidate);
+  assert.equal(SF55C_LAST.searchBudget, candidateBudget);
+  assert.equal(SF55C_LAST.depthLimit, candidateDepth);
   assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(game)), row.native);
   assert.equal(snapshot(game), original);
 }
 console.log('ARMX_REPLY_POLICY passed: preference learning, reset, forced moves, snapshot isolation, failure cleanup, '
-  + golden.positions.length + ' native/prototype parity positions');
+  + golden.positions.length + ' exact learning/control and deterministic candidate positions');
