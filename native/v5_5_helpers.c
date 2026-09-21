@@ -233,12 +233,22 @@ static int move_id(u32 m){return move_from(m)|(move_to(m)<<6)|(move_promotion(m)
 static u32 search_hash_mix(u32 x){
   x^=x>>16;x*=0x7feb352du;x^=x>>15;x*=0x846ca68bu;x^=x>>16;return x;
 }
-static u32 search_piece_token(int sq,int piece){
-  return search_hash_mix((u32)(sq+1)*0x9e3779b9u^(u32)(piece+7)*0x85ebca6bu);
+static u32 search_piece_tokens[64][13],search_meta_tokens[2][16][65];
+static int search_hash_tokens_ready;
+static void search_init_hash_tokens(void){
+  if(search_hash_tokens_ready)return;
+  for(int sq=0;sq<64;sq++)for(int piece=-6;piece<=6;piece++)if(piece)
+    search_piece_tokens[sq][piece+6]=search_hash_mix((u32)(sq+1)*0x9e3779b9u^(u32)(piece+7)*0x85ebca6bu);
+  for(int side_index=0;side_index<2;side_index++){
+    int side=side_index?1:-1;
+    for(int castling=0;castling<16;castling++)for(int ep=-1;ep<64;ep++)
+      search_meta_tokens[side_index][castling][ep+1]=search_hash_mix(
+        (u32)(side+2)*0x27d4eb2du^(u32)(castling+1)*0x165667b1u^(u32)(ep+2)*0xd3a2646cu);
+  }
+  search_hash_tokens_ready=1;
 }
-static u32 search_meta_token(int side,int castling,int ep){
-  return search_hash_mix((u32)(side+2)*0x27d4eb2du^(u32)(castling+1)*0x165667b1u^(u32)(ep+2)*0xd3a2646cu);
-}
+static u32 search_piece_token(int sq,int piece){return search_piece_tokens[sq][piece+6];}
+static u32 search_meta_token(int side,int castling,int ep){return search_meta_tokens[side>0][castling][ep+1];}
 static u32 search_initial_hash(const SearchState *s){
   u32 h=search_meta_token(s->side,s->castling,s->ep);
   for(int sq=0;sq<64;sq++)if(board[sq])h^=search_piece_token(sq,board[sq]);
@@ -875,6 +885,7 @@ static void root_insert(u32 *moves,int *scores,int *exact,int *count,u32 move,in
 
 int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
+  search_init_hash_tokens();
   int material=0;
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
   SearchState s={0};
