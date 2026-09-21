@@ -11,6 +11,9 @@ const files = [
   'Stonefish_v5_5_native.js', 'ARMX-preview.js', 'Stonefish_v5_5_testunit1.js'
 ];
 vm.runInThisContext(files.map(file => fs.readFileSync(file, 'utf8')).join('\n'));
+// This contract exercises the JavaScript reply-policy callbacks and exact fallback parity.
+// Compiled ARMX has its own parity/strength benchmarks and intentionally consumes frozen weights directly.
+process.env.ARMX_COMPILED_EXPERIMENT = '0';
 
 function play(game, ...moves) {
   for (const uci of moves) assert.ok(game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || 'q' }), uci);
