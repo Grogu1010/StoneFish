@@ -82,10 +82,20 @@ static int attacked(int square,int by_side){
   return 0;
 }
 int in_check(int side,int king){return attacked(king,-side);}
-static int gen_side,gen_king,gen_mode,gen_count;
+static int gen_side,gen_king,gen_mode,gen_count,gen_check;
+static int gen_king_line(int square){
+  int df=absolute((square&7)-(gen_king&7)),dr=absolute((square>>3)-(gen_king>>3));
+  return !df||!dr||df==dr;
+}
 static int emit(int from,int to,int promotion,int flags){
   int moving=board[from],target=board[to],captured=flags&2?1:absolute(target);
   if(gen_mode==1&&!captured&&!promotion)return 0;
+  int type=absolute(moving);
+  if(type!=6&&!gen_check&&!(flags&2)&&!gen_king_line(from)){
+    if(gen_mode==2)return 1;
+    output[gen_count++]=(u32)(from|(to<<6)|(type<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
+    return 0;
+  }
   int ep_square=-1,ep_piece=0,rook_from=-1,rook_to=-1,rook_piece=0;
   board[from]=0;board[to]=promotion?gen_side*promotion:moving;
   if(flags&2){ep_square=to-gen_side*8;ep_piece=board[ep_square];board[ep_square]=0;}
@@ -94,13 +104,13 @@ static int emit(int from,int to,int promotion,int flags){
     rook_to=gen_side==1?(flags&4?5:3):(flags&4?61:59);
     rook_piece=board[rook_from];board[rook_to]=rook_piece;board[rook_from]=0;
   }
-  int safe=!attacked(absolute(moving)==6?to:gen_king,-gen_side);
+  int safe=!attacked(type==6?to:gen_king,-gen_side);
   if(rook_from>=0){board[rook_from]=rook_piece;board[rook_to]=0;}
   if(ep_square>=0)board[ep_square]=ep_piece;
   board[from]=moving;board[to]=target;
   if(!safe)return 0;
   if(gen_mode==2)return 1;
-  output[gen_count++]=(u32)(from|(to<<6)|(absolute(moving)<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
+  output[gen_count++]=(u32)(from|(to<<6)|(type<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
   return 0;
 }
 static int pawn_emit(int from,int to,int promotion_rank){
@@ -108,7 +118,7 @@ static int pawn_emit(int from,int to,int promotion_rank){
   return emit(from,to,5,0)||emit(from,to,4,0)||emit(from,to,3,0)||emit(from,to,2,0);
 }
 int generate(int side,int castling,int ep,int king,int mode){
-  gen_side=side;gen_king=king;gen_mode=mode;gen_count=0;
+  gen_side=side;gen_king=king;gen_mode=mode;gen_count=0;gen_check=attacked(king,-side);
   for(int from=0;from<64;from++){
     int p=board[from];if(!p||(p>0?1:-1)!=side)continue;
     int type=absolute(p),file=from&7,rank=from>>3;
@@ -140,11 +150,11 @@ int generate(int side,int castling,int ep,int king,int mode){
       }
     }
     if(type==6&&side==1&&from==4){
-      if((castling&1)&&board[7]==4&&!board[5]&&!board[6]&&!attacked(4,-1)&&!attacked(5,-1)&&!attacked(6,-1)&&emit(4,6,0,4))return 1;
-      if((castling&2)&&board[0]==4&&!board[1]&&!board[2]&&!board[3]&&!attacked(4,-1)&&!attacked(3,-1)&&!attacked(2,-1)&&emit(4,2,0,8))return 1;
+      if((castling&1)&&board[7]==4&&!board[5]&&!board[6]&&!gen_check&&!attacked(5,-1)&&!attacked(6,-1)&&emit(4,6,0,4))return 1;
+      if((castling&2)&&board[0]==4&&!board[1]&&!board[2]&&!board[3]&&!gen_check&&!attacked(3,-1)&&!attacked(2,-1)&&emit(4,2,0,8))return 1;
     }else if(type==6&&side==-1&&from==60){
-      if((castling&4)&&board[63]==-4&&!board[61]&&!board[62]&&!attacked(60,1)&&!attacked(61,1)&&!attacked(62,1)&&emit(60,62,0,4))return 1;
-      if((castling&8)&&board[56]==-4&&!board[57]&&!board[58]&&!board[59]&&!attacked(60,1)&&!attacked(59,1)&&!attacked(58,1)&&emit(60,58,0,8))return 1;
+      if((castling&4)&&board[63]==-4&&!board[61]&&!board[62]&&!gen_check&&!attacked(61,1)&&!attacked(62,1)&&emit(60,62,0,4))return 1;
+      if((castling&8)&&board[56]==-4&&!board[57]&&!board[58]&&!board[59]&&!gen_check&&!attacked(59,1)&&!attacked(58,1)&&emit(60,58,0,8))return 1;
     }
   }
   return gen_mode==2?0:gen_count;
