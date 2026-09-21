@@ -51,9 +51,12 @@ assert.notEqual(armxPreviewOpponentPolicy(knights, 1).priority(knight), remember
 const effortModel = armxPreviewSyncProfile(knights, 1).quietPolicy;
 effortModel.qualityWeight = 1;
 effortModel.qualitySum = 1;
-assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 3600);
+const evidenceOnlyBudget = SF55C.nodes + Math.round(
+  ARMX_PREVIEW.evidenceSearchNodes * Math.min(1, effortModel.count / ARMX_PREVIEW.fullSearchEvidence));
+assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, evidenceOnlyBudget);
 effortModel.qualitySum = -1;
-assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget, 7200);
+assert.equal(armxPreviewOpponentPolicy(knights, 1).searchBudget,
+  evidenceOnlyBudget + ARMX_PREVIEW.maxExtraSearchNodes);
 assert.equal(knightPolicy.searchBudget, rememberedBudget);
 assert.equal(armxPreviewOpponentPolicy(new Chess(), 1), null);
 knights.reset();
