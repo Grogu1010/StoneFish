@@ -461,8 +461,15 @@ function sf55cHost(g,replyPolicy=null){
   let complete=roots;
   for(let depth=1;depth<=depthLimit;depth++){
     ctx.depth=depth;
+    const configuredBeam=replyPolicy&&typeof process!=='undefined'&&process.env
+      ? Number.parseInt(process.env.ARMX_ROOT_BEAM||'0',10)||0 : 0;
+    const useBeam=depth>=3&&configuredBeam>=SF55C.multiPV&&complete.length>configuredBeam;
+    const active=useBeam?complete.slice(0,configuredBeam):complete;
+    const sidelined=useBeam?complete.slice(configuredBeam).map(previous=>({
+      ...previous,score:-Infinity,deep:null,exact:false
+    })):[];
     const next=[];let threshold=-SF55C.mate;
-    for(const previous of complete){
+    for(const previous of active){
       const e={...previous};const materialDelta=sf55cMaterialMoveDelta(e.raw);ctx.material-=materialDelta;sf55cApply(g,ctx,e.raw,1);
       try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{sf55cUndo(g,ctx,e.raw,1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
@@ -472,7 +479,8 @@ function sf55cHost(g,replyPolicy=null){
       if(next.length>=SF55C.multiPV)threshold=next[SF55C.multiPV-1].score;
     }
     if(ctx.abort)break;
-    complete=next;
+    complete=next.concat(sidelined);
+    complete.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
     if(Math.abs(complete[0].score)>SF55C.mate-100)break;
   }
   // Only completed, exact root scores are eligible for opponent adaptation.
