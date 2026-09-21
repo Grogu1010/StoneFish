@@ -95,7 +95,9 @@ jobs:
       - name: Test ARMX 140 candidate speed against No ARMX
         env:
           ENGINE_PATCH: 'Stonefish_v5_5_armx_140_experiment.js'
-          ARMX140_NODES: '1600'
+          ARMX140_MODE: 'roots'
+          ARMX140_ROOTS: '6'
+          ARMX140_ROOT_DEPTH: '4'
           ARMX140_OPPONENT: 'no'
           MATCHUP: 'armxVsNoArmx'
           SAMPLES: '4'
@@ -104,7 +106,9 @@ jobs:
       - name: Test ARMX 140 candidate strength against current ARMX
         env:
           ENGINE_PATCH: 'Stonefish_v5_5_armx_140_experiment.js'
-          ARMX140_NODES: '1600'
+          ARMX140_MODE: 'roots'
+          ARMX140_ROOTS: '6'
+          ARMX140_ROOT_DEPTH: '4'
           ARMX140_OPPONENT: 'current'
           MATCHUP: 'armxVsNoArmx'
           SAMPLES: '4'
