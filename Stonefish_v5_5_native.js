@@ -412,8 +412,9 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
         else{
           const quietLate=!check&&!m.captured&&!m.promotion&&!sf55cInCheck(g);
           const learnedFastReduction=Boolean(
-            typeof process!=='undefined'&&process.env&&process.env.ARMX_FAST_SCREEN==='1'
-              &&process.env.ARMX_FAST_POLICY_LMR==='1'&&ctx.replyPolicy&&(ply&1)
+            typeof process!=='undefined'&&process.env&&ctx.replyPolicy&&(ply&1)
+              &&(process.env.ARMX_POLICY_LMR==='1'
+                ||(process.env.ARMX_FAST_SCREEN==='1'&&process.env.ARMX_FAST_POLICY_LMR==='1'))
               &&depth>=3&&index>=2&&quietLate&&ctx.replyPolicy.isLowPriority(m)
           );
           const reduce=learnedFastReduction?Math.min(2,depth-1):(depth>=3&&index>=4&&quietLate?1:0);
