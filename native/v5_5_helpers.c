@@ -205,6 +205,7 @@ int search_depth(void){return search_depth_done;}
 
 typedef struct {
   int side,castling,ep,wk,bk,halfmove,material;
+  u32 hash;
 } SearchState;
 typedef struct {
   SearchState state;
@@ -219,20 +220,45 @@ static int move_promotion(u32 m){return (m>>18)&7;}
 static int move_flags(u32 m){return (int)(m>>21);}
 static int move_id(u32 m){return move_from(m)|(move_to(m)<<6)|(move_promotion(m)<<12);}
 
+static u32 search_hash_mix(u32 x){
+  x^=x>>16;x*=0x7feb352du;x^=x>>15;x*=0x846ca68bu;x^=x>>16;return x;
+}
+static u32 search_piece_token(int sq,int piece){
+  return search_hash_mix((u32)(sq+1)*0x9e3779b9u^(u32)(piece+7)*0x85ebca6bu);
+}
+static u32 search_meta_token(int side,int castling,int ep){
+  return search_hash_mix((u32)(side+2)*0x27d4eb2du^(u32)(castling+1)*0x165667b1u^(u32)(ep+2)*0xd3a2646cu);
+}
+static u32 search_initial_hash(const SearchState *s){
+  u32 h=search_meta_token(s->side,s->castling,s->ep);
+  for(int sq=0;sq<64;sq++)if(board[sq])h^=search_piece_token(sq,board[sq]);
+  return h;
+}
+static void search_hash_set_square(SearchState *s,int sq,int value){
+  int old=board[sq];
+  if(old) s->hash^=search_piece_token(sq,old);
+  if(value) s->hash^=search_piece_token(sq,value);
+  board[sq]=(i8)value;
+}
+
 static void search_apply(SearchState *s,u32 m,SearchUndo *u){
   u->state=*s;
   int from=move_from(m),to=move_to(m),flags=move_flags(m);
   int moving=board[from],capture_sq=(flags&2)?to-s->side*8:to;
   u->moving=(i8)moving;u->captured=board[capture_sq];
-  board[from]=0;board[to]=move_promotion(m)?(i8)(s->side*move_promotion(m)):(i8)moving;
-  if(flags&2)board[capture_sq]=0;
+  s->hash^=search_meta_token(s->side,s->castling,s->ep);
+  search_hash_set_square(s,from,0);
+  if(flags&2)search_hash_set_square(s,capture_sq,0);
+  search_hash_set_square(s,to,move_promotion(m)?s->side*move_promotion(m):moving);
   if(absolute(moving)==6){
     if(s->side>0)s->wk=to;else s->bk=to;
     if(s->side>0)s->castling&=~3;else s->castling&=~12;
     if(flags&4){
-      int rf=s->side>0?7:63,rt=s->side>0?5:61;board[rt]=board[rf];board[rf]=0;
+      int rf=s->side>0?7:63,rt=s->side>0?5:61;
+      int rook=board[rf];search_hash_set_square(s,rf,0);search_hash_set_square(s,rt,rook);
     }else if(flags&8){
-      int rf=s->side>0?0:56,rt=s->side>0?3:59;board[rt]=board[rf];board[rf]=0;
+      int rf=s->side>0?0:56,rt=s->side>0?3:59;
+      int rook=board[rf];search_hash_set_square(s,rf,0);search_hash_set_square(s,rt,rook);
     }
   }
   if(from==0||to==0)s->castling&=~2;
@@ -246,6 +272,7 @@ static void search_apply(SearchState *s,u32 m,SearchUndo *u){
   if(captured_type==1||captured_type==4||captured_type==5)s->material--;
   if(piece==1&&promotion&&(promotion==2||promotion==3))s->material--;
   s->side=-s->side;
+  s->hash^=search_meta_token(s->side,s->castling,s->ep);
 }
 static void search_undo(SearchState *s,u32 m,const SearchUndo *u){
   int flags=move_flags(m),from=move_from(m),to=move_to(m),side=u->state.side;
@@ -317,14 +344,7 @@ static int search_public_lookup(const SearchState *s){
   return 0;
 }
 
-static u32 search_position_hash(const SearchState *s){
-  u32 h=2166136261u;
-  for(int i=0;i<64;i++){h^=(u32)(board[i]+7);h*=16777619u;}
-  h^=(u32)(s->side+2);h*=16777619u;
-  h^=(u32)s->castling;h*=16777619u;
-  h^=(u32)(s->ep+1);h*=16777619u;
-  return h;
-}
+static u32 search_position_hash(const SearchState *s){return s->hash;}
 static int search_position_equal(const SearchPositionEntry *e,const SearchState *s){
   if(e->side!=s->side||e->castling!=s->castling||e->ep!=s->ep)return 0;
   for(int i=0;i<64;i++)if(e->squares[i]!=board[i])return 0;
@@ -577,7 +597,8 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
   int material=0;
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
-  SearchState s={side,castling,ep,wk,bk,halfmove,material};
+  SearchState s={side,castling,ep,wk,bk,halfmove,material,0};
+  s.hash=search_initial_hash(&s);
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
