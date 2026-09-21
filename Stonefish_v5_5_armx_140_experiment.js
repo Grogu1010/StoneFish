@@ -7,6 +7,14 @@ const STONEFISH_V5_5_ARMX_140_NO_ARMX_MOVE = getStonefishV55Testunit1NoARMXMove;
 const STONEFISH_V5_5_ARMX_140_NODE_BUDGET = Number.parseInt(
   (typeof process !== 'undefined' && process.env.ARMX140_NODES) || '1600', 10
 ) || 1600;
+const STONEFISH_V5_5_ARMX_140_MODE =
+  (typeof process !== 'undefined' && process.env.ARMX140_MODE) || 'roots';
+const STONEFISH_V5_5_ARMX_140_ROOTS = Number.parseInt(
+  (typeof process !== 'undefined' && process.env.ARMX140_ROOTS) || '6', 10
+) || 6;
+const STONEFISH_V5_5_ARMX_140_ROOT_DEPTH = Number.parseInt(
+  (typeof process !== 'undefined' && process.env.ARMX140_ROOT_DEPTH) || '4', 10
+) || 4;
 
 function getStonefishV55ARMX140Move(game) {
   const originalPolicy = armxPreviewOpponentPolicy;
@@ -15,9 +23,15 @@ function getStonefishV55ARMX140Move(game) {
     if (!policy) return null;
     // Keep every learned preference, reduction rule and finalist adjustment.
     // Only cap the amount of native search work requested by ARMX.
+    if (STONEFISH_V5_5_ARMX_140_MODE === 'budget') {
+      return Object.assign({}, policy, {
+        searchBudget: Math.max(SF55C.nodes, STONEFISH_V5_5_ARMX_140_NODE_BUDGET),
+        maxDepth: SF55C.maxDepth,
+      });
+    }
     return Object.assign({}, policy, {
-      searchBudget: Math.max(SF55C.nodes, STONEFISH_V5_5_ARMX_140_NODE_BUDGET),
-      maxDepth: SF55C.maxDepth,
+      deepRootLimit: STONEFISH_V5_5_ARMX_140_ROOTS,
+      deepRootFromDepth: STONEFISH_V5_5_ARMX_140_ROOT_DEPTH,
     });
   };
   try {
