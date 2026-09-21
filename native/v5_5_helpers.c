@@ -201,6 +201,8 @@ static int search_path_counts[SEARCH_POS_CAP+1];
 static int search_path_stack[64],search_path_top,search_path_signature;
 static int search_position_count,search_signature_count;
 static u32 search_generation;
+static int search_eval_mg,search_eval_eg,search_eval_phase,search_eval_wb,search_eval_bb;
+static u64 search_eval_wpawns,search_eval_bpawns,search_eval_wrooks,search_eval_brooks;
 
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
 int exact_ptr(void){return (int)(unsigned long)root_exact;}
@@ -249,6 +251,35 @@ static void search_initial_packed(SearchState *s){
     s->packed[word]=value;
   }
 }
+static void search_eval_piece_delta(int sq,int piece,int delta){
+  if(!piece)return;
+  int side=piece>0?1:-1,type=absolute(piece),ps=side>0?sq:sq^56;
+  const int *pst=config+7,*ending=config+7+448;
+  search_eval_mg+=delta*side*(config[type]+pst[type*64+ps]);
+  search_eval_eg+=delta*side*(config[type]+ending[type*64+ps]);
+  search_eval_phase+=delta*(type==2||type==3?1:type==4?2:type==5?4:0);
+  u64 bit=(u64)1<<sq;
+  if(type==1){
+    if(side>0){if(delta>0)search_eval_wpawns|=bit;else search_eval_wpawns&=~bit;}
+    else{if(delta>0)search_eval_bpawns|=bit;else search_eval_bpawns&=~bit;}
+  }else if(type==3){
+    if(side>0)search_eval_wb+=delta;else search_eval_bb+=delta;
+  }else if(type==4){
+    if(side>0){if(delta>0)search_eval_wrooks|=bit;else search_eval_wrooks&=~bit;}
+    else{if(delta>0)search_eval_brooks|=bit;else search_eval_brooks&=~bit;}
+  }
+}
+static void search_eval_init(void){
+  search_eval_mg=search_eval_eg=search_eval_phase=search_eval_wb=search_eval_bb=0;
+  search_eval_wpawns=search_eval_bpawns=search_eval_wrooks=search_eval_brooks=0;
+  for(int sq=0;sq<64;sq++)if(board[sq])search_eval_piece_delta(sq,board[sq],1);
+}
+static void search_board_set_square(int sq,int value){
+  int old=board[sq];if(old==value)return;
+  if(old)search_eval_piece_delta(sq,old,-1);
+  if(value)search_eval_piece_delta(sq,value,1);
+  board[sq]=(i8)value;
+}
 static void search_hash_set_square(SearchState *s,int sq,int value){
   int old=board[sq];
   if(old) s->hash^=search_piece_token(sq,old);
@@ -256,7 +287,7 @@ static void search_hash_set_square(SearchState *s,int sq,int value){
   int word=sq>>4,shift=(sq&15)<<2;
   u64 mask=(u64)15<<shift;
   s->packed[word]=(s->packed[word]&~mask)|((u64)(value+6)<<shift);
-  board[sq]=(i8)value;
+  search_board_set_square(sq,value);
 }
 
 static void search_apply(SearchState *s,u32 m,SearchUndo *u){
@@ -295,13 +326,15 @@ static void search_apply(SearchState *s,u32 m,SearchUndo *u){
 static void search_undo(SearchState *s,u32 m,const SearchUndo *u){
   int flags=move_flags(m),from=move_from(m),to=move_to(m),side=u->state.side;
   if(flags&4){
-    int rf=side>0?7:63,rt=side>0?5:61;board[rf]=board[rt];board[rt]=0;
+    int rf=side>0?7:63,rt=side>0?5:61,rook=board[rt];
+    search_board_set_square(rt,0);search_board_set_square(rf,rook);
   }else if(flags&8){
-    int rf=side>0?0:56,rt=side>0?3:59;board[rf]=board[rt];board[rt]=0;
+    int rf=side>0?0:56,rt=side>0?3:59,rook=board[rt];
+    search_board_set_square(rt,0);search_board_set_square(rf,rook);
   }
-  board[from]=u->moving;
-  if(flags&2){board[to]=0;board[to-side*8]=u->captured;}
-  else board[to]=u->captured;
+  search_board_set_square(from,u->moving);
+  if(flags&2){search_board_set_square(to,0);search_board_set_square(to-side*8,u->captured);}
+  else search_board_set_square(to,u->captured);
   *s=u->state;
 }
 
@@ -353,6 +386,73 @@ int search_evaluate_fast(int side,int white_king,int black_king){
     }
   }
   if(wb>=2){mg+=30;eg+=45;}if(bb>=2){mg-=30;eg-=45;}
+  for(int i=0;i<wrc;i++){int f=wrooks[i]&7;if(!wp[f]){mg+=bp[f]?15:30;eg+=15;}}
+  for(int i=0;i<brc;i++){int f=brooks[i]&7;if(!bp[f]){mg-=wp[f]?15:30;eg-=15;}}
+  int shield=0,wf=white_king&7;
+  for(int df=-1;df<=1;df++){if(wf+df<0||wf+df>7)continue;int x=white_king+8+df;if(x>=0&&x<64&&board[x]==1)shield++;}
+  mg+=shield*12;shield=0;
+  int bf=black_king&7;
+  for(int df=-1;df<=1;df++){if(bf+df<0||bf+df>7)continue;int x=black_king-8+df;if(x>=0&&x<64&&board[x]==-1)shield++;}
+  mg-=shield*12;
+  if(phase>24)phase=24;
+  double score=(mg*phase+eg*(24-phase))/24.0;
+  if(phase<=4&&absolute(eg)>400){
+    int winner=eg>0?1:-1,loser=winner>0?black_king:white_king,king=winner>0?white_king:black_king;
+    int edge=maximum(absolute(2*(loser&7)-7),absolute(2*(loser>>3)-7));
+    int proximity=14-absolute((king&7)-(loser&7))-absolute((king>>3)-(loser>>3));
+    score+=winner*(edge*10+proximity*6);
+  }
+  return (int)__builtin_floor(score*side+0.5)+8;
+}
+
+static int search_evaluate_cached(int side,int white_king,int black_king){
+  int mg=search_eval_mg,eg=search_eval_eg,phase=search_eval_phase,wp[8]={0},bp[8]={0};
+  int white[16],black[16],wc=0,bc=0,wrooks[10],brooks[10],wrc=0,brc=0;
+  int wmin[8]={99,99,99,99,99,99,99,99},bmax[8]={-1,-1,-1,-1,-1,-1,-1,-1};
+  u64 bits=search_eval_wpawns;
+  while(bits){
+    int sq=__builtin_ctzll(bits),file=sq&7;bits&=bits-1;
+    wp[file]++;white[wc++]=sq;if(sq<wmin[file])wmin[file]=sq;
+  }
+  bits=search_eval_bpawns;
+  while(bits){
+    int sq=__builtin_ctzll(bits),file=sq&7;bits&=bits-1;
+    bp[file]++;black[bc++]=sq;if(sq>bmax[file])bmax[file]=sq;
+  }
+  bits=search_eval_wrooks;while(bits){int sq=__builtin_ctzll(bits);bits&=bits-1;wrooks[wrc++]=sq;}
+  bits=search_eval_brooks;while(bits){int sq=__builtin_ctzll(bits);bits&=bits-1;brooks[brc++]=sq;}
+  static const int middle[8]={0,0,8,17,35,65,110,0},endingPawn[8]={0,0,15,32,65,120,210,0};
+  for(int i=0;i<wc;i++){
+    int sq=white[i],f=sq&7,r=sq>>3;
+    if(wp[f]>1){mg-=12;eg-=16;}
+    if(!(f>0&&wp[f-1])&&!(f<7&&wp[f+1])){mg-=11;eg-=15;}
+    int passed=1;
+    for(int ff=f>0?f-1:f;ff<=(f<7?f+1:f);ff++)if(bmax[ff]>sq){passed=0;break;}
+    if(passed){
+      mg+=middle[r];eg+=endingPawn[r];
+      if(r>=4){
+        int ed=maximum(absolute((black_king&7)-f),absolute((black_king>>3)-7));
+        int od=maximum(absolute((white_king&7)-f),absolute((white_king>>3)-7));
+        eg+=(ed-od)*r*3;
+      }
+    }
+  }
+  for(int i=0;i<bc;i++){
+    int sq=black[i],f=sq&7,r=7-(sq>>3);
+    if(bp[f]>1){mg+=12;eg+=16;}
+    if(!(f>0&&bp[f-1])&&!(f<7&&bp[f+1])){mg+=11;eg+=15;}
+    int passed=1;
+    for(int ff=f>0?f-1:f;ff<=(f<7?f+1:f);ff++)if(wmin[ff]<sq){passed=0;break;}
+    if(passed){
+      mg-=middle[r];eg-=endingPawn[r];
+      if(r>=4){
+        int ed=maximum(absolute((white_king&7)-f),absolute((white_king>>3)-0));
+        int od=maximum(absolute((black_king&7)-f),absolute((black_king>>3)-0));
+        eg-=(ed-od)*r*3;
+      }
+    }
+  }
+  if(search_eval_wb>=2){mg+=30;eg+=45;}if(search_eval_bb>=2){mg-=30;eg-=45;}
   for(int i=0;i<wrc;i++){int f=wrooks[i]&7;if(!wp[f]){mg+=bp[f]?15:30;eg+=15;}}
   for(int i=0;i<brc;i++){int f=brooks[i]&7;if(!bp[f]){mg-=wp[f]?15:30;eg-=15;}}
   int shield=0,wf=white_king&7;
@@ -580,10 +680,10 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   if(search_draw(s,pos))return 0;
   if(search_nodes_count>search_node_limit&&search_iter_depth>2){
     if(!check&&!generate(s->side,s->castling,s->ep,king,2))return 0;
-    search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);
+    search_abort=1;return search_evaluate_cached(s->side,s->wk,s->bk);
   }
-  int stand=check?-SEARCH_MATE:search_evaluate_fast(s->side,s->wk,s->bk);
-  if(ply>20)return !check&&!generate(s->side,s->castling,s->ep,king,2)?0:search_evaluate_fast(s->side,s->wk,s->bk);
+  int stand=check?-SEARCH_MATE:search_evaluate_cached(s->side,s->wk,s->bk);
+  if(ply>20)return !check&&!generate(s->side,s->castling,s->ep,king,2)?0:search_evaluate_cached(s->side,s->wk,s->bk);
   if(!check){
     if(stand>=beta||remaining<=0)return generate(s->side,s->castling,s->ep,king,2)?stand:0;
     if(stand>alpha)alpha=stand;
@@ -629,7 +729,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   int n=generate(s->side,s->castling,s->ep,king,0);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
-  if(!budget_live){search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);}
+  if(!budget_live){search_abort=1;return search_evaluate_cached(s->side,s->wk,s->bk);}
   u32 *moves=search_move_stack[ply<32?ply:31];for(int i=0;i<n;i++)moves[i]=output[i];
   search_sort(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
@@ -694,7 +794,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   int material=0;
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
   SearchState s={side,castling,ep,wk,bk,halfmove,material,0,{0,0,0,0}};
-  s.hash=search_initial_hash(&s);search_initial_packed(&s);
+  s.hash=search_initial_hash(&s);search_initial_packed(&s);search_eval_init();
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
@@ -709,7 +809,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
   for(int i=0;i<n;i++){
     current_moves[i]=output[i];current_exact[i]=0;SearchUndo u;search_apply(&s,current_moves[i],&u);
-    current_scores[i]=-search_evaluate_fast(s.side,s.wk,s.bk);search_undo(&s,current_moves[i],&u);
+    current_scores[i]=-search_evaluate_cached(s.side,s.wk,s.bk);search_undo(&s,current_moves[i],&u);
   }
   for(int i=1;i<n;i++){
     u32 m=current_moves[i];int sc=current_scores[i],j=i-1;
