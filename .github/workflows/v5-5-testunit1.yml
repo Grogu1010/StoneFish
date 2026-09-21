@@ -88,4 +88,5 @@ jobs:
         env:
           SAMPLES: '20'
           GAMES: '8'
+          ARMX_FAST_SCREEN: '1'
         run: node benchmark_v5_5_testunit1.js
