@@ -462,7 +462,12 @@ function sf55cHost(g,replyPolicy=null){
   for(let depth=1;depth<=depthLimit;depth++){
     ctx.depth=depth;
     const configuredBeam=replyPolicy&&typeof process!=='undefined'&&process.env
-      ? Number.parseInt(process.env.ARMX_ROOT_BEAM||'0',10)||0 : 0;
+      ? Number.parseInt(
+          process.env.ARMX_FAST_SCREEN==='1'
+            ? (process.env.ARMX_FAST_ROOT_BEAM||'0')
+            : (process.env.ARMX_ROOT_BEAM||'0'),
+          10
+        )||0 : 0;
     const useBeam=depth>=3&&configuredBeam>=SF55C.multiPV&&complete.length>configuredBeam;
     const active=useBeam?complete.slice(0,configuredBeam):complete;
     const sidelined=useBeam?complete.slice(configuredBeam).map(previous=>({
