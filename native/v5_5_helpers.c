@@ -226,7 +226,7 @@ int search_depth(void){return search_depth_done;}
 typedef struct {
   int side,castling,ep,wk,bk,halfmove,material;
   u32 hash;
-  u64 packed[4];
+  u64 packed[4],occupied;
 } SearchState;
 typedef struct {
   SearchState state;
@@ -256,9 +256,14 @@ static u32 search_initial_hash(const SearchState *s){
   return h;
 }
 static void search_initial_packed(SearchState *s){
+  s->occupied=0;
   for(int word=0;word<4;word++){
     u64 value=0;
-    for(int i=0;i<16;i++)value|=(u64)(board[(word<<4)+i]+6)<<(i<<2);
+    for(int i=0;i<16;i++){
+      int sq=(word<<4)+i,piece=board[sq];
+      value|=(u64)(piece+6)<<(i<<2);
+      if(piece)s->occupied|=(u64)1<<sq;
+    }
     s->packed[word]=value;
   }
 }
@@ -267,8 +272,10 @@ static void search_hash_set_square(SearchState *s,int sq,int value){
   if(old) s->hash^=search_piece_token(sq,old);
   if(value) s->hash^=search_piece_token(sq,value);
   int word=sq>>4,shift=(sq&15)<<2;
-  u64 mask=(u64)15<<shift;
+  u64 mask=(u64)15<<shift,bit=(u64)1<<sq;
   s->packed[word]=(s->packed[word]&~mask)|((u64)(value+6)<<shift);
+  if(!old&&value)s->occupied|=bit;
+  else if(old&&!value)s->occupied&=~bit;
   board[sq]=(i8)value;
 }
 
@@ -318,12 +325,24 @@ static void search_undo(SearchState *s,u32 m,const SearchUndo *u){
   *s=u->state;
 }
 
-int search_evaluate_fast(int side,int white_king,int black_king){
+static int search_evaluate_core(int side,int white_king,int black_king,u64 occupied,int sparse){
   int mg=0,eg=0,phase=0,wb=0,bb=0,wp[8]={0},bp[8]={0};
   int white[16],black[16],wc=0,bc=0,wrooks[10],brooks[10],wrc=0,brc=0;
   int wmin[8]={99,99,99,99,99,99,99,99},bmax[8]={-1,-1,-1,-1,-1,-1,-1,-1};
   const int *pst=config+7,*ending=config+7+448;
-  for(int sq=0;sq<64;sq++){
+  if(sparse){
+    while(occupied){
+      int sq=__builtin_ctzll(occupied);occupied&=occupied-1;
+      int p=board[sq],s=p>0?1:-1,type=absolute(p),ps=s>0?sq:sq^56,file=sq&7;
+      mg+=s*(config[type]+pst[type*64+ps]);eg+=s*(config[type]+ending[type*64+ps]);
+      phase+=type==2||type==3?1:type==4?2:type==5?4:0;
+      if(type==1){
+        if(s>0){wp[file]++;white[wc++]=sq;if(sq<wmin[file])wmin[file]=sq;}
+        else{bp[file]++;black[bc++]=sq;if(sq>bmax[file])bmax[file]=sq;}
+      }else if(type==3){if(s>0)wb++;else bb++;}
+      else if(type==4){if(s>0)wrooks[wrc++]=sq;else brooks[brc++]=sq;}
+    }
+  }else for(int sq=0;sq<64;sq++){
     int p=board[sq];if(!p)continue;
     int s=p>0?1:-1,type=absolute(p),ps=s>0?sq:sq^56,file=sq&7;
     mg+=s*(config[type]+pst[type*64+ps]);eg+=s*(config[type]+ending[type*64+ps]);
@@ -383,6 +402,12 @@ int search_evaluate_fast(int side,int white_king,int black_king){
     score+=winner*(edge*10+proximity*6);
   }
   return (int)__builtin_floor(score*side+0.5)+8;
+}
+int search_evaluate_fast(int side,int white_king,int black_king){
+  return search_evaluate_core(side,white_king,black_king,0,0);
+}
+static int search_evaluate_state(const SearchState *s){
+  return search_evaluate_core(s->side,s->wk,s->bk,s->occupied,1);
 }
 
 static int search_insufficient(void){
@@ -593,10 +618,10 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   if(search_draw(s,pos))return 0;
   if(search_nodes_count>search_node_limit&&search_iter_depth>2){
     if(!check&&!generate_known(s->side,s->castling,s->ep,king,2,0))return 0;
-    search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);
+    search_abort=1;return search_evaluate_state(s);
   }
-  int stand=check?-SEARCH_MATE:search_evaluate_fast(s->side,s->wk,s->bk);
-  if(ply>20)return !check&&!generate_known(s->side,s->castling,s->ep,king,2,0)?0:search_evaluate_fast(s->side,s->wk,s->bk);
+  int stand=check?-SEARCH_MATE:search_evaluate_state(s);
+  if(ply>20)return !check&&!generate_known(s->side,s->castling,s->ep,king,2,0)?0:search_evaluate_state(s);
   if(!check){
     if(stand>=beta||remaining<=0)return generate_known(s->side,s->castling,s->ep,king,2,0)?stand:0;
     if(stand>alpha)alpha=stand;
@@ -642,7 +667,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   int n=generate_known(s->side,s->castling,s->ep,king,0,check);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
-  if(!budget_live){search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);}
+  if(!budget_live){search_abort=1;return search_evaluate_state(s);}
   u32 *moves=search_move_stack[ply<32?ply:31];for(int i=0;i<n;i++)moves[i]=output[i];
   search_sort(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
@@ -708,7 +733,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
   int material=0;
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
-  SearchState s={side,castling,ep,wk,bk,halfmove,material,0,{0,0,0,0}};
+  SearchState s={side,castling,ep,wk,bk,halfmove,material,0,{0,0,0,0},0};
   s.hash=search_initial_hash(&s);search_initial_packed(&s);
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
@@ -724,7 +749,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
   for(int i=0;i<n;i++){
     current_moves[i]=output[i];current_exact[i]=0;SearchUndo u;search_apply(&s,current_moves[i],&u);
-    current_scores[i]=-search_evaluate_fast(s.side,s.wk,s.bk);search_undo(&s,current_moves[i],&u);
+    current_scores[i]=-search_evaluate_state(&s);search_undo(&s,current_moves[i],&u);
   }
   for(int i=1;i<n;i++){
     u32 m=current_moves[i];int sc=current_scores[i],j=i-1;
