@@ -261,7 +261,10 @@ function sf55cDraw(g,ctx,key) {
       if(!ctx.compactCounts)ctx.compactCounts=new Map(Array.from(g.positionCounts,([k,v])=>[sf55cPackHistoryKey(k),v]));
       counts=ctx.compactCounts;
     }
-    const pathId=ctx.positionIds.get(key),pathCount=pathId===undefined?0:(ctx.pathCounts[pathId]||0);
+    const pathId=ctx.positionIds.get(key);
+    const pathCount=ctx.pathCounts
+      ?(pathId===undefined?0:(ctx.pathCounts[pathId]||0))
+      :(ctx.path?(ctx.path.get(key)||0):0);
     if((counts.get(key)||0)+pathCount+1>=3)return true;
   }
   return !(ctx.material>0)&&sf55cInsufficient(g);
@@ -272,7 +275,8 @@ function sf55cEnter(ctx,key) {
   if(ctx.pathSignature===undefined){ctx.pathSignature=0;ctx.pathSignatureStack=[];ctx.pathSignatureIds=new Map();}
   let id=ctx.positionIds.get(key);
   if(id===undefined){id=ctx.positionIds.size+1;ctx.positionIds.set(key,id);}
-  ctx.pathCounts[id]=(ctx.pathCounts[id]||0)+1;
+  if(ctx.pathCounts)ctx.pathCounts[id]=(ctx.pathCounts[id]||0)+1;
+  else if(ctx.path)ctx.path.set(key,(ctx.path.get(key)||0)+1);
   const parent=ctx.pathSignature,pair=parent*16384+id;
   let signature=ctx.pathSignatureIds.get(pair);
   if(signature===undefined){signature=ctx.pathSignatureIds.size+1;ctx.pathSignatureIds.set(pair,signature);}
@@ -282,7 +286,11 @@ function sf55cEnter(ctx,key) {
 function sf55cExit(ctx,key) {
   if (key === null) return;
   const id=ctx.positionIds.get(key);
-  ctx.pathCounts[id]--;
+  if(ctx.pathCounts)ctx.pathCounts[id]--;
+  else if(ctx.path){
+    const count=ctx.path.get(key)-1;
+    if(count)ctx.path.set(key,count);else ctx.path.delete(key);
+  }
   ctx.pathSignature=ctx.pathSignatureStack.pop();
 }
 
@@ -970,8 +978,9 @@ function sf55cKernelMoves(g,mode,ctx=null,ply=0){
  if(mode===2)return !!count;
  let moves;
  if(ctx){
-  moves=ctx.moveBuffers[ply];
-  if(!moves)moves=ctx.moveBuffers[ply]=[];
+  const buffers=ctx.moveBuffers||(ctx.moveBuffers=[]);
+  moves=buffers[ply];
+  if(!moves)moves=buffers[ply]=[];
   while(moves.length<count)moves.push({from:0,to:0,piece:0,captured:0,promotion:0,flags:0});
   moves.length=count;
  }else moves=new Array(count);
