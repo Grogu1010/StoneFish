@@ -83,6 +83,7 @@ static int attacked(int square,int by_side){
 }
 int in_check(int side,int king){return attacked(king,-side);}
 static int gen_side,gen_king,gen_mode,gen_count,gen_check;
+static u32 *gen_output=output;
 static int gen_king_line(int square){
   int df=absolute((square&7)-(gen_king&7)),dr=absolute((square>>3)-(gen_king>>3));
   return !df||!dr||df==dr;
@@ -93,7 +94,7 @@ static int emit(int from,int to,int promotion,int flags){
   int type=absolute(moving);
   if(type!=6&&!gen_check&&!(flags&2)&&!gen_king_line(from)){
     if(gen_mode==2)return 1;
-    output[gen_count++]=(u32)(from|(to<<6)|(type<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
+    gen_output[gen_count++]=(u32)(from|(to<<6)|(type<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
     return 0;
   }
   int ep_square=-1,ep_piece=0,rook_from=-1,rook_to=-1,rook_piece=0;
@@ -160,6 +161,7 @@ static int generate_known(int side,int castling,int ep,int king,int mode,int kno
   return gen_mode==2?0:gen_count;
 }
 int generate(int side,int castling,int ep,int king,int mode){
+  gen_output=output;
   return generate_known(side,castling,ep,king,mode,attacked(king,-side));
 }
 
@@ -177,6 +179,12 @@ static int search_public_counts_input[SEARCH_PUBLIC_INPUT_CAP];
 static int search_history[32768],search_killers[32];
 static u32 search_move_stack[32][512];
 static int search_sort_priorities[512];
+static int search_generate(int side,int castling,int ep,int king,int mode,int known_check,int ply){
+  gen_output=search_move_stack[ply<32?ply:31];
+  int count=generate_known(side,castling,ep,king,mode,known_check);
+  gen_output=output;
+  return count;
+}
 static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
@@ -586,9 +594,8 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   int pos=s->halfmove?search_position_id(s):0;
   u32 *moves=search_move_stack[ply<32?ply:31];int n=0;
   if(check){
-    n=generate_known(s->side,s->castling,s->ep,king,0,1);
+    n=search_generate(s->side,s->castling,s->ep,king,0,1,ply);
     if(!n)return -SEARCH_MATE+ply;
-    for(int i=0;i<n;i++)moves[i]=output[i];
   }
   if(search_draw(s,pos))return 0;
   if(search_nodes_count>search_node_limit&&search_iter_depth>2){
@@ -600,9 +607,8 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   if(!check){
     if(stand>=beta||remaining<=0)return generate_known(s->side,s->castling,s->ep,king,2,0)?stand:0;
     if(stand>alpha)alpha=stand;
-    n=generate_known(s->side,s->castling,s->ep,king,1,0);
+    n=search_generate(s->side,s->castling,s->ep,king,1,0,ply);
     if(!n)return generate_known(s->side,s->castling,s->ep,king,2,0)?stand:0;
-    for(int i=0;i<n;i++)moves[i]=output[i];
   }
   search_sort(moves,n,ply,0);
   if(pos)search_enter_position(pos);
@@ -639,11 +645,11 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(hit->flag==-1&&hit->score<=alpha)return hit->score;
   }
   int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
-  int n=generate_known(s->side,s->castling,s->ep,king,0,check);
+  int n=search_generate(s->side,s->castling,s->ep,king,0,check,ply);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_fast(s->side,s->wk,s->bk);}
-  u32 *moves=search_move_stack[ply<32?ply:31];for(int i=0;i<n;i++)moves[i]=output[i];
+  u32 *moves=search_move_stack[ply<32?ply:31];
   search_sort(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
