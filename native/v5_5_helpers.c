@@ -333,9 +333,32 @@ static void search_undo(SearchState *s,u32 m,const SearchUndo *u){
   *s=u->state;
 }
 
-static int search_generate(const SearchState *s,int mode){
+static int search_gen_check,search_gen_king;
+static int search_from_king_line(int from){
+  int df=absolute((from&7)-(search_gen_king&7));
+  int dr=absolute((from>>3)-(search_gen_king>>3));
+  return !df||!dr||df==dr;
+}
+static int search_emit_aligned(int from,int to,int promotion,int flags){
+  int moving=board[from],target=board[to],captured=(flags&2)?1:absolute(target);
+  if(!search_gen_check&&absolute(moving)!=6&&!(flags&2)&&!search_from_king_line(from)){
+    if(gen_mode==1&&!captured&&!promotion)return 0;
+    if(gen_mode==2)return 1;
+    output[gen_count++]=(u32)(from|(to<<6)|(absolute(moving)<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
+    return 0;
+  }
+  return emit(from,to,promotion,flags);
+}
+static int search_pawn_emit_aligned(int from,int to,int promotion_rank){
+  if((to>>3)!=promotion_rank)return search_emit_aligned(from,to,0,0);
+  return search_emit_aligned(from,to,5,0)||search_emit_aligned(from,to,4,0)
+    ||search_emit_aligned(from,to,3,0)||search_emit_aligned(from,to,2,0);
+}
+
+static int search_generate(const SearchState *s,int mode,int check){
   int side=s->side,castling=s->castling,ep=s->ep,king=side>0?s->wk:s->bk;
   gen_side=side;gen_king=king;gen_mode=mode;gen_count=0;
+  search_gen_check=check;search_gen_king=king;
   u64 occupied=side>0?s->white_occ:s->black_occ;
   while(occupied){
     int from=__builtin_ctzll(occupied);occupied&=occupied-1;
@@ -343,18 +366,18 @@ static int search_generate(const SearchState *s,int mode){
     if(type==1){
       int step=side*8,start=side==1?1:6,promotion=side==1?7:0,one=from+step;
       if(one>=0&&one<64&&!board[one]){
-        if(pawn_emit(from,one,promotion))return 1;
-        if((one>>3)!=promotion&&rank==start&&!board[from+step*2]&&emit(from,from+step*2,0,1))return 1;
+        if(search_pawn_emit_aligned(from,one,promotion))return 1;
+        if((one>>3)!=promotion&&rank==start&&!board[from+step*2]&&search_emit_aligned(from,from+step*2,0,1))return 1;
       }
       for(int df=-1;df<=1;df+=2){
         int f=file+df,to=from+step+df;if(f<0||f>7||to<0||to>=64)continue;
-        if(board[to]&&((board[to]>0?1:-1)==-side)){if(pawn_emit(from,to,promotion))return 1;}
-        else if(to==ep&&emit(from,to,0,2))return 1;
+        if(board[to]&&((board[to]>0?1:-1)==-side)){if(search_pawn_emit_aligned(from,to,promotion))return 1;}
+        else if(to==ep&&search_emit_aligned(from,to,0,2))return 1;
       }
       continue;
     }
     if(type==2){
-      for(int i=0;i<8;i++){int ff=file+ndf[i],r=rank+ndr[i];if(ff<0||ff>7||r<0||r>7)continue;int to=r*8+ff;if((!board[to]||((board[to]>0?1:-1)==-side))&&emit(from,to,0,0))return 1;}
+      for(int i=0;i<8;i++){int ff=file+ndf[i],r=rank+ndr[i];if(ff<0||ff>7||r<0||r>7)continue;int to=r*8+ff;if((!board[to]||((board[to]>0?1:-1)==-side))&&search_emit_aligned(from,to,0,0))return 1;}
       continue;
     }
     int start=type==4?8:0,end=type==3?8:16;
@@ -362,17 +385,17 @@ static int search_generate(const SearchState *s,int mode){
       int ff=file+dirs[i],r=rank+dirs[i+1];
       while(ff>=0&&ff<8&&r>=0&&r<8){
         int to=r*8+ff;
-        if(!board[to]){if(emit(from,to,0,0))return 1;}
-        else{if(((board[to]>0?1:-1)==-side)&&emit(from,to,0,0))return 1;break;}
+        if(!board[to]){if(search_emit_aligned(from,to,0,0))return 1;}
+        else{if(((board[to]>0?1:-1)==-side)&&search_emit_aligned(from,to,0,0))return 1;break;}
         if(type==6)break;ff+=dirs[i];r+=dirs[i+1];
       }
     }
     if(type==6&&side==1&&from==4){
-      if((castling&1)&&board[7]==4&&!board[5]&&!board[6]&&!attacked(4,-1)&&!attacked(5,-1)&&!attacked(6,-1)&&emit(4,6,0,4))return 1;
-      if((castling&2)&&board[0]==4&&!board[1]&&!board[2]&&!board[3]&&!attacked(4,-1)&&!attacked(3,-1)&&!attacked(2,-1)&&emit(4,2,0,8))return 1;
+      if((castling&1)&&board[7]==4&&!board[5]&&!board[6]&&!attacked(4,-1)&&!attacked(5,-1)&&!attacked(6,-1)&&search_emit_aligned(4,6,0,4))return 1;
+      if((castling&2)&&board[0]==4&&!board[1]&&!board[2]&&!board[3]&&!attacked(4,-1)&&!attacked(3,-1)&&!attacked(2,-1)&&search_emit_aligned(4,2,0,8))return 1;
     }else if(type==6&&side==-1&&from==60){
-      if((castling&4)&&board[63]==-4&&!board[61]&&!board[62]&&!attacked(60,1)&&!attacked(61,1)&&!attacked(62,1)&&emit(60,62,0,4))return 1;
-      if((castling&8)&&board[56]==-4&&!board[57]&&!board[58]&&!board[59]&&!attacked(60,1)&&!attacked(59,1)&&!attacked(58,1)&&emit(60,58,0,8))return 1;
+      if((castling&4)&&board[63]==-4&&!board[61]&&!board[62]&&!attacked(60,1)&&!attacked(61,1)&&!attacked(62,1)&&search_emit_aligned(60,62,0,4))return 1;
+      if((castling&8)&&board[56]==-4&&!board[57]&&!board[58]&&!board[59]&&!attacked(60,1)&&!attacked(59,1)&&!attacked(58,1)&&search_emit_aligned(60,58,0,8))return 1;
     }
   }
   return mode==2?0:gen_count;
@@ -729,22 +752,22 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   int pos=s->halfmove?search_position_id(s):0;
   u32 moves[512];int n=0;
   if(check){
-    n=search_generate(s,0);
+    n=search_generate(s,0,check);
     if(!n)return -SEARCH_MATE+ply;
     for(int i=0;i<n;i++)moves[i]=output[i];
   }
   if(search_draw(s,pos))return 0;
   if(search_nodes_count>search_node_limit&&search_iter_depth>2){
-    if(!check&&!search_generate(s,2))return 0;
+    if(!check&&!search_generate(s,2,0))return 0;
     search_abort=1;return search_evaluate_state(s);
   }
   int stand=check?-SEARCH_MATE:search_evaluate_state(s);
-  if(ply>20)return !check&&!search_generate(s,2)?0:search_evaluate_state(s);
+  if(ply>20)return !check&&!search_generate(s,2,0)?0:search_evaluate_state(s);
   if(!check){
-    if(stand>=beta||remaining<=0)return search_generate(s,2)?stand:0;
+    if(stand>=beta||remaining<=0)return search_generate(s,2,0)?stand:0;
     if(stand>alpha)alpha=stand;
-    n=search_generate(s,1);
-    if(!n)return search_generate(s,2)?stand:0;
+    n=search_generate(s,1,0);
+    if(!n)return search_generate(s,2,0)?stand:0;
     for(int i=0;i<n;i++)moves[i]=output[i];
   }
   int *priorities=search_prepare_order(moves,n,ply,0);
@@ -782,7 +805,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(hit->flag==-1&&hit->score<=alpha)return hit->score;
   }
   int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
-  int n=search_generate(s,0);
+  int n=search_generate(s,0,check);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_state(s);}
@@ -861,7 +884,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<=SEARCH_POS_CAP;i++)search_path_counts[i]=0;
   for(int i=0;i<32768;i++)search_history[i]=0;
   for(int i=0;i<32;i++)search_killers[i]=0;
-  int king=side>0?wk:bk,n=search_generate(&s,0);
+  int king=side>0?wk:bk,check=in_check(side,king),n=search_generate(&s,0,check);
   if(!n)return 0;
   u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
   for(int i=0;i<n;i++){
