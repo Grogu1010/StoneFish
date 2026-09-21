@@ -11,6 +11,10 @@ function check(g){
  assert.equal(sf55cHasLegalMove(g),legal.length>0,before);
  assert.equal(sf55cInCheck(g),g.in_check(),before);
  assert.equal(sf55cEvaluate(g),sf55cEvaluateJS(g),before);
+ if(SF55C_KERNEL&&SF55C_KERNEL.api.search_evaluate_fast){
+  SF55C_KERNEL.board.set(g.boardState);
+  assert.equal(SF55C_KERNEL.api.search_evaluate_fast(g.side,g.kingSq[1],g.kingSq[-1]),sf55cEvaluateJS(g),before);
+ }
  assert.equal(g.fen(),before);positions++;return legal;
 }
 for(let line=0;line<40;line++){
