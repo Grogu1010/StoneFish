@@ -52,6 +52,8 @@ const ARMX_PREVIEW = Object.freeze({
   evidenceSearchNodes: 400,
   fullSearchEvidence: 8,
   maxExtraSearchDepth: 1,
+  nativeSearchNodes: 30000,
+  nativeSearchDepth: 6,
 });
 
 const ARMX_PREVIEW_GAME_PROFILES = new WeakMap();
@@ -177,6 +179,10 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
     searchBudget,
     maxDepth: SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
     policyGuidedReduction: true,
+    nativeAccelerated: true,
+    nativeSearchNodes: ARMX_PREVIEW.nativeSearchNodes,
+    nativeSearchDepth: ARMX_PREVIEW.nativeSearchDepth,
+    weights,
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };
