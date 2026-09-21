@@ -88,6 +88,8 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
+      - name: Diagnose compiled ARMX parity
+        run: node benchmark_armx_compiled_parity.js
       - name: Measure full ARMX versus No-ARMX
         env:
           SAMPLES: '20'
