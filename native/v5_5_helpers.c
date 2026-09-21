@@ -272,6 +272,51 @@ static void search_eval_piece(SearchState *s,int sq,int piece,int direction){
     else{if(direction>0)s->black_rooks|=bit;else s->black_rooks&=~bit;}
   }
 }
+static u64 search_ray_masks[64][8];
+static int search_ray_masks_ready;
+static void search_init_ray_masks(void){
+  if(search_ray_masks_ready)return;
+  for(int square=0;square<64;square++){
+    int file=square&7,rank=square>>3;
+    for(int d=0;d<8;d++){
+      int df=dirs[d<<1],dr=dirs[(d<<1)+1],f=file+df,r=rank+dr;
+      u64 mask=0;
+      while(f>=0&&f<8&&r>=0&&r<8){mask|=(u64)1<<(r*8+f);f+=df;r+=dr;}
+      search_ray_masks[square][d]=mask;
+    }
+  }
+  search_ray_masks_ready=1;
+}
+static int search_attacked_state(const SearchState *s,int square,int by_side){
+  int file=square&7,rank=square>>3,r=rank-by_side;
+  if(r>=0&&r<8){
+    if(file>0&&board[r*8+file-1]==by_side)return 1;
+    if(file<7&&board[r*8+file+1]==by_side)return 1;
+  }
+  for(int i=0;i<8;i++){
+    int f=file+ndf[i],nr=rank+ndr[i];
+    if(f>=0&&f<8&&nr>=0&&nr<8&&board[nr*8+f]==by_side*2)return 1;
+  }
+  u64 occupied=s->white_occ|s->black_occ;
+  for(int d=0;d<8;d++){
+    u64 blockers=search_ray_masks[square][d]&occupied;
+    if(!blockers)continue;
+    int df=dirs[d<<1],dr=dirs[(d<<1)+1],delta=dr*8+df;
+    int sq=delta>0?__builtin_ctzll(blockers):63-__builtin_clzll(blockers);
+    int p=board[sq],slider=d<4?3:4;
+    if(p==by_side*5||p==by_side*slider)return 1;
+  }
+  for(int d=0;d<8;d++){
+    int f=file+dirs[d<<1],nr=rank+dirs[(d<<1)+1];
+    if(f>=0&&f<8&&nr>=0&&nr<8&&board[nr*8+f]==by_side*6)return 1;
+  }
+  return 0;
+}
+static int search_in_check_state(const SearchState *s){
+  int king=s->side>0?s->wk:s->bk;
+  return search_attacked_state(s,king,-s->side);
+}
+
 static void search_initial_eval(SearchState *s){
   s->eval_mg=s->eval_eg=s->eval_phase=0;
   s->white_bishops=s->black_bishops=0;
@@ -725,7 +770,7 @@ static u32 search_pick_ordered(u32 *moves,int *priorities,int n,int index){
 
 static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   search_nodes_count++;
-  int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
+  int check=search_in_check_state(s);
   int pos=s->halfmove?search_position_id(s):0;
   u32 moves[512];int n=0;
   if(check){
@@ -766,8 +811,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
   if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
     &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6){
-    int king=s->side>0?s->wk:s->bk;
-    if(!in_check(s->side,king)&&policy_logit(last_move)<0){
+    if(!search_in_check_state(s)&&policy_logit(last_move)<0){
       int probe=search_q(s,alpha,beta,ply,search_qdepth);
       if(search_abort||probe>=beta)return probe;
     }
@@ -781,7 +825,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(hit->flag==1&&hit->score>=beta)return hit->score;
     if(hit->flag==-1&&hit->score<=alpha)return hit->score;
   }
-  int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
+  int check=search_in_check_state(s);
   int n=search_generate(s,0);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
@@ -795,8 +839,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     int quiet=!move_captured(m)&&!move_promotion(m),score;
     if(index==0)score=-search_ab(s,depth-1,-beta,-alpha,ply+1,m);
     else{
-      int childking=s->side>0?s->wk:s->bk;
-      int gives_check=in_check(s->side,childking);
+      int gives_check=search_in_check_state(s);
       int reduce=depth>=3&&index>=4&&!check&&quiet&&!gives_check?1:0;
       score=-search_ab(s,depth-1-reduce,-alpha-1,-alpha,ply+1,m);
       if(!search_abort&&score>alpha&&(reduce||score<beta))
@@ -851,6 +894,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
   SearchState s={0};
   s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;s.material=material;
+  search_init_ray_masks();
   s.hash=search_initial_hash(&s);search_initial_eval(&s);
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
