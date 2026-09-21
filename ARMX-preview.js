@@ -196,14 +196,10 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
     // Accumulated voluntary choices activate deeper analysis of learned replies;
     // surprising choices request additional verification. All evidence and
     // preferences belong to this game, never to an opponent name.
-    // Keep learned reply guidance active, but do not automatically buy a
-    // deeper/wider host search on every mature-policy move. Expensive search
-    // effort can be reintroduced selectively by the host when it is actually
-    // decision-relevant; the policy itself stays cheap.
-    searchBudget: SF55C.nodes,
-    maxDepth: SF55C.maxDepth,
-    requestedSearchBudget: searchBudget,
-    requestedMaxDepth: SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
+    searchBudget: (typeof process !== 'undefined' && process.env && process.env.ARMX_FAST_SCREEN === '1')
+      ? SF55C.nodes : searchBudget,
+    maxDepth: (typeof process !== 'undefined' && process.env && process.env.ARMX_FAST_SCREEN === '1')
+      ? SF55C.maxDepth : SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };
