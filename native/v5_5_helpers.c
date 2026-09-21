@@ -429,8 +429,16 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   return stand;
 }
 
-static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply){
+static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 last_move){
   if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
+  if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
+    &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6){
+    int king=s->side>0?s->wk:s->bk;
+    if(!in_check(s->side,king)&&policy_logit(last_move)<0){
+      int probe=search_q(s,alpha,beta,ply,search_qdepth);
+      if(search_abort||probe>=beta)return probe;
+    }
+  }
   search_nodes_count++;
   int pos=search_position_id(s),original=alpha;
   SearchTTEntry *hit=search_tt_find(pos,s->halfmove,ply,search_path_signature);
@@ -452,14 +460,14 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply){
   for(int i=0;i<n;i++){
     u32 m=moves[i];SearchUndo u;search_apply(s,m,&u);
     int quiet=!move_captured(m)&&!move_promotion(m),score;
-    if(index==0)score=-search_ab(s,depth-1,-beta,-alpha,ply+1);
+    if(index==0)score=-search_ab(s,depth-1,-beta,-alpha,ply+1,m);
     else{
       int childking=s->side>0?s->wk:s->bk;
       int gives_check=in_check(s->side,childking);
       int reduce=depth>=3&&index>=4&&!check&&quiet&&!gives_check?1:0;
-      score=-search_ab(s,depth-1-reduce,-alpha-1,-alpha,ply+1);
+      score=-search_ab(s,depth-1-reduce,-alpha-1,-alpha,ply+1,m);
       if(!search_abort&&score>alpha&&(reduce||score<beta))
-        score=-search_ab(s,depth-1,-beta,-alpha,ply+1);
+        score=-search_ab(s,depth-1,-beta,-alpha,ply+1,m);
     }
     search_undo(s,m,&u);
     if(search_abort)break;
@@ -482,9 +490,25 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply){
   return best;
 }
 
+static int promotion_uci_code(int promotion){
+  if(promotion==3)return 'b';
+  if(promotion==2)return 'n';
+  if(promotion==5)return 'q';
+  if(promotion==4)return 'r';
+  return 0;
+}
+static int root_uci_compare(u32 a,u32 b){
+  int af=move_from(a),bf=move_from(b),at=move_to(a),bt=move_to(b);
+  int av[5]={af&7,af>>3,at&7,at>>3,promotion_uci_code(move_promotion(a))};
+  int bv[5]={bf&7,bf>>3,bt&7,bt>>3,promotion_uci_code(move_promotion(b))};
+  for(int i=0;i<5;i++){if(av[i]<bv[i])return -1;if(av[i]>bv[i])return 1;}
+  return 0;
+}
 static void root_insert(u32 *moves,int *scores,int *count,u32 move,int score){
   int i=*count;
-  while(i>0&&scores[i-1]<score){moves[i]=moves[i-1];scores[i]=scores[i-1];i--;}
+  while(i>0&&(scores[i-1]<score||(scores[i-1]==score&&root_uci_compare(moves[i-1],move)>0))){
+    moves[i]=moves[i-1];scores[i]=scores[i-1];i--;
+  }
   moves[i]=move;scores[i]=score;(*count)++;
 }
 
@@ -508,7 +532,9 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   }
   for(int i=1;i<n;i++){
     u32 m=current_moves[i];int sc=current_scores[i],j=i-1;
-    while(j>=0&&current_scores[j]<sc){current_moves[j+1]=current_moves[j];current_scores[j+1]=current_scores[j];j--;}
+    while(j>=0&&(current_scores[j]<sc||(current_scores[j]==sc&&root_uci_compare(current_moves[j],m)>0))){
+      current_moves[j+1]=current_moves[j];current_scores[j+1]=current_scores[j];j--;
+    }
     current_moves[j+1]=m;current_scores[j+1]=sc;
   }
   int current_count=n;
@@ -516,7 +542,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
     search_iter_depth=depth;search_abort=0;int next_count=0,threshold=-SEARCH_MATE;
     for(int i=0;i<current_count;i++){
       u32 m=current_moves[i];SearchUndo u;search_apply(&s,m,&u);
-      int score=-search_ab(&s,depth-1,-SEARCH_MATE,-threshold,1);
+      int score=-search_ab(&s,depth-1,-SEARCH_MATE,-threshold,1,m);
       search_undo(&s,m,&u);
       if(search_abort)break;
       root_insert(next_moves,next_scores,&next_count,m,score);
