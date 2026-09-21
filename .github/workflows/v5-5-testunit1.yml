@@ -88,22 +88,17 @@ jobs:
         env:
           ARMX_DIAG_GAMES: '8'
         run: node benchmark_armx_preview.js
-      - name: Measure focused-budget ARMX versus No-ARMX
+      - name: Measure persistent full-budget ARMX versus No-ARMX
         env:
           SAMPLES: '20'
           GAMES: '8'
           MATCHUP: 'armxVsNoArmx'
-          ARMX_FAST_SCREEN: '1'
-          ARMX_FAST_NODES: '1800'
-          ARMX_FAST_DEPTH: '6'
-          ARMX_FAST_ROOT_BEAM: '3'
+          ARMX_PERSISTENT_TT: '1'
         run: node benchmark_v5_5_testunit1.js
-      - name: Screen focused-budget ARMX against current ARMX
+      - name: Screen persistent full-budget ARMX against current ARMX
         env:
           ARMX_H2H_GAMES: '40'
-          ARMX_FAST_NODES: '1800'
-          ARMX_FAST_DEPTH: '6'
-          ARMX_FAST_ROOT_BEAM: '3'
+          ARMX_CANDIDATE_PERSISTENT: '1'
           ARMX_SELECTIVE_GAP: '-1'
           ARMX_SELECTIVE_REJECT: '0'
         run: node benchmark_armx_fast_vs_current.js
