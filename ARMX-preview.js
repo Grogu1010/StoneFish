@@ -197,9 +197,11 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
     // surprising choices request additional verification. All evidence and
     // preferences belong to this game, never to an opponent name.
     searchBudget: (typeof process !== 'undefined' && process.env && process.env.ARMX_FAST_SCREEN === '1')
-      ? SF55C.nodes : searchBudget,
+      ? Math.max(SF55C.nodes, Number.parseInt(process.env.ARMX_FAST_NODES || String(SF55C.nodes), 10) || SF55C.nodes)
+      : searchBudget,
     maxDepth: (typeof process !== 'undefined' && process.env && process.env.ARMX_FAST_SCREEN === '1')
-      ? SF55C.maxDepth : SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
+      ? Math.max(SF55C.maxDepth, Number.parseInt(process.env.ARMX_FAST_DEPTH || String(SF55C.maxDepth), 10) || SF55C.maxDepth)
+      : SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
     priority: move => Math.round(300 * score(move)),
     isLowPriority: move => score(move) < 0,
   };
