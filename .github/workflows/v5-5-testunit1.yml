@@ -93,7 +93,7 @@ jobs:
           SAMPLES: '20'
           GAMES: '8'
           ARMX_FAST_SCREEN: '1'
-          ARMX_FAST_NODES: '1680'
+          ARMX_FAST_NODES: '2200'
           ARMX_FAST_DEPTH: '4'
           ARMX_FAST_POLICY_LMR: '1'
         run: node benchmark_v5_5_testunit1.js
@@ -104,7 +104,7 @@ jobs:
       - name: Compare fast ARMX against current ARMX
         env:
           ARMX_H2H_GAMES: '100'
-          ARMX_FAST_NODES: '1680'
+          ARMX_FAST_NODES: '2200'
           ARMX_FAST_DEPTH: '4'
           ARMX_FAST_POLICY_LMR: '1'
           ARMX_SELECTIVE_GAP: '-1'
