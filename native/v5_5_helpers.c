@@ -190,7 +190,7 @@ int search_nodes(void){return search_nodes_count;}
 int search_depth(void){return search_depth_done;}
 
 typedef struct {
-  int side,castling,ep,wk,bk,halfmove;
+  int side,castling,ep,wk,bk,halfmove,material;
 } SearchState;
 typedef struct {
   SearchState state;
@@ -228,6 +228,9 @@ static void search_apply(SearchState *s,u32 m,SearchUndo *u){
   s->ep=-1;
   if(absolute(moving)==1&&absolute(to-from)==16)s->ep=(from+to)>>1;
   s->halfmove=(absolute(moving)==1||u->captured)?0:s->halfmove+1;
+  int captured_type=move_captured(m),promotion=move_promotion(m),piece=move_piece(m);
+  if(captured_type==1||captured_type==4||captured_type==5)s->material--;
+  if(piece==1&&promotion&&(promotion==2||promotion==3))s->material--;
   s->side=-s->side;
 }
 static void search_undo(SearchState *s,u32 m,const SearchUndo *u){
@@ -334,7 +337,7 @@ static SearchTTEntry *search_tt_slot(int pos,int halfmove,int ply,int path){
 static int search_draw(const SearchState *s,int pos){
   if(s->halfmove>=100)return 1;
   if(s->halfmove>=8&&pos&&search_path_counts[pos]+1>=3)return 1;
-  return search_insufficient();
+  return s->material==0&&search_insufficient();
 }
 static int js_round(double x){return (int)__builtin_floor(x+0.5);}
 
@@ -514,7 +517,9 @@ static void root_insert(u32 *moves,int *scores,int *count,u32 move,int score){
 
 int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled){
-  SearchState s={side,castling,ep,wk,bk,halfmove};
+  int material=0;
+  for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
+  SearchState s={side,castling,ep,wk,bk,halfmove,material};
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
