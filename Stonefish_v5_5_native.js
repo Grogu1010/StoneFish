@@ -344,7 +344,7 @@ function sf55cQ(g,ctx,alpha,beta,ply,remaining){
   // Captures and pawn moves cannot repeat an earlier position. Avoid building
   // board keys in these common quiescence nodes.
   const key=g.halfmove ? sf55cPackedPositionKey(g) : null;
-  let moves=check ? sf55cLegalMoves(g) : null;
+  let moves=check ? sf55cLegalMoves(g,ctx,ply) : null;
   if(check && !moves.length)return -SF55C.mate+ply;
   if(sf55cDraw(g,ctx,key))return 0;
   if(ctx.nodes>ctx.limit&&ctx.depth>2){
@@ -356,7 +356,7 @@ function sf55cQ(g,ctx,alpha,beta,ply,remaining){
   if(!check){
     if(stand>=beta || remaining<=0)return sf55cHasLegalMove(g) ? stand : 0;
     if(stand>alpha)alpha=stand;
-    moves=sf55cTacticalMoves(g);
+    moves=sf55cTacticalMoves(g,ctx,ply);
     if(!moves.length)return sf55cHasLegalMove(g) ? stand : 0;
   }
   sf55cOrderMoves(moves,ctx,0,ply);
@@ -389,7 +389,7 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
     }
   }
   ctx.nodes++;
-  const check=sf55cInCheck(g),moves=sf55cLegalMoves(g);
+  const check=sf55cInCheck(g),moves=sf55cLegalMoves(g,ctx,ply);
   if(!moves.length)return check?-SF55C.mate+ply:0;
   const key=sf55cPackedPositionKey(g);
   if(sf55cDraw(g,ctx,key))return 0;
