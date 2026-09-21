@@ -465,6 +465,29 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
   if(!moves.length)return check?-SF55C.mate+ply:0;
   if(sf55cDraw(g,ctx,key))return 0;
   if(!budgetLive){ctx.abort=true;return sf55cEvaluate(g);}
+  const nullMoveEnabled=Boolean(
+    typeof process!=='undefined'&&process.env&&process.env.ARMX_NULL_MOVE==='1'
+      &&ctx.replyPolicy&&!ctx.nullActive&&depth>=3&&beta-alpha<=1&&!check
+      &&ctx.material>2&&beta<SF55C.mate-100
+  );
+  if(nullMoveEnabled){
+    const oldSide=g.side,oldEp=g.ep,oldHalfmove=g.halfmove,oldFullmove=g.fullmove;
+    g.side=-oldSide;g.ep=-1;g.halfmove=oldHalfmove+1;
+    if(oldSide===-1)g.fullmove=oldFullmove+1;
+    if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=true;
+    const oldNull=ctx.nullActive;ctx.nullActive=true;
+    const reduction=depth>=5?2:1;
+    let nullScore;
+    try{
+      nullScore=-sf55cSearch(g,ctx,Math.max(0,depth-1-reduction),-beta,-beta+1,ply+1);
+    }finally{
+      ctx.nullActive=oldNull;
+      g.side=oldSide;g.ep=oldEp;g.halfmove=oldHalfmove;g.fullmove=oldFullmove;
+      if(g._sf55cKernelSearchActive)g._sf55cKernelDirty=true;
+    }
+    if(ctx.abort)return nullScore;
+    if(nullScore>=beta)return nullScore;
+  }
   sf55cOrderMoves(moves,ctx,hit?hit.move:persistentHit?persistentHit.move:0,ply);
   let best=-Infinity,bestMove=0,index=0;
   sf55cEnter(ctx,key);
