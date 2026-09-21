@@ -450,8 +450,8 @@ function sf55cHost(g,replyPolicy=null){
     ctx.depth=depth;
     const next=[];let threshold=-SF55C.mate;
     for(const previous of complete){
-      const e={...previous};const materialDelta=sf55cMaterialMoveDelta(e.raw);ctx.material-=materialDelta;g.fastApply(e.raw);
-      try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{sf55cUndo(g,ctx,m,ply+1);ctx.material+=materialDelta;}
+      const e={...previous};const materialDelta=sf55cMaterialMoveDelta(e.raw);ctx.material-=materialDelta;sf55cApply(g,ctx,e.raw,1);
+      try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{sf55cUndo(g,ctx,e.raw,1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
       e.exact=e.score>threshold || threshold===-SF55C.mate;
       e.deep=e.score;e.preliminary=e.score;
