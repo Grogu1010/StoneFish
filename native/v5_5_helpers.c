@@ -161,7 +161,7 @@ static double policy_weights[13];
 #define SEARCH_PUBLIC_CAP 1024
 static u16 search_public_keys_input[SEARCH_PUBLIC_INPUT_CAP*17];
 static int search_public_counts_input[SEARCH_PUBLIC_INPUT_CAP];
-static int search_history[32768],search_killers[32];
+static int search_history[32768],search_history_touched[32768],search_history_touched_count,search_killers[32];
 static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
@@ -588,6 +588,7 @@ static int search_position_id(const SearchState *s){
       e->generation=search_generation;e->hash=hash;e->side=s->side;e->castling=s->castling;e->ep=s->ep;
       for(int i=0;i<16;i++)e->packed[i]=search_board_word(i);
       e->id=++search_position_count;
+      search_path_counts[e->id]=0;
       search_position_public_counts[e->id]=s->halfmove>=8?search_public_lookup(s):0;
       return e->id;
     }
@@ -807,7 +808,11 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(score>best){best=score;best_move=move_id(m);}
     if(score>alpha)alpha=score;
     if(alpha>=beta){
-      if(quiet&&ply<32){search_killers[ply]=best_move;search_history[best_move]+=depth*depth;}
+      if(quiet&&ply<32){
+        search_killers[ply]=best_move;
+        if(!search_history[best_move])search_history_touched[search_history_touched_count++]=best_move;
+        search_history[best_move]+=depth*depth;
+      }
       break;
     }
     index++;
@@ -858,8 +863,8 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   search_generation++;if(!search_generation)search_generation=1;
   search_public_build(public_history_count);
   search_position_count=0;search_signature_count=0;search_path_signature=0;search_path_top=0;
-  for(int i=0;i<=SEARCH_POS_CAP;i++)search_path_counts[i]=0;
-  for(int i=0;i<32768;i++)search_history[i]=0;
+  for(int i=0;i<search_history_touched_count;i++)search_history[search_history_touched[i]]=0;
+  search_history_touched_count=0;
   for(int i=0;i<32;i++)search_killers[i]=0;
   int king=side>0?wk:bk,n=search_generate(&s,0);
   if(!n)return 0;
