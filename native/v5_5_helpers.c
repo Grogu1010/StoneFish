@@ -114,10 +114,13 @@ static int search_attacked_occ(int square,int by_side,u64 occupied){
     if(file>0&&board[r*8+file-1]==by_side)return 1;
     if(file<7&&board[r*8+file+1]==by_side)return 1;
   }
-  u64 knights=search_attack_knight_mask[square];
+  u64 knights=search_attack_knight_mask[square]
+    &(by_side>0?search_white_knights:search_black_knights);
   int knight=by_side*2;
   while(knights){
     int sq=__builtin_ctzll(knights);knights&=knights-1;
+    // Move generation temporarily changes board[] without changing the search
+    // mirrors. Verify the live square so a just-captured knight cannot attack.
     if(board[sq]==knight)return 1;
   }
   int queen=by_side*5,king=by_side*6;
@@ -271,7 +274,8 @@ static int search_position_count,search_signature_count;
 static u32 search_generation,search_public_generation;
 static u64 search_packed_board[4];
 static u32 search_white_pawn_files,search_black_pawn_files;
-static u64 search_white_pawns,search_black_pawns,search_white_rooks,search_black_rooks,search_white_occ,search_black_occ;
+static u64 search_white_pawns,search_black_pawns,search_white_knights,search_black_knights;
+static u64 search_white_rooks,search_black_rooks,search_white_occ,search_black_occ;
 static u64 search_white_passed_mask[64],search_black_passed_mask[64];
 static u64 search_white_shield_mask[64],search_black_shield_mask[64];
 static int search_eval_masks_ready;
@@ -376,6 +380,9 @@ static void search_mirror_piece(int sq,int piece,int direction){
       if(direction>0)search_black_pawns|=bit;else search_black_pawns&=~bit;
       search_file_adjust(&search_black_pawn_files,sq&7,direction);
     }
+  }else if(type==2){
+    if(side>0){if(direction>0)search_white_knights|=bit;else search_white_knights&=~bit;}
+    else{if(direction>0)search_black_knights|=bit;else search_black_knights&=~bit;}
   }else if(type==4){
     if(side>0){if(direction>0)search_white_rooks|=bit;else search_white_rooks&=~bit;}
     else{if(direction>0)search_black_rooks|=bit;else search_black_rooks&=~bit;}
@@ -394,7 +401,8 @@ static void search_initial_eval(SearchState *s){
   s->eval_mg=s->eval_eg=s->eval_phase=0;
   s->white_bishops=s->black_bishops=0;
   search_white_pawn_files=search_black_pawn_files=0;
-  search_white_pawns=search_black_pawns=search_white_rooks=search_black_rooks=0;
+  search_white_pawns=search_black_pawns=search_white_knights=search_black_knights=0;
+  search_white_rooks=search_black_rooks=0;
   search_white_occ=search_black_occ=0;
   for(int sq=0;sq<64;sq++)if(board[sq])search_eval_piece(s,sq,board[sq],1);
 }
@@ -402,7 +410,8 @@ static void search_initial_state(SearchState *s){
   s->eval_mg=s->eval_eg=s->eval_phase=0;
   s->white_bishops=s->black_bishops=0;
   search_white_pawn_files=search_black_pawn_files=0;
-  search_white_pawns=search_black_pawns=search_white_rooks=search_black_rooks=0;
+  search_white_pawns=search_black_pawns=search_white_knights=search_black_knights=0;
+  search_white_rooks=search_black_rooks=0;
   search_white_occ=search_black_occ=0;
   for(int word=0;word<4;word++)search_packed_board[word]=0;
   u32 hash=search_meta_token(s->side,s->castling,s->ep);
