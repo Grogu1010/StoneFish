@@ -604,6 +604,10 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
   return { features, replyOptions: { available, offered } };
 }
 
+function armxPreviewCandidateReplyOpportunities(game, raw) {
+  return armxPreviewCandidateContext(game, raw, true).replyOptions;
+}
+
 function armxPreviewCandidateReport(game, entry, profile) {
   const context = armxPreviewCandidateContext(game, entry.raw, armxPreviewHasUsefulReplyEvidence(profile));
   const features = context.features;
