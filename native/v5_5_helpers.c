@@ -282,6 +282,14 @@ static void search_set_packed_square(int sq,int value){
   search_packed_board[word]=(search_packed_board[word]&~mask)|((u64)(value+6)<<shift);
 }
 static int search_phase_piece(int type){return type==2||type==3?1:type==4?2:type==5?4:0;}
+static const u32 search_file_count_masks[8]={
+  0x0000000fu,0x000000f0u,0x00000f00u,0x0000f000u,
+  0x000f0000u,0x00f00000u,0x0f000000u,0xf0000000u
+};
+static const u32 search_adjacent_file_count_masks[8]={
+  0x000000f0u,0x00000f0fu,0x0000f0f0u,0x000f0f00u,
+  0x00f0f000u,0x0f0f0000u,0xf0f00000u,0x0f000000u
+};
 static int search_file_count(u32 packed,int file){return (int)((packed>>(file<<2))&15u);}
 static void search_file_adjust(u32 *packed,int file,int delta){
   u32 unit=1u<<(file<<2);if(delta>0)*packed+=unit;else *packed-=unit;
@@ -498,7 +506,7 @@ static int search_evaluate_state(const SearchState *s){
     int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
     int f=sq&7,r=sq>>3,own=search_file_count(s->white_pawn_files,f);
     if(own>1){mg-=12;eg-=16;}
-    if(!(f>0&&search_file_count(s->white_pawn_files,f-1))&&!(f<7&&search_file_count(s->white_pawn_files,f+1))){mg-=11;eg-=15;}
+    if(!(s->white_pawn_files&search_adjacent_file_count_masks[f])){mg-=11;eg-=15;}
     if(!(s->black_pawns&search_white_passed_mask[sq])){
       mg+=middle[r];eg+=endingPawn[r];
       if(r>=4){
@@ -513,7 +521,7 @@ static int search_evaluate_state(const SearchState *s){
     int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
     int f=sq&7,r=7-(sq>>3),own=search_file_count(s->black_pawn_files,f);
     if(own>1){mg+=12;eg+=16;}
-    if(!(f>0&&search_file_count(s->black_pawn_files,f-1))&&!(f<7&&search_file_count(s->black_pawn_files,f+1))){mg+=11;eg+=15;}
+    if(!(s->black_pawn_files&search_adjacent_file_count_masks[f])){mg+=11;eg+=15;}
     if(!(s->white_pawns&search_black_passed_mask[sq])){
       mg-=middle[r];eg-=endingPawn[r];
       if(r>=4){
@@ -527,12 +535,12 @@ static int search_evaluate_state(const SearchState *s){
   u64 rooks=s->white_rooks;
   while(rooks){
     int sq=__builtin_ctzll(rooks);rooks&=rooks-1;int f=sq&7;
-    if(!search_file_count(s->white_pawn_files,f)){mg+=search_file_count(s->black_pawn_files,f)?15:30;eg+=15;}
+    if(!(s->white_pawn_files&search_file_count_masks[f])){mg+=(s->black_pawn_files&search_file_count_masks[f])?15:30;eg+=15;}
   }
   rooks=s->black_rooks;
   while(rooks){
     int sq=__builtin_ctzll(rooks);rooks&=rooks-1;int f=sq&7;
-    if(!search_file_count(s->black_pawn_files,f)){mg-=search_file_count(s->white_pawn_files,f)?15:30;eg-=15;}
+    if(!(s->black_pawn_files&search_file_count_masks[f])){mg-=(s->white_pawn_files&search_file_count_masks[f])?15:30;eg-=15;}
   }
   mg+=__builtin_popcountll(s->white_pawns&search_white_shield_mask[s->wk])*12;
   mg-=__builtin_popcountll(s->black_pawns&search_black_shield_mask[s->bk])*12;
