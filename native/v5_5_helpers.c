@@ -646,8 +646,10 @@ static void search_exit_position(int pos){
   search_path_counts[pos]--;
   search_path_signature=search_path_stack[--search_path_top];
 }
-static SearchTTEntry *search_tt_find(int pos,int halfmove,int ply,int path){
-  u32 hash=(u32)pos*2654435761u^(u32)halfmove*2246822519u^(u32)ply*3266489917u^(u32)path*668265263u;
+static u32 search_tt_hash(int pos,int halfmove,int ply,int path){
+  return (u32)pos*2654435761u^(u32)halfmove*2246822519u^(u32)ply*3266489917u^(u32)path*668265263u;
+}
+static SearchTTEntry *search_tt_find(u32 hash,int pos,int halfmove,int ply,int path){
   u32 slot=hash&(SEARCH_TT_CAP-1);
   for(int probe=0;probe<SEARCH_TT_CAP;probe++,slot=(slot+1)&(SEARCH_TT_CAP-1)){
     SearchTTEntry *e=&search_tt[slot];
@@ -656,8 +658,7 @@ static SearchTTEntry *search_tt_find(int pos,int halfmove,int ply,int path){
   }
   return 0;
 }
-static SearchTTEntry *search_tt_slot(int pos,int halfmove,int ply,int path){
-  u32 hash=(u32)pos*2654435761u^(u32)halfmove*2246822519u^(u32)ply*3266489917u^(u32)path*668265263u;
+static SearchTTEntry *search_tt_slot(u32 hash,int pos,int halfmove,int ply,int path){
   u32 slot=hash&(SEARCH_TT_CAP-1);
   for(int probe=0;probe<SEARCH_TT_CAP;probe++,slot=(slot+1)&(SEARCH_TT_CAP-1)){
     SearchTTEntry *e=&search_tt[slot];
@@ -799,7 +800,8 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   }
   search_nodes_count++;
   int pos=search_position_id(s),original=alpha;
-  SearchTTEntry *hit=search_tt_find(pos,s->halfmove,ply,search_path_signature);
+  u32 tt_hash=search_tt_hash(pos,s->halfmove,ply,search_path_signature);
+  SearchTTEntry *hit=search_tt_find(tt_hash,pos,s->halfmove,ply,search_path_signature);
   int budget_live=search_nodes_count<=search_node_limit||search_iter_depth<=2;
   if(budget_live&&hit&&hit->depth>=depth){
     if(hit->flag==0)return hit->score;
@@ -840,7 +842,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   }
   search_exit_position(pos);
   if(!search_abort){
-    SearchTTEntry *slot=hit?hit:search_tt_slot(pos,s->halfmove,ply,search_path_signature);
+    SearchTTEntry *slot=hit?hit:search_tt_slot(tt_hash,pos,s->halfmove,ply,search_path_signature);
     if(slot){
       slot->depth=depth;slot->score=best;slot->move=best_move;
       slot->flag=best<=original?-1:best>=beta?1:0;
