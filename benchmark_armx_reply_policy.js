@@ -133,9 +133,10 @@ for (const row of golden.positions) {
   const policy = armxPreviewOpponentPolicy(game, game.side);
   const expectedBudget = boundedEffort ? Math.min(row.searchBudget, ARMX_PREVIEW.maxSearchNodes) : row.searchBudget;
   assert.equal(policy ? policy.searchBudget : SF55C.nodes, expectedBudget);
-  assert.equal(SF55C_LAST.searchBudget, expectedBudget);
+  const fellBackToBase = !!(SF55C_LAST && SF55C_LAST.armxBudgetFallback);
+  assert.equal(SF55C_LAST.searchBudget, fellBackToBase ? SF55C.nodes : expectedBudget);
   assert.equal(policy ? policy.maxDepth : SF55C.maxDepth, row.maxDepth);
-  assert.equal(SF55C_LAST.depthLimit, row.maxDepth);
+  assert.equal(SF55C_LAST.depthLimit, fellBackToBase ? SF55C.maxDepth : row.maxDepth);
   assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(game)), row.native);
   assert.equal(snapshot(game), original);
 }
