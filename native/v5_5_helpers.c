@@ -82,10 +82,15 @@ static int attacked(int square,int by_side){
   return 0;
 }
 int in_check(int side,int king){return attacked(king,-side);}
-static int gen_side,gen_king,gen_mode,gen_count;
+static int gen_side,gen_king,gen_mode,gen_count,gen_pseudo;
 static int emit(int from,int to,int promotion,int flags){
   int moving=board[from],target=board[to],captured=flags&2?1:absolute(target);
   if(gen_mode==1&&!captured&&!promotion)return 0;
+  if(gen_pseudo){
+    if(gen_mode==2)return 1;
+    output[gen_count++]=(u32)(from|(to<<6)|(absolute(moving)<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
+    return 0;
+  }
   int ep_square=-1,ep_piece=0,rook_from=-1,rook_to=-1,rook_piece=0;
   board[from]=0;board[to]=promotion?gen_side*promotion:moving;
   if(flags&2){ep_square=to-gen_side*8;ep_piece=board[ep_square];board[ep_square]=0;}
@@ -394,6 +399,16 @@ static int search_generate(const SearchState *s,int mode){
     }
   }
   return mode==2?0:gen_count;
+}
+static int search_generate_pseudo(const SearchState *s){
+  gen_pseudo=1;
+  int n=search_generate(s,0);
+  gen_pseudo=0;
+  return n;
+}
+static int search_child_legal(const SearchState *parent,const SearchState *child){
+  int mover=parent->side,king=mover>0?child->wk:child->bk;
+  return !attacked(king,child->side);
 }
 
 int search_evaluate_fast(int side,int white_king,int black_king){
@@ -807,8 +822,19 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(hit->flag==-1&&hit->score<=alpha)return hit->score;
   }
   int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
-  int n=search_generate(s,0);
-  if(!n)return check?-SEARCH_MATE+ply:0;
+  int lazy_legality=beta-alpha<=1;
+  int n=lazy_legality?search_generate_pseudo(s):search_generate(s,0);
+  u32 known_legal_move=0;
+  if(lazy_legality&&n){
+    for(int i=0;i<n;i++){
+      SearchState child;SearchBoardUndo u;u32 m=output[i];
+      search_apply_child(s,&child,m,&u);
+      int legal=search_child_legal(s,&child);
+      search_undo_board(s->side,m,&u);
+      if(legal){known_legal_move=m;break;}
+    }
+    if(!known_legal_move)return check?-SEARCH_MATE+ply:0;
+  }else if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_state(s);}
   u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
@@ -818,6 +844,9 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   for(int i=0;i<n;i++){
     u32 m=search_pick_ordered(moves,priorities,n,i);SearchState child;SearchBoardUndo u;
     search_apply_child(s,&child,m,&u);
+    if(lazy_legality&&m!=known_legal_move&&!search_child_legal(s,&child)){
+      search_undo_board(s->side,m,&u);continue;
+    }
     int quiet=!move_captured(m)&&!move_promotion(m),score;
     if(index==0)score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
     else{
