@@ -527,7 +527,14 @@ function sf55cHost(g,replyPolicy=null){
     const next=[];let threshold=-SF55C.mate;
     for(const previous of complete){
       const e={...previous};const materialDelta=sf55cMaterialMoveDelta(e.raw);ctx.material-=materialDelta;sf55cApply(g,ctx,e.raw,1);
-      try{e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);}finally{sf55cUndo(g,ctx,e.raw,1);ctx.material+=materialDelta;}
+      try{
+        if(depth>=3&&threshold!==-SF55C.mate){
+          // Once MultiPV is full, cheaply test whether a late root can enter
+          // the top three. Only a real challenger gets the old wide search.
+          e.score=-sf55cSearch(g,ctx,depth-1,-threshold-1,-threshold,1);
+          if(!ctx.abort&&e.score>threshold)e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);
+        }else e.score=-sf55cSearch(g,ctx,depth-1,-SF55C.mate,-threshold,1);
+      }finally{sf55cUndo(g,ctx,e.raw,1);ctx.material+=materialDelta;}
       if(ctx.abort)break;
       e.exact=e.score>threshold || threshold===-SF55C.mate;
       e.deep=e.score;e.preliminary=e.score;

@@ -1029,7 +1029,15 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
     search_iter_depth=depth;search_abort=0;int next_count=0,threshold=-SEARCH_MATE;
     for(int i=0;i<current_count;i++){
       u32 m=current_moves[i];SearchState child;SearchBoardUndo u;search_apply_child(&s,&child,m,&u);
-      int score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
+      int score;
+      if(depth>=3&&threshold!=-SEARCH_MATE){
+        /* Once MultiPV is full, late roots only need to prove they can beat
+           the third-best score. A null-window probe gets that answer much
+           cheaper; only genuine challengers pay for the old wide re-search. */
+        score=-search_ab(&child,depth-1,-threshold-1,-threshold,1,m);
+        if(!search_abort&&score>threshold)
+          score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
+      }else score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
       search_undo_board(s.side,m,&u);
       if(search_abort)break;
       int is_exact=threshold==-SEARCH_MATE||score>threshold;

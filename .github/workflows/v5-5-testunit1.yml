@@ -60,6 +60,12 @@ jobs:
         env:
           STONEFISH_CC: clang
         run: node build_v5_5_kernel.cjs
+      - name: Upload rebuilt ARMX native module
+        uses: actions/upload-artifact@v4
+        with:
+          name: v55-native-generated
+          path: Stonefish_v5_5_native.js
+          retention-days: 1
       - name: Syntax check ARMX-preview
         run: node --check ARMX-preview.js
       - name: Syntax check v5.5 native search
