@@ -213,7 +213,7 @@ int search_depth(void){return search_depth_done;}
 typedef struct {
   int side,castling,ep,wk,bk,halfmove,material;
   u32 hash;
-  int eval_mg,eval_eg,eval_phase,white_bishops,black_bishops;
+  int eval_mg,eval_eg,eval_phase,white_bishops,black_bishops,pawn_mg,pawn_eg;
   u32 white_pawn_files,black_pawn_files;
   u64 white_pawns,black_pawns,white_rooks,black_rooks,white_occ,black_occ;
 } SearchState;
@@ -285,6 +285,48 @@ static void search_eval_piece(SearchState *s,int sq,int piece,int direction){
     else{if(direction>0)s->black_rooks|=bit;else s->black_rooks&=~bit;}
   }
 }
+static void search_refresh_pawn_eval(SearchState *s){
+  int mg=0,eg=0;
+  static const int middle[8]={0,0,8,17,35,65,110,0},endingPawn[8]={0,0,15,32,65,120,210,0};
+  u64 pawns=s->white_pawns;
+  while(pawns){
+    int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
+    int f=sq&7,r=sq>>3,own=search_file_count(s->white_pawn_files,f);
+    if(own>1){mg-=12;eg-=16;}
+    if(!(f>0&&search_file_count(s->white_pawn_files,f-1))&&!(f<7&&search_file_count(s->white_pawn_files,f+1))){mg-=11;eg-=15;}
+    u64 files=search_file_mask(f);
+    if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
+    u64 ahead=sq==63?0:(~(u64)0<<(sq+1));
+    if(!(s->black_pawns&files&ahead)){
+      mg+=middle[r];eg+=endingPawn[r];
+      if(r>=4){
+        int ed=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-7));
+        int od=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-7));
+        eg+=(ed-od)*r*3;
+      }
+    }
+  }
+  pawns=s->black_pawns;
+  while(pawns){
+    int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
+    int f=sq&7,r=7-(sq>>3),own=search_file_count(s->black_pawn_files,f);
+    if(own>1){mg+=12;eg+=16;}
+    if(!(f>0&&search_file_count(s->black_pawn_files,f-1))&&!(f<7&&search_file_count(s->black_pawn_files,f+1))){mg+=11;eg+=15;}
+    u64 files=search_file_mask(f);
+    if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
+    u64 behind=sq==0?0:(((u64)1<<sq)-1);
+    if(!(s->white_pawns&files&behind)){
+      mg-=middle[r];eg-=endingPawn[r];
+      if(r>=4){
+        int ed=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-0));
+        int od=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-0));
+        eg-=(ed-od)*r*3;
+      }
+    }
+  }
+  s->pawn_mg=mg;s->pawn_eg=eg;
+}
+
 static void search_initial_eval(SearchState *s){
   s->eval_mg=s->eval_eg=s->eval_phase=0;
   s->white_bishops=s->black_bishops=0;
@@ -331,6 +373,7 @@ static void search_apply_child(const SearchState *parent,SearchState *s,u32 m,Se
   int captured_type=move_captured(m),promotion=move_promotion(m),piece=move_piece(m);
   if(captured_type==1||captured_type==4||captured_type==5)s->material--;
   if(piece==1&&promotion&&(promotion==2||promotion==3))s->material--;
+  if(absolute(moving)==1||absolute(moving)==6||absolute(u->captured)==1)search_refresh_pawn_eval(s);
   s->side=-s->side;
   s->hash^=search_meta_token(s->side,s->castling,s->ep);
 }
@@ -465,44 +508,7 @@ int search_evaluate_fast(int side,int white_king,int black_king){
 
 
 static int search_evaluate_state(const SearchState *s){
-  int mg=s->eval_mg,eg=s->eval_eg,phase=s->eval_phase;
-  static const int middle[8]={0,0,8,17,35,65,110,0},endingPawn[8]={0,0,15,32,65,120,210,0};
-  u64 pawns=s->white_pawns;
-  while(pawns){
-    int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
-    int f=sq&7,r=sq>>3,own=search_file_count(s->white_pawn_files,f);
-    if(own>1){mg-=12;eg-=16;}
-    if(!(f>0&&search_file_count(s->white_pawn_files,f-1))&&!(f<7&&search_file_count(s->white_pawn_files,f+1))){mg-=11;eg-=15;}
-    u64 files=search_file_mask(f);
-    if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
-    u64 ahead=sq==63?0:(~(u64)0<<(sq+1));
-    if(!(s->black_pawns&files&ahead)){
-      mg+=middle[r];eg+=endingPawn[r];
-      if(r>=4){
-        int ed=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-7));
-        int od=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-7));
-        eg+=(ed-od)*r*3;
-      }
-    }
-  }
-  pawns=s->black_pawns;
-  while(pawns){
-    int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
-    int f=sq&7,r=7-(sq>>3),own=search_file_count(s->black_pawn_files,f);
-    if(own>1){mg+=12;eg+=16;}
-    if(!(f>0&&search_file_count(s->black_pawn_files,f-1))&&!(f<7&&search_file_count(s->black_pawn_files,f+1))){mg+=11;eg+=15;}
-    u64 files=search_file_mask(f);
-    if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
-    u64 behind=sq==0?0:(((u64)1<<sq)-1);
-    if(!(s->white_pawns&files&behind)){
-      mg-=middle[r];eg-=endingPawn[r];
-      if(r>=4){
-        int ed=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-0));
-        int od=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-0));
-        eg-=(ed-od)*r*3;
-      }
-    }
-  }
+  int mg=s->eval_mg+s->pawn_mg,eg=s->eval_eg+s->pawn_eg,phase=s->eval_phase;
   if(s->white_bishops>=2){mg+=30;eg+=45;}if(s->black_bishops>=2){mg-=30;eg-=45;}
   u64 rooks=s->white_rooks;
   while(rooks){
@@ -877,7 +883,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
   SearchState s={0};
   s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;s.material=material;
-  s.hash=search_initial_hash(&s);search_initial_eval(&s);search_init_packed_board();
+  s.hash=search_initial_hash(&s);search_initial_eval(&s);search_refresh_pawn_eval(&s);search_init_packed_board();
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
