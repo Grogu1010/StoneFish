@@ -43,8 +43,8 @@
 
   window.armxBrowserBenchmarkPromise = (async () => {
     let win = 0, loss = 0, draw = 0;
-    const armx = { moves: 0, thinkMs: 0, compiledMoves: 0, fallbackMoves: 0 };
-    const control = { moves: 0, thinkMs: 0 };
+    const armx = { moves: 0, thinkMs: 0, nodes: 0, depthSum: 0, compiledMoves: 0, fallbackMoves: 0 };
+    const control = { moves: 0, thinkMs: 0, nodes: 0, depthSum: 0 };
     const records = [];
     const profile = {
       policyMs: 0, policyCalls: 0,
@@ -68,10 +68,14 @@
       const current = result.metrics.v55test1noarmx;
       armx.moves += fast.moves;
       armx.thinkMs += fast.thinkMs;
+      armx.nodes += fast.nodes || 0;
+      armx.depthSum += fast.depthSum || 0;
       armx.compiledMoves += fast.compiledMoves || 0;
       armx.fallbackMoves += fast.fallbackMoves || 0;
       control.moves += current.moves;
       control.thinkMs += current.thinkMs;
+      control.nodes += current.nodes || 0;
+      control.depthSum += current.depthSum || 0;
       if (result.armxProfile) {
         for (const key of Object.keys(profile)) profile[key] += result.armxProfile[key] || 0;
       }
@@ -94,13 +98,18 @@
       armx: {
         ...armx,
         averageTimePerMoveMs: armxAvg,
+        averageNodesPerMove: armx.moves ? armx.nodes / armx.moves : 0,
+        averageDepth: armx.moves ? armx.depthSum / armx.moves : 0,
         compiledRate: armx.moves ? armx.compiledMoves / armx.moves : 0
       },
       control: {
         ...control,
-        averageTimePerMoveMs: controlAvg
+        averageTimePerMoveMs: controlAvg,
+        averageNodesPerMove: control.moves ? control.nodes / control.moves : 0,
+        averageDepth: control.moves ? control.depthSum / control.moves : 0
       },
       armxVsControlTimeRatio: controlAvg ? armxAvg / controlAvg : Infinity,
+      armxVsControlNodeRatio: control.nodes ? armx.nodes / control.nodes : Infinity,
       profile: profileARMX ? profile : null,
       records
     };
