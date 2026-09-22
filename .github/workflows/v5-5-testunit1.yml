@@ -48,6 +48,40 @@ on:
   workflow_dispatch:
 
 jobs:
+
+  candidate-vs-main:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-eval-mask-stack'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: production
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build candidate ARMX kernel
+        working-directory: candidate
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Build production ARMX kernel
+        working-directory: production
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Compare candidate directly with production main
+        working-directory: candidate
+        env:
+          MAIN_DIR: ../production
+          REPEATS: '5'
+        run: node benchmark_armx_candidate_vs_main.js
+
   dev-testunit1:
     runs-on: ubuntu-latest
     timeout-minutes: 15
