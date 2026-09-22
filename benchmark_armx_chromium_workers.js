@@ -33,8 +33,8 @@ const server=http.createServer((req,res)=>{
     },games);
     await page.evaluate(()=>stonefishParallelRoundRobinTest());
     const result=await page.evaluate(()=>{
-      const text=document.querySelector('#test-results').innerText;
-      const rows=[...document.querySelectorAll('#test-results .result-row')].map(el=>el.innerText);
+      const text=document.querySelector('#test-results').textContent;
+      const rows=[...document.querySelectorAll('#test-results .result-row')].map(el=>el.textContent);
       const overall=rows.slice(0,2);
       const extract=(row)=>{
         const ms=/(\d+(?:\.\d+)?) ms\/move/.exec(row);
@@ -42,7 +42,7 @@ const server=http.createServer((req,res)=>{
       };
       const noRow=overall.find(x=>x.startsWith('5.5(testunit1) (no ARMX)'));
       const armxRow=overall.find(x=>x.startsWith('5.5(testunit1)')&&!x.startsWith('5.5(testunit1) (no ARMX)'));
-      const note=[...document.querySelectorAll('#test-results .developer-note')].map(x=>x.innerText).join(' ');
+      const note=[...document.querySelectorAll('#test-results .developer-note')].map(x=>x.textContent).join(' ');
       const workers=/under (\d+) concurrent worker/.exec(note);
       const compiled=/compiled-search moves (\d+)/.exec(armxRow||'');
       const fallback=/fallback\/base moves (\d+)/.exec(armxRow||'');
