@@ -82,14 +82,18 @@ static int attacked(int square,int by_side){
   for(int i=0;i<16;i+=2){int f=file+dirs[i],nr=rank+dirs[i+1];if(f>=0&&f<8&&nr>=0&&nr<8&&board[nr*8+f]==by_side*6)return 1;}
   return 0;
 }
-static u64 search_attack_ray_mask[64][8],search_attack_knight_mask[64];
+static u64 search_attack_ray_mask[64][8],search_attack_knight_mask[64],search_attack_king_mask[64];
+static u64 search_white_pawns,search_black_pawns,search_white_knights,search_black_knights;
+static u64 search_white_bishops,search_black_bishops,search_white_rooks,search_black_rooks;
+static u64 search_white_queens,search_black_queens,search_white_kings,search_black_kings;
+static u64 search_white_occ,search_black_occ;
 static u8 search_attack_ray_first[64][8];
 static int search_attack_tables_ready;
 static void search_init_attack_tables(void){
   if(search_attack_tables_ready)return;
   for(int square=0;square<64;square++){
     int file=square&7,rank=square>>3;
-    u64 knights=0;
+    u64 knights=0,kings=0;
     for(int i=0;i<8;i++){
       int f=file+ndf[i],r=rank+ndr[i];
       if(f>=0&&f<8&&r>=0&&r<8)knights|=(u64)1<<(r*8+f);
@@ -104,7 +108,9 @@ static void search_init_attack_tables(void){
       }
       search_attack_ray_mask[square][d]=mask;
       search_attack_ray_first[square][d]=(u8)first;
+      if(first!=255)kings|=(u64)1<<first;
     }
+    search_attack_king_mask[square]=kings;
   }
   search_attack_tables_ready=1;
 }
@@ -114,20 +120,22 @@ static int search_attacked_occ(int square,int by_side,u64 occupied){
     if(file>0&&board[r*8+file-1]==by_side)return 1;
     if(file<7&&board[r*8+file+1]==by_side)return 1;
   }
-  u64 knights=search_attack_knight_mask[square];
-  int knight=by_side*2;
-  while(knights){
-    int sq=__builtin_ctzll(knights);knights&=knights-1;
-    if(board[sq]==knight)return 1;
-  }
-  int queen=by_side*5,king=by_side*6;
+  u64 knights=by_side>0?search_white_knights:search_black_knights;
+  if(search_attack_knight_mask[square]&knights)return 1;
+  u64 kings=by_side>0?search_white_kings:search_black_kings;
+  if(search_attack_king_mask[square]&kings)return 1;
+  u64 diagonal=(by_side>0?search_white_bishops:search_black_bishops)
+    |(by_side>0?search_white_queens:search_black_queens);
+  u64 straight=(by_side>0?search_white_rooks:search_black_rooks)
+    |(by_side>0?search_white_queens:search_black_queens);
   static const u8 increasing[8]={1,0,1,0,1,0,1,0};
   for(int d=0;d<8;d++){
-    u64 blockers=occupied&search_attack_ray_mask[square][d];
+    u64 ray=search_attack_ray_mask[square][d],sliders=d<4?diagonal:straight;
+    if(!(ray&sliders))continue;
+    u64 blockers=occupied&ray;
     if(!blockers)continue;
     int sq=increasing[d]?__builtin_ctzll(blockers):63-__builtin_clzll(blockers);
-    int p=board[sq],slider=by_side*(d<4?3:4);
-    if(p==queen||p==slider||(sq==search_attack_ray_first[square][d]&&p==king))return 1;
+    if(sliders&((u64)1<<sq))return 1;
   }
   return 0;
 }
@@ -234,8 +242,8 @@ typedef struct {u32 generation;short priority;signed char low;unsigned char pad;
 static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 
 #define SEARCH_POS_CAP 16384
-#define SEARCH_PATH_CAP 32768
-#define SEARCH_TT_CAP 32768
+#define SEARCH_PATH_CAP 16384
+#define SEARCH_TT_CAP 16384
 typedef struct {
   u32 generation,hash;
   u16 id;
@@ -271,7 +279,6 @@ static int search_position_count,search_signature_count;
 static u32 search_generation;
 static u64 search_packed_board[4];
 static u32 search_white_pawn_files,search_black_pawn_files;
-static u64 search_white_pawns,search_black_pawns,search_white_rooks,search_black_rooks,search_white_occ,search_black_occ;
 static u64 search_white_passed_mask[64],search_black_passed_mask[64];
 static u64 search_white_shield_mask[64],search_black_shield_mask[64];
 static int search_eval_masks_ready;
@@ -376,9 +383,21 @@ static void search_mirror_piece(int sq,int piece,int direction){
       if(direction>0)search_black_pawns|=bit;else search_black_pawns&=~bit;
       search_file_adjust(&search_black_pawn_files,sq&7,direction);
     }
+  }else if(type==2){
+    if(side>0){if(direction>0)search_white_knights|=bit;else search_white_knights&=~bit;}
+    else{if(direction>0)search_black_knights|=bit;else search_black_knights&=~bit;}
+  }else if(type==3){
+    if(side>0){if(direction>0)search_white_bishops|=bit;else search_white_bishops&=~bit;}
+    else{if(direction>0)search_black_bishops|=bit;else search_black_bishops&=~bit;}
   }else if(type==4){
     if(side>0){if(direction>0)search_white_rooks|=bit;else search_white_rooks&=~bit;}
     else{if(direction>0)search_black_rooks|=bit;else search_black_rooks&=~bit;}
+  }else if(type==5){
+    if(side>0){if(direction>0)search_white_queens|=bit;else search_white_queens&=~bit;}
+    else{if(direction>0)search_black_queens|=bit;else search_black_queens&=~bit;}
+  }else if(type==6){
+    if(side>0){if(direction>0)search_white_kings|=bit;else search_white_kings&=~bit;}
+    else{if(direction>0)search_black_kings|=bit;else search_black_kings&=~bit;}
   }
 }
 static void search_eval_piece(SearchState *s,int sq,int piece,int direction){
@@ -394,7 +413,9 @@ static void search_initial_eval(SearchState *s){
   s->eval_mg=s->eval_eg=s->eval_phase=0;
   s->white_bishops=s->black_bishops=0;
   search_white_pawn_files=search_black_pawn_files=0;
-  search_white_pawns=search_black_pawns=search_white_rooks=search_black_rooks=0;
+  search_white_pawns=search_black_pawns=search_white_knights=search_black_knights=0;
+  search_white_bishops=search_black_bishops=search_white_rooks=search_black_rooks=0;
+  search_white_queens=search_black_queens=search_white_kings=search_black_kings=0;
   search_white_occ=search_black_occ=0;
   for(int sq=0;sq<64;sq++)if(board[sq])search_eval_piece(s,sq,board[sq],1);
 }
@@ -402,7 +423,9 @@ static void search_initial_state(SearchState *s){
   s->eval_mg=s->eval_eg=s->eval_phase=0;
   s->white_bishops=s->black_bishops=0;
   search_white_pawn_files=search_black_pawn_files=0;
-  search_white_pawns=search_black_pawns=search_white_rooks=search_black_rooks=0;
+  search_white_pawns=search_black_pawns=search_white_knights=search_black_knights=0;
+  search_white_bishops=search_black_bishops=search_white_rooks=search_black_rooks=0;
+  search_white_queens=search_black_queens=search_white_kings=search_black_kings=0;
   search_white_occ=search_black_occ=0;
   for(int word=0;word<4;word++)search_packed_board[word]=0;
   u32 hash=search_meta_token(s->side,s->castling,s->ep);
