@@ -218,9 +218,8 @@ typedef struct {
   u64 white_pawns,black_pawns,white_rooks,black_rooks,white_occ,black_occ;
 } SearchState;
 typedef struct {
-  SearchState state;
   i8 moving,captured;
-} SearchUndo;
+} SearchBoardUndo;
 
 static int move_from(u32 m){return m&63;}
 static int move_to(u32 m){return (m>>6)&63;}
@@ -302,8 +301,8 @@ static void search_hash_set_square(SearchState *s,int sq,int value){
   board[sq]=(i8)value;
 }
 
-static void search_apply(SearchState *s,u32 m,SearchUndo *u){
-  u->state=*s;
+static void search_apply_child(const SearchState *parent,SearchState *s,u32 m,SearchBoardUndo *u){
+  *s=*parent;
   int from=move_from(m),to=move_to(m),flags=move_flags(m);
   int moving=board[from],capture_sq=(flags&2)?to-s->side*8:to;
   u->moving=(i8)moving;u->captured=board[capture_sq];
@@ -338,8 +337,8 @@ static void search_apply(SearchState *s,u32 m,SearchUndo *u){
 static void search_restore_square(int sq,int value){
   search_set_packed_square(sq,value);board[sq]=(i8)value;
 }
-static void search_undo(SearchState *s,u32 m,const SearchUndo *u){
-  int flags=move_flags(m),from=move_from(m),to=move_to(m),side=u->state.side;
+static void search_undo_board(int side,u32 m,const SearchBoardUndo *u){
+  int flags=move_flags(m),from=move_from(m),to=move_to(m);
   if(flags&4){
     int rf=side>0?7:63,rt=side>0?5:61,rook=board[rt];
     search_restore_square(rf,rook);search_restore_square(rt,0);
@@ -350,7 +349,6 @@ static void search_undo(SearchState *s,u32 m,const SearchUndo *u){
   search_restore_square(from,u->moving);
   if(flags&2){search_restore_square(to,0);search_restore_square(to-side*8,u->captured);}
   else search_restore_square(to,u->captured);
-  *s=u->state;
 }
 
 static int search_generate(const SearchState *s,int mode){
@@ -779,9 +777,9 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   for(int i=0;i<n;i++){
     u32 m=search_pick_ordered(moves,priorities,n,i);
     if(!check&&!move_promotion(m)&&stand+config[move_captured(m)]+160<alpha)continue;
-    SearchUndo u;search_apply(s,m,&u);
-    int score=-search_q(s,-beta,-alpha,ply+1,remaining-1);
-    search_undo(s,m,&u);
+    SearchState child;SearchBoardUndo u;search_apply_child(s,&child,m,&u);
+    int score=-search_q(&child,-beta,-alpha,ply+1,remaining-1);
+    search_undo_board(s->side,m,&u);
     if(search_abort)break;
     if(score>stand)stand=score;if(score>alpha)alpha=score;if(alpha>=beta)break;
   }
@@ -818,18 +816,19 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
   for(int i=0;i<n;i++){
-    u32 m=search_pick_ordered(moves,priorities,n,i);SearchUndo u;search_apply(s,m,&u);
+    u32 m=search_pick_ordered(moves,priorities,n,i);SearchState child;SearchBoardUndo u;
+    search_apply_child(s,&child,m,&u);
     int quiet=!move_captured(m)&&!move_promotion(m),score;
-    if(index==0)score=-search_ab(s,depth-1,-beta,-alpha,ply+1,m);
+    if(index==0)score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
     else{
-      int childking=s->side>0?s->wk:s->bk;
-      int gives_check=in_check(s->side,childking);
+      int childking=child.side>0?child.wk:child.bk;
+      int gives_check=in_check(child.side,childking);
       int reduce=depth>=3&&index>=4&&!check&&quiet&&!gives_check?1:0;
-      score=-search_ab(s,depth-1-reduce,-alpha-1,-alpha,ply+1,m);
+      score=-search_ab(&child,depth-1-reduce,-alpha-1,-alpha,ply+1,m);
       if(!search_abort&&score>alpha&&(reduce||score<beta))
-        score=-search_ab(s,depth-1,-beta,-alpha,ply+1,m);
+        score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
     }
-    search_undo(s,m,&u);
+    search_undo_board(s->side,m,&u);
     if(search_abort)break;
     if(score>best){best=score;best_move=move_id(m);}
     if(score>alpha)alpha=score;
@@ -892,8 +891,9 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   if(!n)return 0;
   u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
   for(int i=0;i<n;i++){
-    current_moves[i]=output[i];current_exact[i]=0;SearchUndo u;search_apply(&s,current_moves[i],&u);
-    current_scores[i]=-search_evaluate_state(&s);search_undo(&s,current_moves[i],&u);
+    current_moves[i]=output[i];current_exact[i]=0;SearchState child;SearchBoardUndo u;
+    search_apply_child(&s,&child,current_moves[i],&u);
+    current_scores[i]=-search_evaluate_state(&child);search_undo_board(s.side,current_moves[i],&u);
   }
   for(int i=1;i<n;i++){
     u32 m=current_moves[i];int sc=current_scores[i],j=i-1;
@@ -906,9 +906,9 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int depth=1;depth<=max_depth;depth++){
     search_iter_depth=depth;search_abort=0;int next_count=0,threshold=-SEARCH_MATE;
     for(int i=0;i<current_count;i++){
-      u32 m=current_moves[i];SearchUndo u;search_apply(&s,m,&u);
-      int score=-search_ab(&s,depth-1,-SEARCH_MATE,-threshold,1,m);
-      search_undo(&s,m,&u);
+      u32 m=current_moves[i];SearchState child;SearchBoardUndo u;search_apply_child(&s,&child,m,&u);
+      int score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
+      search_undo_board(s.side,m,&u);
       if(search_abort)break;
       int is_exact=threshold==-SEARCH_MATE||score>threshold;
       root_insert(next_moves,next_scores,next_exact,&next_count,m,score,is_exact);
