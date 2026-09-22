@@ -44,6 +44,7 @@ function stonefishV55Testunit1ARMXHostSearch(game, replyPolicy = null) {
     weights: STONEFISH_V5_5_NEUTRAL_COMPILED_WEIGHTS,
     searchBudget: SF55C.nodes,
     maxDepth: SF55C.maxDepth,
+    policyEnabled: false,
   });
   if (accelerated) {
     globalThis.SF55C_LAST = accelerated;
