@@ -48,6 +48,25 @@ on:
   workflow_dispatch:
 
 jobs:
+
+  armx-75-vs-100:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-75-vs-100-headtohead'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build compiled ARMX search
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Run direct 75% versus 100% ARMX match
+        env:
+          GAMES: '200'
+        run: node benchmark_armx_75_vs_100.js
+
   budget-75-strength:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-budget-75'
     runs-on: ubuntu-latest
