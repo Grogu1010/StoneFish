@@ -949,7 +949,8 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<=SEARCH_POS_CAP;i++)search_path_counts[i]=0;
   for(int i=0;i<32768;i++)search_history[i]=0;
   for(int i=0;i<32;i++)search_killers[i]=0;
-  u64 pinned;int check=search_check_pins(&s,&pinned);\n  int n=search_generate(&s,0,check,pinned);
+  u64 pinned;int check=search_check_pins(&s,&pinned);
+  int n=search_generate(&s,0,check,pinned);
   if(!n)return 0;
   u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
   for(int i=0;i<n;i++){
