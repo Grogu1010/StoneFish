@@ -102,8 +102,8 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
   let plies = game.historyStack.length;
   const nativeKernelAvailable = typeof SF55C_KERNEL !== 'undefined' && !!SF55C_KERNEL;
   const metrics = {
-    [whiteModelKey]: { moves: 0, thinkMs: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 },
-    [blackModelKey]: { moves: 0, thinkMs: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 }
+    [whiteModelKey]: { moves: 0, thinkMs: 0, nodes: 0, depthSum: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 },
+    [blackModelKey]: { moves: 0, thinkMs: 0, nodes: 0, depthSum: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 }
   };
 
   while (plies < maxPlies) {
@@ -125,6 +125,11 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
 
     metrics[modelKey].moves += 1;
     metrics[modelKey].thinkMs += elapsed;
+    const lastSearch = globalThis.SF55C_LAST;
+    if ((modelKey === 'v55test1' || modelKey === 'v55test1noarmx') && lastSearch) {
+      metrics[modelKey].nodes += Number(lastSearch.nodes) || 0;
+      metrics[modelKey].depthSum += Number(lastSearch.depth) || 0;
+    }
     if (modelKey === 'v55test1') {
       const compiled = !!(globalThis.SF55C_LAST && globalThis.SF55C_LAST.refutationGuard
         && globalThis.SF55C_LAST.refutationGuard.compiledSearch);
