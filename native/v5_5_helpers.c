@@ -574,8 +574,8 @@ static u32 search_public_state_hash(const SearchState *s){
 }
 static int search_public_state_equal(const SearchPublicEntry *e,const SearchState *s){
   if(e->meta!=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5)))return 0;
-  for(int i=0;i<4;i++)if(e->packed[i]!=search_packed_board[i])return 0;
-  return 1;
+  return !((e->packed[0]^search_packed_board[0])|(e->packed[1]^search_packed_board[1])
+    |(e->packed[2]^search_packed_board[2])|(e->packed[3]^search_packed_board[3]));
 }
 static void search_public_build(int count){
   if(count<0)count=0;if(count>SEARCH_PUBLIC_INPUT_CAP)count=SEARCH_PUBLIC_INPUT_CAP;
@@ -604,8 +604,8 @@ static int search_public_lookup(const SearchState *s){
 static u32 search_position_hash(const SearchState *s){return s->hash;}
 static int search_position_equal(const SearchPositionEntry *e,const SearchState *s){
   if(e->side!=s->side||e->castling!=s->castling||e->ep!=s->ep)return 0;
-  for(int i=0;i<4;i++)if(e->packed[i]!=search_packed_board[i])return 0;
-  return 1;
+  return !((e->packed[0]^search_packed_board[0])|(e->packed[1]^search_packed_board[1])
+    |(e->packed[2]^search_packed_board[2])|(e->packed[3]^search_packed_board[3]));
 }
 static int search_position_id(const SearchState *s){
   u32 hash=search_position_hash(s),slot=hash&(SEARCH_POS_CAP-1);
