@@ -50,7 +50,7 @@ on:
 jobs:
 
   full-strength-final-gate:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-final-140-stack'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-final-history-pack-cache'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     strategy:
@@ -79,7 +79,7 @@ jobs:
 
 
   candidate-vs-main:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-final-140-stack'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-final-history-pack-cache'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
