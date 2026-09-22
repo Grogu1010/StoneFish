@@ -96,8 +96,8 @@ jobs:
         run: node benchmark_armx_compiled_vs_current.js
       - name: Measure compiled ARMX versus No-ARMX
         env:
-          ARMX_H2H_GAMES: '40'
-          ARMX_MAX_TIME_RATIO: '1.4'
+          ARMX_H2H_GAMES: '60'
+          ARMX_MAX_TIME_RATIO: '1.25'
         run: node benchmark_armx_compiled_vs_noarmx.js
       - name: Smoke test the frozen ARMX strength baseline
         env:
