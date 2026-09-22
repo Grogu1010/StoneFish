@@ -852,20 +852,39 @@ static int search_order(u32 m,int ply,int tt_move){
   return value;
 }
 static int search_order_priorities[32][512];
+static u16 search_order_original[32][512];
+static int search_order_better(int priority_a,u16 original_a,int priority_b,u16 original_b){
+  return priority_a>priority_b||(priority_a==priority_b&&original_a<original_b);
+}
+static void search_order_heap_sift(u32 *moves,int *priorities,u16 *original,int n,int root){
+  for(;;){
+    int best=root,left=root*2+1,right=left+1;
+    if(left<n&&search_order_better(priorities[left],original[left],priorities[best],original[best]))best=left;
+    if(right<n&&search_order_better(priorities[right],original[right],priorities[best],original[best]))best=right;
+    if(best==root)return;
+    u32 move=moves[root];moves[root]=moves[best];moves[best]=move;
+    int priority=priorities[root];priorities[root]=priorities[best];priorities[best]=priority;
+    u16 order=original[root];original[root]=original[best];original[best]=order;
+    root=best;
+  }
+}
 static int *search_prepare_order(u32 *moves,int n,int ply,int tt_move){
-  int *priorities=search_order_priorities[ply<32?ply:31];
-  for(int i=0;i<n;i++)priorities[i]=search_order(moves[i],ply,tt_move);
+  int slot=ply<32?ply:31;
+  int *priorities=search_order_priorities[slot];
+  u16 *original=search_order_original[slot];
+  for(int i=0;i<n;i++){priorities[i]=search_order(moves[i],ply,tt_move);original[i]=(u16)i;}
+  for(int i=(n>>1)-1;i>=0;i--)search_order_heap_sift(moves,priorities,original,n,i);
   return priorities;
 }
-static u32 search_pick_ordered(u32 *moves,int *priorities,int n,int index){
-  int best=index;
-  for(int i=index+1;i<n;i++)if(priorities[i]>priorities[best])best=i;
-  if(best!=index){
-    u32 move=moves[best];int priority=priorities[best];
-    for(int i=best;i>index;i--){moves[i]=moves[i-1];priorities[i]=priorities[i-1];}
-    moves[index]=move;priorities[index]=priority;
+static u32 search_pick_ordered(u32 *moves,int *priorities,int n,int index,int ply){
+  int size=n-index,slot=ply<32?ply:31;
+  u16 *original=search_order_original[slot];
+  u32 move=moves[0];
+  if(size>1){
+    moves[0]=moves[size-1];priorities[0]=priorities[size-1];original[0]=original[size-1];
+    search_order_heap_sift(moves,priorities,original,size-1,0);
   }
-  return moves[index];
+  return move;
 }
 
 static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
@@ -895,7 +914,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   int *priorities=search_prepare_order(moves,n,ply,0);
   if(pos)search_enter_position(pos);
   for(int i=0;i<n;i++){
-    u32 m=search_pick_ordered(moves,priorities,n,i);
+    u32 m=search_pick_ordered(moves,priorities,n,i,ply);
     if(!check&&!move_promotion(m)&&stand+config[move_captured(m)]+160<alpha)continue;
     SearchState child;SearchBoardUndo u;search_apply_child(s,&child,m,&u);
     int score=-search_q(&child,-beta,-alpha,ply+1,remaining-1);
@@ -936,7 +955,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
   for(int i=0;i<n;i++){
-    u32 m=search_pick_ordered(moves,priorities,n,i);SearchState child;SearchBoardUndo u;
+    u32 m=search_pick_ordered(moves,priorities,n,i,ply);SearchState child;SearchBoardUndo u;
     search_apply_child(s,&child,m,&u);
     int quiet=!move_captured(m)&&!move_promotion(m),score;
     if(index==0)score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
