@@ -521,14 +521,16 @@ static int search_evaluate_state(const SearchState *s){
   for(int df=-1;df<=1;df++){if(bf+df<0||bf+df>7)continue;int x=s->bk-8+df;if(x>=0&&x<64&&board[x]==-1)shield++;}
   mg-=shield*12;
   if(phase>24)phase=24;
-  double score=(mg*phase+eg*(24-phase))/24.0;
+  int numerator=mg*phase+eg*(24-phase);
   if(phase<=4&&absolute(eg)>400){
     int winner=eg>0?1:-1,loser=winner>0?s->bk:s->wk,king=winner>0?s->wk:s->bk;
     int edge=maximum(absolute(2*(loser&7)-7),absolute(2*(loser>>3)-7));
     int proximity=14-absolute((king&7)-(loser&7))-absolute((king>>3)-(loser>>3));
-    score+=winner*(edge*10+proximity*6);
+    numerator+=winner*(edge*10+proximity*6)*24;
   }
-  return (int)__builtin_floor(score*s->side+0.5)+8;
+  int shifted=numerator*s->side+12;
+  int rounded=shifted>=0?shifted/24:-((-shifted+23)/24);
+  return rounded+8;
 }
 
 static int search_insufficient(void){
