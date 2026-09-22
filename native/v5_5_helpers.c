@@ -83,6 +83,7 @@ static int attacked(int square,int by_side){
 }
 int in_check(int side,int king){return attacked(king,-side);}
 static int gen_side,gen_king,gen_mode,gen_count;
+static u32 *gen_output=output;
 static int emit(int from,int to,int promotion,int flags){
   int moving=board[from],target=board[to],captured=flags&2?1:absolute(target);
   if(gen_mode==1&&!captured&&!promotion)return 0;
@@ -100,7 +101,7 @@ static int emit(int from,int to,int promotion,int flags){
   board[from]=moving;board[to]=target;
   if(!safe)return 0;
   if(gen_mode==2)return 1;
-  output[gen_count++]=(u32)(from|(to<<6)|(absolute(moving)<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
+  gen_output[gen_count++]=(u32)(from|(to<<6)|(absolute(moving)<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
   return 0;
 }
 static int pawn_emit(int from,int to,int promotion_rank){
@@ -108,6 +109,7 @@ static int pawn_emit(int from,int to,int promotion_rank){
   return emit(from,to,5,0)||emit(from,to,4,0)||emit(from,to,3,0)||emit(from,to,2,0);
 }
 int generate(int side,int castling,int ep,int king,int mode){
+  gen_output=output;
   gen_side=side;gen_king=king;gen_mode=mode;gen_count=0;
   for(int from=0;from<64;from++){
     int p=board[from];if(!p||(p>0?1:-1)!=side)continue;
@@ -351,8 +353,9 @@ static void search_undo_board(int side,u32 m,const SearchBoardUndo *u){
   else search_restore_square(to,u->captured);
 }
 
-static int search_generate(const SearchState *s,int mode){
+static int search_generate(const SearchState *s,int mode,u32 *dest){
   int side=s->side,castling=s->castling,ep=s->ep,king=side>0?s->wk:s->bk;
+  gen_output=dest;
   gen_side=side;gen_king=king;gen_mode=mode;gen_count=0;
   u64 occupied=side>0?s->white_occ:s->black_occ;
   while(occupied){
@@ -754,23 +757,21 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   int pos=s->halfmove?search_position_id(s):0;
   u32 moves[512];int n=0;
   if(check){
-    n=search_generate(s,0);
+    n=search_generate(s,0,moves);
     if(!n)return -SEARCH_MATE+ply;
-    for(int i=0;i<n;i++)moves[i]=output[i];
   }
   if(search_draw(s,pos))return 0;
   if(search_nodes_count>search_node_limit&&search_iter_depth>2){
-    if(!check&&!search_generate(s,2))return 0;
+    if(!check&&!search_generate(s,2,moves))return 0;
     search_abort=1;return search_evaluate_state(s);
   }
   int stand=check?-SEARCH_MATE:search_evaluate_state(s);
-  if(ply>20)return !check&&!search_generate(s,2)?0:search_evaluate_state(s);
+  if(ply>20)return !check&&!search_generate(s,2,moves)?0:search_evaluate_state(s);
   if(!check){
-    if(stand>=beta||remaining<=0)return search_generate(s,2)?stand:0;
+    if(stand>=beta||remaining<=0)return search_generate(s,2,moves)?stand:0;
     if(stand>alpha)alpha=stand;
-    n=search_generate(s,1);
-    if(!n)return search_generate(s,2)?stand:0;
-    for(int i=0;i<n;i++)moves[i]=output[i];
+    n=search_generate(s,1,moves);
+    if(!n)return search_generate(s,2,moves)?stand:0;
   }
   int *priorities=search_prepare_order(moves,n,ply,0);
   if(pos)search_enter_position(pos);
@@ -807,11 +808,11 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(hit->flag==-1&&hit->score<=alpha)return hit->score;
   }
   int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
-  int n=search_generate(s,0);
+  u32 moves[512];
+  int n=search_generate(s,0,moves);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_state(s);}
-  u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
   int *priorities=search_prepare_order(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
@@ -887,11 +888,11 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<=SEARCH_POS_CAP;i++)search_path_counts[i]=0;
   for(int i=0;i<32768;i++)search_history[i]=0;
   for(int i=0;i<32;i++)search_killers[i]=0;
-  int king=side>0?wk:bk,n=search_generate(&s,0);
-  if(!n)return 0;
   u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
+  int king=side>0?wk:bk,n=search_generate(&s,0,current_moves);
+  if(!n)return 0;
   for(int i=0;i<n;i++){
-    current_moves[i]=output[i];current_exact[i]=0;SearchState child;SearchBoardUndo u;
+    current_exact[i]=0;SearchState child;SearchBoardUndo u;
     search_apply_child(&s,&child,current_moves[i],&u);
     current_scores[i]=-search_evaluate_state(&child);search_undo_board(s.side,current_moves[i],&u);
   }
