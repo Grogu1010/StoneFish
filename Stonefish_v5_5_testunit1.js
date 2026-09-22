@@ -223,21 +223,8 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   const perspective = game.side;
   const replyPolicy = typeof armxPreviewOpponentPolicy === 'function'
     ? armxPreviewOpponentPolicy(game, perspective) : null;
-  let host = stonefishV55Testunit1HostSearch(game, replyPolicy);
-  let armxBudgetFallback = false;
-  // A tight adaptive budget can expire before a full root iteration completes in
-  // unusually expensive positions. Never turn that performance cap into a null
-  // move: fall back to the normal host search, then keep ARMX's cheap finalist
-  // review on those base candidates.
-  if (replyPolicy && (!host || !host.finished || !host.finished.length)) {
-    host = stonefishV55Testunit1HostSearch(game, null);
-    armxBudgetFallback = true;
-    if (host) {
-      host.armxBudgetFallback = true;
-      if (typeof globalThis !== 'undefined') globalThis.SF55C_LAST = host;
-    }
-  }
-  const finished = host && host.finished ? host.finished : [];
+  const host = stonefishV55Testunit1HostSearch(game, replyPolicy);
+  const finished = host.finished;
   if (!finished.length) {
     STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
     return [];
@@ -317,7 +304,6 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = Object.assign({}, review || {}, {
     searchGuidanceActive: Boolean(replyPolicy),
     replyPolicyObservations: replyPolicy ? replyPolicy.observations : 0,
-    budgetFallback: armxBudgetFallback,
     connected: Boolean(review),
     eligible: Boolean(review),
     adaptationApplied,
