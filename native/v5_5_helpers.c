@@ -229,9 +229,10 @@ static u32 search_history_generation[32768];
 static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
-#define SEARCH_POLICY_DIRECT_CAP 65536
-typedef struct {u32 generation;short priority;signed char low;unsigned char pad;} SearchPolicyDirectEntry;
-static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
+#define SEARCH_POLICY_DIRECT_CAP 8192
+static u32 search_policy_generation[SEARCH_POLICY_DIRECT_CAP];
+static u16 search_policy_keys[SEARCH_POLICY_DIRECT_CAP];
+static u32 search_policy_values[SEARCH_POLICY_DIRECT_CAP];
 
 #define SEARCH_POS_CAP 16384
 #define SEARCH_PATH_CAP 32768
@@ -829,17 +830,26 @@ static double policy_logit_uncached(u32 m){
   if(piece==1&&(to>>3)>=4)v+=policy_weights[12];
   return v;
 }
-static SearchPolicyDirectEntry *policy_direct_entry(u32 m){
+static u32 policy_direct_value(u32 m){
   u32 key=(u32)move_from(m)|((u32)move_to(m)<<6)|((u32)(move_piece(m)-1)<<12)
     |((move_flags(m)&12)?32768u:0u);
-  SearchPolicyDirectEntry *e=&search_policy_direct[key];
-  if(e->generation!=search_generation){
-    double value=policy_logit_uncached(m);
-    e->generation=search_generation;
-    e->priority=js_round(300.0*value);
-    e->low=value<0.0;
+  u32 slot=search_hash_mix(key)&(SEARCH_POLICY_DIRECT_CAP-1);
+  for(int probe=0;probe<SEARCH_POLICY_DIRECT_CAP;probe++,slot=(slot+1)&(SEARCH_POLICY_DIRECT_CAP-1)){
+    if(search_policy_generation[slot]!=search_generation){
+      double value=policy_logit_uncached(m);
+      short priority=(short)js_round(300.0*value);
+      search_policy_generation[slot]=search_generation;
+      search_policy_keys[slot]=(u16)key;
+      search_policy_values[slot]=(u16)priority|((u32)(value<0.0)<<16);
+      return search_policy_values[slot];
+    }
+    if(search_policy_keys[slot]==(u16)key)return search_policy_values[slot];
   }
-  return e;
+  {
+    double value=policy_logit_uncached(m);
+    short priority=(short)js_round(300.0*value);
+    return (u16)priority|((u32)(value<0.0)<<16);
+  }
 }
 static int search_order(u32 m,int ply,int tt_move){
   int promotion=move_promotion(m),captured=move_captured(m),piece=move_piece(m),id=move_id(m);
@@ -848,7 +858,10 @@ static int search_order(u32 m,int ply,int tt_move){
   if(captured)return 100000+config[captured]*16-config[piece];
   if(ply<32&&search_killers[ply]==id)return 90000;
   int value=search_history_generation[id]==search_generation?search_history[id]:0;
-  if(search_policy_enabled&&(ply&1))value+=policy_direct_entry(m)->priority;
+  if(search_policy_enabled&&(ply&1)){
+    u32 policy=policy_direct_value(m);
+    value+=(short)(policy&65535u);
+  }
   return value;
 }
 static int search_order_priorities[32][512];
@@ -912,7 +925,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
     &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6){
     int king=s->side>0?s->wk:s->bk;
-    if(!search_attacked_occ(king,-s->side,search_white_occ|search_black_occ)&&policy_direct_entry(last_move)->low){
+    if(!search_attacked_occ(king,-s->side,search_white_occ|search_black_occ)&&((policy_direct_value(last_move)>>16)&1)){
       int probe=search_q(s,alpha,beta,ply,search_qdepth);
       if(search_abort||probe>=beta)return probe;
     }
