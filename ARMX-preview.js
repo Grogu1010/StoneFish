@@ -49,7 +49,6 @@ const ARMX_PREVIEW = Object.freeze({
   maxExtraSearchNodes: 3600,
   evidenceSearchNodes: 4800,
   fullSearchEvidence: 8,
-  maxSearchNodes: 4800,
   maxExtraSearchDepth: 2,
 });
 
@@ -166,12 +165,8 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
   const uncertainty = armxPreviewClamp(
     -(model.qualityWeight ? model.qualitySum / model.qualityWeight : 0)
       / ARMX_PREVIEW.predictionSurpriseScale, 0, 1);
-  const requestedSearchBudget = SF55C.nodes + Math.round(ARMX_PREVIEW.maxExtraSearchNodes * uncertainty)
+  const searchBudget = SF55C.nodes + Math.round(ARMX_PREVIEW.maxExtraSearchNodes * uncertainty)
     + Math.round(ARMX_PREVIEW.evidenceSearchNodes * Math.min(1, model.count / ARMX_PREVIEW.fullSearchEvidence));
-  // Browser WASM can have very different search throughput from Node. Keep ARMX's
-  // learned ordering and depth reach, but hard-cap total node effort so the
-  // adaptation cannot balloon far beyond the control engine on slower runtimes.
-  const searchBudget = Math.min(ARMX_PREVIEW.maxSearchNodes, requestedSearchBudget);
   return {
     observations: model.count,
     // Accumulated voluntary choices activate deeper analysis of learned replies;
