@@ -280,19 +280,32 @@ function armxPreviewFeatureSet(game, move) {
   return features;
 }
 
-function armxPreviewCheapFeatureSet(move) {
-  const features = new Set();
-  if (!move) return features;
+function armxPreviewCheapFeatureMask(move) {
+  if (!move) return 0;
   const piece = move.piece || 0;
   const captured = move.captured || 0;
   const moveValue = ARMX_PREVIEW_PIECE_VALUES[piece] || 0;
   const capturedValue = ARMX_PREVIEW_PIECE_VALUES[captured] || 0;
-  if (captured) features.add('capture');
-  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) features.add('trade');
-  if (captured && piece === 4 && captured === 4) features.add('rookTrade');
-  if (captured && piece === 5 && captured === 5) features.add('queenTrade');
-  if (captured >= 2) features.add('simplify');
-  return features;
+  let mask = 0;
+  if (captured) mask |= 1;
+  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) mask |= 2;
+  if (captured && piece === 4 && captured === 4) mask |= 4;
+  if (captured && piece === 5 && captured === 5) mask |= 8;
+  if (captured >= 2) mask |= 16;
+  return mask;
+}
+
+function armxPreviewAddCheapFeatureMask(target, mask) {
+  if (mask & 1) target.add('capture');
+  if (mask & 2) target.add('trade');
+  if (mask & 4) target.add('rookTrade');
+  if (mask & 8) target.add('queenTrade');
+  if (mask & 16) target.add('simplify');
+  return target;
+}
+
+function armxPreviewCheapFeatureSet(move) {
+  return armxPreviewAddCheapFeatureMask(new Set(), armxPreviewCheapFeatureMask(move));
 }
 
 function armxPreviewFreshStats() {
@@ -398,12 +411,11 @@ function armxPreviewResolvePending(profile, currentPly, currentSnapshot = profil
 
 function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
   const legal = game.fastMoves();
-  const available = new Set();
-  for (const move of legal) {
-    const features = armxPreviewCheapFeatureSet(move);
-    for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (features.has(feature)) available.add(feature);
-  }
-  const chosen = armxPreviewCheapFeatureSet(chosenMove);
+  let availableMask = 0;
+  for (const move of legal) availableMask |= armxPreviewCheapFeatureMask(move);
+  const chosenMask = armxPreviewCheapFeatureMask(chosenMove);
+  const available = armxPreviewAddCheapFeatureMask(new Set(), availableMask);
+  const chosen = armxPreviewAddCheapFeatureMask(new Set(), chosenMask);
   profile.opponentMoves += 1;
   for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
     if (available.has(feature)) {
@@ -590,10 +602,10 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
 
     if (includeReplyOptions) {
       for (const reply of game.fastMoves()) {
-        const replyFeatures = armxPreviewCheapFeatureSet(reply);
-        for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (replyFeatures.has(feature)) available.add(feature);
+        const replyMask = armxPreviewCheapFeatureMask(reply);
+        armxPreviewAddCheapFeatureMask(available, replyMask);
         if (armxPreviewCapturedSquare(reply, game.side) === raw.to) {
-          for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (replyFeatures.has(feature)) offered.add(feature);
+          armxPreviewAddCheapFeatureMask(offered, replyMask);
         }
       }
     }
