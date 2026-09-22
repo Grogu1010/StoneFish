@@ -546,9 +546,16 @@ static int search_insufficient(void){
 }
 
 static u32 search_public_key_hash(const u16 *key){
-  u32 h=2166136261u;
-  for(int i=0;i<17;i++){h^=(u32)key[i];h*=16777619u;}
-  return h;
+  u32 h=0;
+  for(int i=0;i<16;i++){
+    u16 chunk=key[i];
+    for(int j=0;j<4;j++){
+      int piece=(int)((chunk>>(j<<2))&15)-6;
+      if(piece)h^=search_piece_token((i<<2)+j,piece);
+    }
+  }
+  int meta=key[16],side=(meta&1)?1:-1,castling=(meta>>1)&15,ep=(meta>>5)-1;
+  return h^search_meta_token(side,castling,ep);
 }
 static void search_public_store_key(SearchPublicEntry *e,const u16 *key){
   for(int word=0;word<4;word++){
@@ -566,12 +573,7 @@ static int search_public_input_equal(const SearchPublicEntry *e,const u16 *key){
   }
   return 1;
 }
-static u32 search_public_state_hash(const SearchState *s){
-  u32 h=2166136261u;
-  for(int i=0;i<16;i++){h^=(u16)(search_packed_board[i>>2]>>((i&3)<<4));h*=16777619u;}
-  h^=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5));h*=16777619u;
-  return h;
-}
+static u32 search_public_state_hash(const SearchState *s){return s->hash;}
 static int search_public_state_equal(const SearchPublicEntry *e,const SearchState *s){
   if(e->meta!=(u16)((s->side==1?1:0)|(s->castling<<1)|((s->ep+1)<<5)))return 0;
   for(int i=0;i<4;i++)if(e->packed[i]!=search_packed_board[i])return 0;
