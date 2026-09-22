@@ -1,24 +1,27 @@
+const stonefishWorkerAssetSuffix = self.location && self.location.search ? self.location.search : '';
+const stonefishWorkerAsset = path => `${path}${stonefishWorkerAssetSuffix}`;
+
 importScripts(
-  './StonefishChess.js',
-  './Stonefish_v1.js',
-  './Stonefish_v2.js',
-  './Stonefish_v3.js',
-  './Stonefish_v4.js',
-  './Stonefish_v4_5.js',
-  './Stonefish_v4_5_opening_overrides.js',
-  './Stonefish_v4_5_safety_patch.js',
-  './Stonefish_v4_5_balance_patch.js',
-  './Stonefish_v5.js',
-  './Stonefish_v5_pro.js',
-  './Stonefish_v5_pro_speed_patch.js',
-  './Stonefish_v5_pro_geometry_patch.js',
-  './Stonefish_runtime_speed_patch.js',
-  './Stonefish_fast_moves_experiment.js',
-  './Stonefish_v5_5_search.js',
-  './Stonefish_v5_5_refutation_guard.js',
-  './Stonefish_v5_5_native.js',
-  './ARMX-preview.js',
-  './Stonefish_v5_5_testunit1.js'
+  stonefishWorkerAsset('./StonefishChess.js'),
+  stonefishWorkerAsset('./Stonefish_v1.js'),
+  stonefishWorkerAsset('./Stonefish_v2.js'),
+  stonefishWorkerAsset('./Stonefish_v3.js'),
+  stonefishWorkerAsset('./Stonefish_v4.js'),
+  stonefishWorkerAsset('./Stonefish_v4_5.js'),
+  stonefishWorkerAsset('./Stonefish_v4_5_opening_overrides.js'),
+  stonefishWorkerAsset('./Stonefish_v4_5_safety_patch.js'),
+  stonefishWorkerAsset('./Stonefish_v4_5_balance_patch.js'),
+  stonefishWorkerAsset('./Stonefish_v5.js'),
+  stonefishWorkerAsset('./Stonefish_v5_pro.js'),
+  stonefishWorkerAsset('./Stonefish_v5_pro_speed_patch.js'),
+  stonefishWorkerAsset('./Stonefish_v5_pro_geometry_patch.js'),
+  stonefishWorkerAsset('./Stonefish_runtime_speed_patch.js'),
+  stonefishWorkerAsset('./Stonefish_fast_moves_experiment.js'),
+  stonefishWorkerAsset('./Stonefish_v5_5_search.js'),
+  stonefishWorkerAsset('./Stonefish_v5_5_refutation_guard.js'),
+  stonefishWorkerAsset('./Stonefish_v5_5_native.js'),
+  stonefishWorkerAsset('./ARMX-preview.js'),
+  stonefishWorkerAsset('./Stonefish_v5_5_testunit1.js')
 );
 
 const workerModels = {
@@ -97,9 +100,10 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
   const game = new Chess();
   applyVariedOpening(game, openingIndex);
   let plies = game.historyStack.length;
+  const nativeKernelAvailable = typeof SF55C_KERNEL !== 'undefined' && !!SF55C_KERNEL;
   const metrics = {
-    [whiteModelKey]: { moves: 0, thinkMs: 0 },
-    [blackModelKey]: { moves: 0, thinkMs: 0 }
+    [whiteModelKey]: { moves: 0, thinkMs: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 },
+    [blackModelKey]: { moves: 0, thinkMs: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 }
   };
 
   while (plies < maxPlies) {
@@ -121,6 +125,12 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
 
     metrics[modelKey].moves += 1;
     metrics[modelKey].thinkMs += elapsed;
+    if (modelKey === 'v55test1') {
+      const compiled = !!(globalThis.SF55C_LAST && globalThis.SF55C_LAST.refutationGuard
+        && globalThis.SF55C_LAST.refutationGuard.compiledSearch);
+      if (compiled) metrics[modelKey].compiledMoves += 1;
+      else metrics[modelKey].fallbackMoves += 1;
+    }
     commitChosenMove(game, move);
     plies += 1;
     if (game.in_checkmate()) return { outcome: game.side === 1 ? 'black' : 'white', metrics, plies, openingIndex };
