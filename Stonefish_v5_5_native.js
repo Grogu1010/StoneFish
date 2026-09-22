@@ -473,16 +473,7 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   const depthLimit=Number.isFinite(replyPolicy.maxDepth)
     ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(replyPolicy.maxDepth))):SF55C.maxDepth;
   let publicHistoryCount=0;
-  if(k.publicKeys&&k.publicCounts){
-    for(const [historyKey,countValue] of g.positionCounts){
-      if(publicHistoryCount>=512)break;
-      const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
-      const offset=publicHistoryCount*17;
-      for(let i=0;i<17;i++)k.publicKeys[offset+i]=packed.charCodeAt(i);
-      k.publicCounts[publicHistoryCount]=countValue;
-      publicHistoryCount++;
-    }
-  }
+  if(k.publicKeys&&k.publicCounts)publicHistoryCount=sf55cSyncPublicHistory(g,k);
   const count=k.api.search_all(
     g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
     depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
@@ -1143,6 +1134,85 @@ try {
    publicCounts:api.public_counts_ptr?new Int32Array(api.memory.buffer,api.public_counts_ptr(),512):null};
  }
 } catch (_) { /* Use the identical JS implementation if compilation is blocked. */ }
+
+// The native repetition input buffer persists across searches. Cache each
+// game's serialized history and update it only when real tracked moves append.
+const SF55C_PUBLIC_HISTORY_CACHE=new WeakMap();
+let SF55C_PUBLIC_HISTORY_ACTIVE=null;
+function sf55cPublicHistoryPackSlot(cache,slot,historyKey){
+ const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
+ const offset=slot*17;
+ for(let i=0;i<17;i++)cache.keys[offset+i]=packed.charCodeAt(i);
+}
+function sf55cPublicHistoryRebuild(g,cache){
+ cache.index.clear();cache.count=0;
+ for(const [historyKey,countValue] of g.positionCounts){
+  if(cache.count>=512)break;
+  const slot=cache.count++;
+  cache.index.set(historyKey,slot);
+  sf55cPublicHistoryPackSlot(cache,slot,historyKey);
+  cache.counts[slot]=countValue;
+ }
+ cache.positionCountsRef=g.positionCounts;
+ cache.historyLength=g.historyStack.length;
+ cache.lastState=cache.historyLength?g.historyStack[cache.historyLength-1]:null;
+ cache.sourceSize=g.positionCounts.size;
+ cache.rebuilt=true;
+ cache.dirtyKeys.length=0;cache.dirtyCounts.length=0;
+}
+function sf55cSyncPublicHistory(g,k){
+ let cache=SF55C_PUBLIC_HISTORY_CACHE.get(g);
+ if(!cache){
+  cache={keys:new Uint16Array(512*17),counts:new Int32Array(512),index:new Map(),
+   count:0,historyLength:0,lastState:null,positionCountsRef:null,sourceSize:0,
+   rebuilt:false,dirtyKeys:[],dirtyCounts:[]};
+  SF55C_PUBLIC_HISTORY_CACHE.set(g,cache);
+ }
+ cache.rebuilt=false;cache.dirtyKeys.length=0;cache.dirtyCounts.length=0;
+ const length=g.historyStack.length;
+ let rebuild=cache.positionCountsRef!==g.positionCounts||length<cache.historyLength;
+ if(!rebuild&&cache.historyLength>0&&g.historyStack[cache.historyLength-1]!==cache.lastState)rebuild=true;
+ if(!rebuild&&length===cache.historyLength&&g.positionCounts.size!==cache.sourceSize)rebuild=true;
+ if(rebuild||cache.positionCountsRef===null){
+  sf55cPublicHistoryRebuild(g,cache);
+ }else if(length>cache.historyLength){
+  for(let i=cache.historyLength;i<length;i++){
+   const state=g.historyStack[i];
+   if(!state||!state.trackRepetition||!state.repKey)continue;
+   const historyKey=state.repKey;
+   let slot=cache.index.get(historyKey);
+   if(slot===undefined){
+    if(cache.count>=512)continue;
+    slot=cache.count++;
+    cache.index.set(historyKey,slot);
+    sf55cPublicHistoryPackSlot(cache,slot,historyKey);
+    cache.dirtyKeys.push(slot);
+   }
+   const countValue=g.positionCounts.get(historyKey)||0;
+   if(cache.counts[slot]!==countValue){
+    cache.counts[slot]=countValue;
+    cache.dirtyCounts.push(slot);
+   }
+  }
+  cache.historyLength=length;
+  cache.lastState=length?g.historyStack[length-1]:null;
+  cache.sourceSize=g.positionCounts.size;
+ }
+ if(SF55C_PUBLIC_HISTORY_ACTIVE!==cache||cache.rebuilt){
+  if(cache.count){
+   k.publicKeys.set(cache.keys.subarray(0,cache.count*17),0);
+   k.publicCounts.set(cache.counts.subarray(0,cache.count),0);
+  }
+  SF55C_PUBLIC_HISTORY_ACTIVE=cache;
+ }else{
+  for(const slot of cache.dirtyKeys){
+   const offset=slot*17;
+   k.publicKeys.set(cache.keys.subarray(offset,offset+17),offset);
+  }
+  for(const slot of cache.dirtyCounts)k.publicCounts[slot]=cache.counts[slot];
+ }
+ return cache.count;
+}
 function sf55cSyncKernelConfig(){
  const kernel=SF55C_KERNEL;if(!kernel)return;
  kernel.config.set(SF55C.piece);
