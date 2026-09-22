@@ -1,6 +1,7 @@
 /* Exact native v5.5 evaluation and StonefishChess legal move order.
    Prototype: no imports, no search, no opponent state, no runtime allocation. */
 typedef signed char i8;
+typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned short u16;
 typedef unsigned long long u64;
@@ -183,7 +184,10 @@ typedef struct {
 } SearchPathEntry;
 typedef struct {
   u32 generation;
-  int pos,halfmove,ply,path,depth,score,move,flag;
+  int score,halfmove;
+  u16 pos,path,move;
+  u8 ply,depth;
+  i8 flag;
 } SearchTTEntry;
 typedef struct {
   u32 generation,hash;
