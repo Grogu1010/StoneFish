@@ -49,6 +49,35 @@ on:
 
 jobs:
 
+  full-strength-final-gate:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-bitboard-legality'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        matchup:
+          - armxVsPro
+          - noArmxVsPro
+          - armxVsNoArmx
+          - armxVsBaseline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build compiled ARMX search
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Run 100-game full-strength final gate
+        env:
+          SAMPLES: '4'
+          GAMES: '100'
+          MATCHUP: ${{ matrix.matchup }}
+        run: node benchmark_v5_5_testunit1.js
+
+
   candidate-vs-main:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-bitboard-legality'
     runs-on: ubuntu-latest
