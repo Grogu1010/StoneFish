@@ -230,7 +230,7 @@ static int search_nodes_count,search_node_limit,search_qdepth,search_abort,searc
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
 #define SEARCH_POLICY_DIRECT_CAP 65536
-typedef struct {u32 generation;int priority,low;} SearchPolicyDirectEntry;
+typedef struct {u32 generation;short priority;signed char low;unsigned char pad;} SearchPolicyDirectEntry;
 static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 
 #define SEARCH_POS_CAP 16384
@@ -238,16 +238,21 @@ static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 #define SEARCH_TT_CAP 32768
 typedef struct {
   u32 generation,hash;
-  int side,castling,ep,id;
+  u16 id;
+  i8 side,ep;
+  unsigned char castling,pad[3];
   u64 packed[4];
 } SearchPositionEntry;
 typedef struct {
   u32 generation;
-  int parent,pos,signature;
+  u16 parent,pos,signature,pad;
 } SearchPathEntry;
 typedef struct {
   u32 generation;
-  int pos,halfmove,ply,path,depth,score,move,flag;
+  int score,halfmove;
+  u16 pos,path,move,ply,depth;
+  i8 flag;
+  unsigned char pad;
 } SearchTTEntry;
 typedef struct {
   u32 generation,hash;
