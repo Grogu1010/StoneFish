@@ -465,10 +465,12 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
 function sf55cNativeAcceleratedHost(g,replyPolicy){
   const k=SF55C_KERNEL;
   if(!k||!k.api.search_all||!k.scores||!k.policyWeights||!replyPolicy)return null;
-  sf55cSyncKernelConfig();
   k.board.set(g.boardState);
-  k.policyWeights.fill(0);
-  if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
+  if(replyPolicy.weights&&replyPolicy.weights.length>=13)k.policyWeights.set(replyPolicy.weights);
+  else{
+    k.policyWeights.fill(0);
+    if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
+  }
   const limit=Number.isFinite(replyPolicy.searchBudget)
     ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(replyPolicy.searchBudget))):SF55C.nodes;
   const depthLimit=Number.isFinite(replyPolicy.maxDepth)
@@ -496,7 +498,6 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     finished[i]={raw,uci:stonefishV45RawUci(g,raw),score,deep:exact?k.scores[i]:null,
       preliminary:exact?k.scores[i]:null,tactical:0,knowledge:0,conversion:0,exact};
   }
-  finished.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
   const result={finished,fastLeader:finished.length?finished[0].raw:null,
     refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
     nodes:k.api.search_nodes?k.api.search_nodes():limit,
