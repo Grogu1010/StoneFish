@@ -823,7 +823,10 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     else{
       int childking=child.side>0?child.wk:child.bk;
       int gives_check=in_check(child.side,childking);
-      int reduce=depth>=3&&index>=4&&!check&&quiet&&!gives_check?1:0;
+      int reducible=depth>=3&&!check&&quiet&&!gives_check;
+      int learned_early=reducible&&search_policy_enabled&&(ply&1)&&index>=2
+        &&policy_direct_entry(m)->low;
+      int reduce=reducible&&(index>=4||learned_early)?1:0;
       score=-search_ab(&child,depth-1-reduce,-alpha-1,-alpha,ply+1,m);
       if(!search_abort&&score>alpha&&(reduce||score<beta))
         score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
