@@ -467,12 +467,17 @@ int search_evaluate_fast(int side,int white_king,int black_king){
 static int search_evaluate_state(const SearchState *s){
   int mg=s->eval_mg,eg=s->eval_eg,phase=s->eval_phase;
   static const int middle[8]={0,0,8,17,35,65,110,0},endingPawn[8]={0,0,15,32,65,120,210,0};
+  for(int f=0;f<8;f++){
+    int w=search_file_count(s->white_pawn_files,f),b=search_file_count(s->black_pawn_files,f);
+    if(w>1){mg-=w*12;eg-=w*16;}
+    if(w&&!(f>0&&search_file_count(s->white_pawn_files,f-1))&&!(f<7&&search_file_count(s->white_pawn_files,f+1))){mg-=w*11;eg-=w*15;}
+    if(b>1){mg+=b*12;eg+=b*16;}
+    if(b&&!(f>0&&search_file_count(s->black_pawn_files,f-1))&&!(f<7&&search_file_count(s->black_pawn_files,f+1))){mg+=b*11;eg+=b*15;}
+  }
   u64 pawns=s->white_pawns;
   while(pawns){
     int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
-    int f=sq&7,r=sq>>3,own=search_file_count(s->white_pawn_files,f);
-    if(own>1){mg-=12;eg-=16;}
-    if(!(f>0&&search_file_count(s->white_pawn_files,f-1))&&!(f<7&&search_file_count(s->white_pawn_files,f+1))){mg-=11;eg-=15;}
+    int f=sq&7,r=sq>>3;
     u64 files=search_file_mask(f);
     if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
     u64 ahead=sq==63?0:(~(u64)0<<(sq+1));
@@ -488,9 +493,7 @@ static int search_evaluate_state(const SearchState *s){
   pawns=s->black_pawns;
   while(pawns){
     int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
-    int f=sq&7,r=7-(sq>>3),own=search_file_count(s->black_pawn_files,f);
-    if(own>1){mg+=12;eg+=16;}
-    if(!(f>0&&search_file_count(s->black_pawn_files,f-1))&&!(f<7&&search_file_count(s->black_pawn_files,f+1))){mg+=11;eg+=15;}
+    int f=sq&7,r=7-(sq>>3);
     u64 files=search_file_mask(f);
     if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
     u64 behind=sq==0?0:(((u64)1<<sq)-1);
