@@ -1,6 +1,8 @@
 /* Exact native v5.5 evaluation and StonefishChess legal move order.
    Prototype: no imports, no search, no opponent state, no runtime allocation. */
 typedef signed char i8;
+typedef signed short i16;
+typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned short u16;
 typedef unsigned long long u64;
@@ -166,7 +168,7 @@ static int search_nodes_count,search_node_limit,search_qdepth,search_abort,searc
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
 #define SEARCH_POLICY_DIRECT_CAP 65536
-typedef struct {u32 generation;int priority,low;} SearchPolicyDirectEntry;
+typedef struct {u32 generation;i16 priority;u8 low,pad;} SearchPolicyDirectEntry;
 static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 
 #define SEARCH_POS_CAP 16384
