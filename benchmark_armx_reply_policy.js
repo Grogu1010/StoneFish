@@ -124,7 +124,8 @@ for (const row of golden.positions) {
   const boundedEffort = Number.isFinite(ARMX_PREVIEW.maxSearchNodes);
   const armxResult = summarize(stonefishV55Testunit1ScoreAllMoves(game));
   if (!boundedEffort) assert.deepEqual(armxResult, row.armx);
-  else assert.ok(armxResult.length > 0);
+  else if (row.armx.length) assert.ok(armxResult.length > 0);
+  else assert.equal(armxResult.length, 0);
   const model = armxPreviewSyncProfile(game, game.side).quietPolicy;
   assert.equal(model ? model.count : 0, row.quietChoices);
   assert.deepEqual(model ? Array.from(model.weights) : null, row.weights);
