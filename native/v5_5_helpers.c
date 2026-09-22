@@ -225,13 +225,13 @@ static double policy_weights[13];
 static u16 search_public_keys_input[SEARCH_PUBLIC_INPUT_CAP*17];
 static int search_public_counts_input[SEARCH_PUBLIC_INPUT_CAP];
 static int search_history[32768],search_killers[32];
-static u32 search_history_generation[32768];
+static u64 search_history_valid[512];
 static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
 #define SEARCH_POLICY_DIRECT_CAP 65536
-typedef struct {u32 generation;short priority;signed char low;unsigned char pad;} SearchPolicyDirectEntry;
-static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
+static short search_policy_priority[SEARCH_POLICY_DIRECT_CAP];
+static u64 search_policy_valid[1024],search_policy_low[1024];
 
 #define SEARCH_POS_CAP 16384
 #define SEARCH_PATH_CAP 32768
@@ -244,15 +244,11 @@ typedef struct {
   u64 packed[4];
 } SearchPositionEntry;
 typedef struct {
-  u32 generation;
-  u16 parent,pos,signature,pad;
+  u16 generation,parent,pos,signature;
 } SearchPathEntry;
 typedef struct {
-  u32 generation;
   int score,halfmove;
-  u16 pos,path,move,ply,depth;
-  i8 flag;
-  unsigned char pad;
+  u16 generation,pos,path,move,ply,depth_flag;
 } SearchTTEntry;
 typedef struct {
   u32 generation,hash;
@@ -269,6 +265,7 @@ static int search_path_counts[SEARCH_POS_CAP+1];
 static int search_path_stack[64],search_path_top,search_path_signature;
 static int search_position_count,search_signature_count;
 static u32 search_generation;
+static u16 search_short_generation;
 static u64 search_packed_board[4];
 static u32 search_white_pawn_files,search_black_pawn_files;
 static u64 search_white_pawns,search_black_pawns,search_white_rooks,search_black_rooks,search_white_occ,search_black_occ;
@@ -747,8 +744,8 @@ static int search_path_next(int parent,int pos){
   u32 slot=hash&(SEARCH_PATH_CAP-1);
   for(int probe=0;probe<SEARCH_PATH_CAP;probe++,slot=(slot+1)&(SEARCH_PATH_CAP-1)){
     SearchPathEntry *e=&search_paths[slot];
-    if(e->generation!=search_generation){
-      e->generation=search_generation;e->parent=parent;e->pos=pos;e->signature=++search_signature_count;
+    if(e->generation!=search_short_generation){
+      e->generation=search_short_generation;e->parent=parent;e->pos=pos;e->signature=++search_signature_count;
       return e->signature;
     }
     if(e->parent==parent&&e->pos==pos)return e->signature;
@@ -771,7 +768,7 @@ static SearchTTEntry *search_tt_find(int pos,int halfmove,int ply,int path){
   u32 slot=hash&(SEARCH_TT_CAP-1);
   for(int probe=0;probe<SEARCH_TT_CAP;probe++,slot=(slot+1)&(SEARCH_TT_CAP-1)){
     SearchTTEntry *e=&search_tt[slot];
-    if(e->generation!=search_generation)return 0;
+    if(e->generation!=search_short_generation)return 0;
     if(e->pos==pos&&e->halfmove==halfmove&&e->ply==ply&&e->path==path)return e;
   }
   return 0;
@@ -781,8 +778,8 @@ static SearchTTEntry *search_tt_slot(int pos,int halfmove,int ply,int path){
   u32 slot=hash&(SEARCH_TT_CAP-1);
   for(int probe=0;probe<SEARCH_TT_CAP;probe++,slot=(slot+1)&(SEARCH_TT_CAP-1)){
     SearchTTEntry *e=&search_tt[slot];
-    if(e->generation!=search_generation){
-      e->generation=search_generation;e->pos=pos;e->halfmove=halfmove;e->ply=ply;e->path=path;
+    if(e->generation!=search_short_generation){
+      e->generation=search_short_generation;e->pos=pos;e->halfmove=halfmove;e->ply=ply;e->path=path;
       return e;
     }
     if(e->pos==pos&&e->halfmove==halfmove&&e->ply==ply&&e->path==path)return e;
@@ -829,17 +826,25 @@ static double policy_logit_uncached(u32 m){
   if(piece==1&&(to>>3)>=4)v+=policy_weights[12];
   return v;
 }
-static SearchPolicyDirectEntry *policy_direct_entry(u32 m){
+static u32 policy_direct_prepare(u32 m){
   u32 key=(u32)move_from(m)|((u32)move_to(m)<<6)|((u32)(move_piece(m)-1)<<12)
     |((move_flags(m)&12)?32768u:0u);
-  SearchPolicyDirectEntry *e=&search_policy_direct[key];
-  if(e->generation!=search_generation){
+  u32 word=key>>6;u64 bit=(u64)1<<(key&63);
+  if(!(search_policy_valid[word]&bit)){
     double value=policy_logit_uncached(m);
-    e->generation=search_generation;
-    e->priority=js_round(300.0*value);
-    e->low=value<0.0;
+    search_policy_priority[key]=(short)js_round(300.0*value);
+    if(value<0.0)search_policy_low[word]|=bit;else search_policy_low[word]&=~bit;
+    search_policy_valid[word]|=bit;
   }
-  return e;
+  return key;
+}
+static int policy_direct_priority(u32 m){
+  u32 key=policy_direct_prepare(m);
+  return search_policy_priority[key];
+}
+static int policy_direct_is_low(u32 m){
+  u32 key=policy_direct_prepare(m);
+  return (int)((search_policy_low[key>>6]>>(key&63))&1);
 }
 static int search_order(u32 m,int ply,int tt_move){
   int promotion=move_promotion(m),captured=move_captured(m),piece=move_piece(m),id=move_id(m);
@@ -847,8 +852,9 @@ static int search_order(u32 m,int ply,int tt_move){
   if(promotion)return 200000+config[promotion];
   if(captured)return 100000+config[captured]*16-config[piece];
   if(ply<32&&search_killers[ply]==id)return 90000;
-  int value=search_history_generation[id]==search_generation?search_history[id]:0;
-  if(search_policy_enabled&&(ply&1))value+=policy_direct_entry(m)->priority;
+  u64 history_bit=(u64)1<<(id&63);
+  int value=(search_history_valid[id>>6]&history_bit)?search_history[id]:0;
+  if(search_policy_enabled&&(ply&1))value+=policy_direct_priority(m);
   return value;
 }
 static int search_order_priorities[32][512];
@@ -907,12 +913,21 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   return stand;
 }
 
+static int search_tt_depth(const SearchTTEntry *e){return e->depth_flag&16383;}
+static int search_tt_flag(const SearchTTEntry *e){
+  int code=e->depth_flag>>14;
+  return code==2?-1:code;
+}
+static void search_tt_set_depth_flag(SearchTTEntry *e,int depth,int flag){
+  int code=flag<0?2:flag>0?1:0;
+  e->depth_flag=(u16)(depth|(code<<14));
+}
 static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 last_move){
   if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
   if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
     &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6){
     int king=s->side>0?s->wk:s->bk;
-    if(!search_attacked_occ(king,-s->side,search_white_occ|search_black_occ)&&policy_direct_entry(last_move)->low){
+    if(!search_attacked_occ(king,-s->side,search_white_occ|search_black_occ)&&policy_direct_is_low(last_move)){
       int probe=search_q(s,alpha,beta,ply,search_qdepth);
       if(search_abort||probe>=beta)return probe;
     }
@@ -921,10 +936,11 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   int pos=search_position_id(s),original=alpha;
   SearchTTEntry *hit=search_tt_find(pos,s->halfmove,ply,search_path_signature);
   int budget_live=search_nodes_count<=search_node_limit||search_iter_depth<=2;
-  if(budget_live&&hit&&hit->depth>=depth){
-    if(hit->flag==0)return hit->score;
-    if(hit->flag==1&&hit->score>=beta)return hit->score;
-    if(hit->flag==-1&&hit->score<=alpha)return hit->score;
+  if(budget_live&&hit&&search_tt_depth(hit)>=depth){
+    int hit_flag=search_tt_flag(hit);
+    if(hit_flag==0)return hit->score;
+    if(hit_flag==1&&hit->score>=beta)return hit->score;
+    if(hit_flag==-1&&hit->score<=alpha)return hit->score;
   }
   int king=s->side>0?s->wk:s->bk,check=search_attacked_occ(king,-s->side,search_white_occ|search_black_occ);
   int n=search_generate(s,0);
@@ -955,9 +971,9 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(alpha>=beta){
       if(quiet&&ply<32){
         search_killers[ply]=best_move;
-        if(search_history_generation[best_move]!=search_generation){
-          search_history_generation[best_move]=search_generation;search_history[best_move]=0;
-        }
+        u64 history_bit=(u64)1<<(best_move&63);
+        u64 *history_word=&search_history_valid[best_move>>6];
+        if(!(*history_word&history_bit)){*history_word|=history_bit;search_history[best_move]=0;}
         search_history[best_move]+=depth*depth;
       }
       break;
@@ -968,8 +984,8 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(!search_abort){
     SearchTTEntry *slot=search_tt_slot(pos,s->halfmove,ply,search_path_signature);
     if(slot){
-      slot->depth=depth;slot->score=best;slot->move=best_move;
-      slot->flag=best<=original?-1:best>=beta?1:0;
+      slot->score=best;slot->move=best_move;
+      search_tt_set_depth_flag(slot,depth,best<=original?-1:best>=beta?1:0);
     }
   }
   return best;
@@ -1006,6 +1022,14 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
   search_generation++;if(!search_generation)search_generation=1;
+  search_short_generation++;
+  if(!search_short_generation){
+    for(int i=0;i<SEARCH_PATH_CAP;i++)search_paths[i].generation=0;
+    for(int i=0;i<SEARCH_TT_CAP;i++)search_tt[i].generation=0;
+    search_short_generation=1;
+  }
+  for(int i=0;i<1024;i++)search_policy_valid[i]=0;
+  for(int i=0;i<512;i++)search_history_valid[i]=0;
   search_public_build(public_history_count);
   search_position_count=0;search_signature_count=0;search_path_signature=0;search_path_top=0;
   for(int i=0;i<32;i++)search_killers[i]=0;
