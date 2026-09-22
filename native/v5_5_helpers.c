@@ -1029,10 +1029,22 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
     search_iter_depth=depth;search_abort=0;int next_count=0,threshold=-SEARCH_MATE;
     for(int i=0;i<current_count;i++){
       u32 m=current_moves[i];SearchState child;SearchBoardUndo u;search_apply_child(&s,&child,m,&u);
-      int score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
+      int score,is_exact;
+      if(threshold==-SEARCH_MATE){
+        score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
+        is_exact=1;
+      }else{
+        // Once three exact root moves are known, later moves only need to prove
+        // they can beat the current third-best score. A null-window scout rejects
+        // fail-low roots cheaply; only contenders pay for the original wide search.
+        score=-search_ab(&child,depth-1,-threshold-1,-threshold,1,m);
+        if(!search_abort&&score>threshold){
+          score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
+          is_exact=!search_abort&&score>threshold;
+        }else is_exact=0;
+      }
       search_undo_board(s.side,m,&u);
       if(search_abort)break;
-      int is_exact=threshold==-SEARCH_MATE||score>threshold;
       root_insert(next_moves,next_scores,next_exact,&next_count,m,score,is_exact);
       if(next_count>=3)threshold=next_scores[2];
     }
