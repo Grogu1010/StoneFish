@@ -694,17 +694,29 @@ static int quiet_ending(int piece,int sq){
   if(piece==5)return center*3;
   return center*8;
 }
+static short search_quiet_activity[7][64],search_quiet_ending[7][64];
+static int search_quiet_geometry_ready;
+static void search_init_quiet_geometry(void){
+  if(search_quiet_geometry_ready)return;
+  for(int piece=1;piece<=6;piece++)for(int sq=0;sq<64;sq++){
+    search_quiet_activity[piece][sq]=(short)quiet_activity(piece,sq);
+    search_quiet_ending[piece][sq]=(short)quiet_ending(piece,sq);
+  }
+  search_quiet_geometry_ready=1;
+}
+
 static double policy_logit_uncached(u32 m){
   int piece=move_piece(m),from=move_from(m),to=move_to(m);
   if(search_policy_side<0){from^=56;to^=56;}
   double v=policy_weights[piece-1];
-  v+=((double)(quiet_activity(piece,to)-quiet_activity(piece,from))/100.0)*policy_weights[6];
-  v+=((double)(quiet_ending(piece,to)-quiet_ending(piece,from))/100.0)*policy_weights[7];
+  v+=((double)(search_quiet_activity[piece][to]-search_quiet_activity[piece][from])/100.0)*policy_weights[6];
+  v+=((double)(search_quiet_ending[piece][to]-search_quiet_ending[piece][from])/100.0)*policy_weights[7];
   int adv=(to>>3)-(from>>3);if(adv>3)adv=3;if(adv<-3)adv=-3;
   v+=((double)adv/3.0)*policy_weights[8];
   if(move_flags(m)&12)v+=policy_weights[9];
   if((piece==2||piece==3)&&(from>>3)==0)v+=policy_weights[10];
-  double center_gain=(double)(absolute(2*(from&7)-7)-absolute(2*(to&7)-7))/8.0;
+  static const int file_distance[8]={7,5,3,1,1,3,5,7};
+  double center_gain=(double)(file_distance[from&7]-file_distance[to&7])/8.0;
   v+=center_gain*policy_weights[11];
   if(piece==1&&(to>>3)>=4)v+=policy_weights[12];
   return v;
@@ -880,7 +892,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   s.hash=search_initial_hash(&s);search_initial_eval(&s);search_init_packed_board();
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
-  search_policy_side=-side;
+  search_policy_side=-side;if(policy_enabled)search_init_quiet_geometry();
   search_generation++;if(!search_generation)search_generation=1;
   search_public_build(public_history_count);
   search_position_count=0;search_signature_count=0;search_path_signature=0;search_path_top=0;
