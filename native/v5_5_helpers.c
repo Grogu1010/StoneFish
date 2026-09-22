@@ -83,6 +83,7 @@ static int attacked(int square,int by_side){
   return 0;
 }
 static u64 search_attack_ray_mask[64][8],search_attack_knight_mask[64];
+static u64 search_attack_diagonal_mask[64],search_attack_straight_mask[64];
 static u8 search_attack_ray_first[64][8];
 static u64 search_white_knights,search_black_knights;
 static u64 search_white_bishops,search_black_bishops,search_white_rooks,search_black_rooks;
@@ -92,7 +93,7 @@ static void search_init_attack_tables(void){
   if(search_attack_tables_ready)return;
   for(int square=0;square<64;square++){
     int file=square&7,rank=square>>3;
-    u64 knights=0;
+    u64 knights=0,diagonal=0,straight=0;
     for(int i=0;i<8;i++){
       int f=file+ndf[i],r=rank+ndr[i];
       if(f>=0&&f<8&&r>=0&&r<8)knights|=(u64)1<<(r*8+f);
@@ -107,7 +108,10 @@ static void search_init_attack_tables(void){
       }
       search_attack_ray_mask[square][d]=mask;
       search_attack_ray_first[square][d]=(u8)first;
+      if(d<4)diagonal|=mask;else straight|=mask;
     }
+    search_attack_diagonal_mask[square]=diagonal;
+    search_attack_straight_mask[square]=straight;
   }
   search_attack_tables_ready=1;
 }
@@ -127,21 +131,32 @@ static int search_attacked_occ(int square,int by_side,u64 occupied){
     if(board[sq]==knight)return 1;
   }
   int queen=by_side*5,king=by_side*6;
-  u64 diagonal=by_side>0
+  u64 diagonal=(by_side>0
     ?(search_white_bishops|search_white_queens|search_white_kings)
-    :(search_black_bishops|search_black_queens|search_black_kings);
-  u64 straight=by_side>0
+    :(search_black_bishops|search_black_queens|search_black_kings))
+    &search_attack_diagonal_mask[square];
+  u64 straight=(by_side>0
     ?(search_white_rooks|search_white_queens|search_white_kings)
-    :(search_black_rooks|search_black_queens|search_black_kings);
+    :(search_black_rooks|search_black_queens|search_black_kings))
+    &search_attack_straight_mask[square];
   static const u8 increasing[8]={1,0,1,0,1,0,1,0};
-  for(int d=0;d<8;d++){
+  if(diagonal)for(int d=0;d<4;d++){
     u64 ray=search_attack_ray_mask[square][d];
-    if(!((d<4?diagonal:straight)&ray))continue;
+    if(!(diagonal&ray))continue;
     u64 blockers=occupied&ray;
     if(!blockers)continue;
     int sq=increasing[d]?__builtin_ctzll(blockers):63-__builtin_clzll(blockers);
-    int p=board[sq],slider=by_side*(d<4?3:4);
-    if(p==queen||p==slider||(sq==search_attack_ray_first[square][d]&&p==king))return 1;
+    int p=board[sq];
+    if(p==queen||p==by_side*3||(sq==search_attack_ray_first[square][d]&&p==king))return 1;
+  }
+  if(straight)for(int d=4;d<8;d++){
+    u64 ray=search_attack_ray_mask[square][d];
+    if(!(straight&ray))continue;
+    u64 blockers=occupied&ray;
+    if(!blockers)continue;
+    int sq=increasing[d]?__builtin_ctzll(blockers):63-__builtin_clzll(blockers);
+    int p=board[sq];
+    if(p==queen||p==by_side*4||(sq==search_attack_ray_first[square][d]&&p==king))return 1;
   }
   return 0;
 }
@@ -244,7 +259,6 @@ static int search_nodes_count,search_node_limit,search_qdepth,search_abort,searc
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
 #define SEARCH_POLICY_DIRECT_CAP 65536
-#define SEARCH_MOVE_CAP 256
 typedef struct {u32 generation;short priority;signed char low;unsigned char pad;} SearchPolicyDirectEntry;
 static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 
@@ -888,7 +902,7 @@ static int search_order(u32 m,int ply,int tt_move){
   if(search_policy_enabled&&(ply&1))value+=policy_direct_entry(m)->priority;
   return value;
 }
-static int search_order_priorities[32][SEARCH_MOVE_CAP];
+static int search_order_priorities[32][512];
 static int *search_prepare_order(u32 *moves,int n,int ply,int tt_move){
   int *priorities=search_order_priorities[ply<32?ply:31];
   for(int i=0;i<n;i++)priorities[i]=search_order(moves[i],ply,tt_move);
@@ -909,7 +923,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   search_nodes_count++;
   int king=s->side>0?s->wk:s->bk,check=search_attacked_occ(king,-s->side,search_white_occ|search_black_occ);
   int pos=s->halfmove?search_position_id(s):0;
-  u32 moves[SEARCH_MOVE_CAP];int n=0;
+  u32 moves[512];int n=0;
   if(check){
     n=search_generate(s,0);
     if(!n)return -SEARCH_MATE+ply;
@@ -968,7 +982,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_state(s);}
-  u32 moves[SEARCH_MOVE_CAP];for(int i=0;i<n;i++)moves[i]=output[i];
+  u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
   int *priorities=search_prepare_order(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
@@ -1051,8 +1065,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<32;i++)search_killers[i]=0;
   int king=side>0?wk:bk,n=search_generate(&s,0);
   if(!n)return 0;
-  u32 current_moves[SEARCH_MOVE_CAP],next_moves[SEARCH_MOVE_CAP];
-  int current_scores[SEARCH_MOVE_CAP],next_scores[SEARCH_MOVE_CAP],current_exact[SEARCH_MOVE_CAP],next_exact[SEARCH_MOVE_CAP];
+  u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
   for(int i=0;i<n;i++){
     current_moves[i]=output[i];current_exact[i]=0;SearchState child;SearchBoardUndo u;
     search_apply_child(&s,&child,current_moves[i],&u);
