@@ -65,16 +65,22 @@ const strengthSummary=result=>({depth:result.depth,entries:[...result.entries].s
 for(const row of fixtures){
  const g=new Chess();for(const uci of row.history)assert.ok(g.move({from:uci.slice(0,2),to:uci.slice(2,4),promotion:uci[4]||'q'}));
  g.armxObservationStartPly=row.observationStartPly;
+ let compiledArmx=null;
  for(const kernel of [compiled,null]){
   SF55C_KERNEL=kernel;
   assert.deepStrictEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(g)),row.native);
   const armx=summarize(stonefishV55Testunit1ScoreAllMoves(g));
   if(kernel){
-   // The compiled path may account a couple of terminal probes differently or
-   // reorder roots with already-known equivalent scores. Preserve the actual
-   // search output instead: same completed depth and same score/exactness for
-   // every root move. The JS fallback remains byte-for-byte golden below.
-   assert.deepStrictEqual(strengthSummary(armx),strengthSummary(row.armx));
+   compiledArmx=armx;
+   // Historical full-effort fixtures remain a useful score reference when the
+   // bounded search completes the same iteration.
+   if(!Number.isFinite(ARMX_PREVIEW.maxSearchNodes))
+    assert.deepStrictEqual(strengthSummary(armx),strengthSummary(row.armx));
+  }else if(Number.isFinite(ARMX_PREVIEW.maxSearchNodes)){
+   // A deliberate effort cap changes node counts and can end an iteration
+   // earlier. Require the compiled and JS implementations to agree on the
+   // resulting completed-depth root scores instead of requiring old effort.
+   assert.deepStrictEqual(strengthSummary(armx),strengthSummary(compiledArmx));
   }else assert.deepStrictEqual(armx,row.armx);
  }
 }
