@@ -84,6 +84,7 @@ static int attacked(int square,int by_side){
 }
 static u64 search_attack_ray_mask[64][8],search_attack_knight_mask[64];
 static u8 search_attack_ray_first[64][8];
+static u64 search_white_knights,search_black_knights;
 static int search_attack_tables_ready;
 static void search_init_attack_tables(void){
   if(search_attack_tables_ready)return;
@@ -274,7 +275,7 @@ static int search_position_count,search_signature_count;
 static u32 search_generation,search_public_generation;
 static u64 search_packed_board[4];
 static u32 search_white_pawn_files,search_black_pawn_files;
-static u64 search_white_pawns,search_black_pawns,search_white_knights,search_black_knights;
+static u64 search_white_pawns,search_black_pawns;
 static u64 search_white_rooks,search_black_rooks,search_white_occ,search_black_occ;
 static u64 search_white_passed_mask[64],search_black_passed_mask[64];
 static u64 search_white_shield_mask[64],search_black_shield_mask[64];
