@@ -244,6 +244,7 @@ static int search_nodes_count,search_node_limit,search_qdepth,search_abort,searc
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
 #define SEARCH_POLICY_DIRECT_CAP 65536
+#define SEARCH_MOVE_CAP 256
 typedef struct {u32 generation;short priority;signed char low;unsigned char pad;} SearchPolicyDirectEntry;
 static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 
@@ -887,7 +888,7 @@ static int search_order(u32 m,int ply,int tt_move){
   if(search_policy_enabled&&(ply&1))value+=policy_direct_entry(m)->priority;
   return value;
 }
-static int search_order_priorities[32][512];
+static int search_order_priorities[32][SEARCH_MOVE_CAP];
 static int *search_prepare_order(u32 *moves,int n,int ply,int tt_move){
   int *priorities=search_order_priorities[ply<32?ply:31];
   for(int i=0;i<n;i++)priorities[i]=search_order(moves[i],ply,tt_move);
@@ -908,7 +909,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   search_nodes_count++;
   int king=s->side>0?s->wk:s->bk,check=search_attacked_occ(king,-s->side,search_white_occ|search_black_occ);
   int pos=s->halfmove?search_position_id(s):0;
-  u32 moves[512];int n=0;
+  u32 moves[SEARCH_MOVE_CAP];int n=0;
   if(check){
     n=search_generate(s,0);
     if(!n)return -SEARCH_MATE+ply;
@@ -967,7 +968,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_state(s);}
-  u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
+  u32 moves[SEARCH_MOVE_CAP];for(int i=0;i<n;i++)moves[i]=output[i];
   int *priorities=search_prepare_order(moves,n,ply,hit?hit->move:0);
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
@@ -1050,7 +1051,8 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<32;i++)search_killers[i]=0;
   int king=side>0?wk:bk,n=search_generate(&s,0);
   if(!n)return 0;
-  u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
+  u32 current_moves[SEARCH_MOVE_CAP],next_moves[SEARCH_MOVE_CAP];
+  int current_scores[SEARCH_MOVE_CAP],next_scores[SEARCH_MOVE_CAP],current_exact[SEARCH_MOVE_CAP],next_exact[SEARCH_MOVE_CAP];
   for(int i=0;i<n;i++){
     current_moves[i]=output[i];current_exact[i]=0;SearchState child;SearchBoardUndo u;
     search_apply_child(&s,&child,current_moves[i],&u);
