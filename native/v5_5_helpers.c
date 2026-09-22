@@ -214,7 +214,6 @@ typedef struct {
   int side,castling,ep,wk,bk,halfmove,material;
   u32 hash;
   int eval_mg,eval_eg,eval_phase,white_bishops,black_bishops;
-  u32 white_pawn_files,black_pawn_files;
   u64 white_pawns,black_pawns,white_rooks,black_rooks,white_occ,black_occ;
 } SearchState;
 typedef struct {
@@ -256,11 +255,15 @@ static void search_set_packed_square(int sq,int value){
   search_packed_board[word]=(search_packed_board[word]&~mask)|((u64)(value+6)<<shift);
 }
 static int search_phase_piece(int type){return type==2||type==3?1:type==4?2:type==5?4:0;}
-static int search_file_count(u32 packed,int file){return (int)((packed>>(file<<2))&15u);}
-static void search_file_adjust(u32 *packed,int file,int delta){
-  u32 unit=1u<<(file<<2);if(delta>0)*packed+=unit;else *packed-=unit;
-}
-static u64 search_file_mask(int file){return ((u64)0x0101010101010101ULL)<<file;}
+static const u64 search_file_masks[8]={
+  0x0101010101010101ULL,0x0202020202020202ULL,0x0404040404040404ULL,0x0808080808080808ULL,
+  0x1010101010101010ULL,0x2020202020202020ULL,0x4040404040404040ULL,0x8080808080808080ULL
+};
+static const u64 search_adjacent_file_masks[8]={
+  0x0202020202020202ULL,0x0505050505050505ULL,0x0a0a0a0a0a0a0a0aULL,0x1414141414141414ULL,
+  0x2828282828282828ULL,0x5050505050505050ULL,0xa0a0a0a0a0a0a0a0ULL,0x4040404040404040ULL
+};
+static u64 search_file_mask(int file){return search_file_masks[file];}
 static void search_eval_piece(SearchState *s,int sq,int piece,int direction){
   int side=piece>0?1:-1,type=absolute(piece),ps=side>0?sq:sq^56;
   const int *pst=config+7,*ending=config+7+448;
@@ -273,10 +276,8 @@ static void search_eval_piece(SearchState *s,int sq,int piece,int direction){
   if(type==1){
     if(side>0){
       if(direction>0)s->white_pawns|=bit;else s->white_pawns&=~bit;
-      search_file_adjust(&s->white_pawn_files,sq&7,direction);
     }else{
       if(direction>0)s->black_pawns|=bit;else s->black_pawns&=~bit;
-      search_file_adjust(&s->black_pawn_files,sq&7,direction);
     }
   }else if(type==3){
     if(side>0)s->white_bishops+=direction;else s->black_bishops+=direction;
@@ -288,7 +289,6 @@ static void search_eval_piece(SearchState *s,int sq,int piece,int direction){
 static void search_initial_eval(SearchState *s){
   s->eval_mg=s->eval_eg=s->eval_phase=0;
   s->white_bishops=s->black_bishops=0;
-  s->white_pawn_files=s->black_pawn_files=0;
   s->white_pawns=s->black_pawns=s->white_rooks=s->black_rooks=0;
   s->white_occ=s->black_occ=0;
   for(int sq=0;sq<64;sq++)if(board[sq])search_eval_piece(s,sq,board[sq],1);
@@ -470,9 +470,9 @@ static int search_evaluate_state(const SearchState *s){
   u64 pawns=s->white_pawns;
   while(pawns){
     int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
-    int f=sq&7,r=sq>>3,own=search_file_count(s->white_pawn_files,f);
+    int f=sq&7,r=sq>>3,own=__builtin_popcountll(s->white_pawns&search_file_masks[f]);
     if(own>1){mg-=12;eg-=16;}
-    if(!(f>0&&search_file_count(s->white_pawn_files,f-1))&&!(f<7&&search_file_count(s->white_pawn_files,f+1))){mg-=11;eg-=15;}
+    if(!(s->white_pawns&search_adjacent_file_masks[f])){mg-=11;eg-=15;}
     u64 files=search_file_mask(f);
     if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
     u64 ahead=sq==63?0:(~(u64)0<<(sq+1));
@@ -488,9 +488,9 @@ static int search_evaluate_state(const SearchState *s){
   pawns=s->black_pawns;
   while(pawns){
     int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
-    int f=sq&7,r=7-(sq>>3),own=search_file_count(s->black_pawn_files,f);
+    int f=sq&7,r=7-(sq>>3),own=__builtin_popcountll(s->black_pawns&search_file_masks[f]);
     if(own>1){mg+=12;eg+=16;}
-    if(!(f>0&&search_file_count(s->black_pawn_files,f-1))&&!(f<7&&search_file_count(s->black_pawn_files,f+1))){mg+=11;eg+=15;}
+    if(!(s->black_pawns&search_adjacent_file_masks[f])){mg+=11;eg+=15;}
     u64 files=search_file_mask(f);
     if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
     u64 behind=sq==0?0:(((u64)1<<sq)-1);
@@ -507,12 +507,12 @@ static int search_evaluate_state(const SearchState *s){
   u64 rooks=s->white_rooks;
   while(rooks){
     int sq=__builtin_ctzll(rooks);rooks&=rooks-1;int f=sq&7;
-    if(!search_file_count(s->white_pawn_files,f)){mg+=search_file_count(s->black_pawn_files,f)?15:30;eg+=15;}
+    if(!(s->white_pawns&search_file_masks[f])){mg+=(s->black_pawns&search_file_masks[f])?15:30;eg+=15;}
   }
   rooks=s->black_rooks;
   while(rooks){
     int sq=__builtin_ctzll(rooks);rooks&=rooks-1;int f=sq&7;
-    if(!search_file_count(s->black_pawn_files,f)){mg-=search_file_count(s->white_pawn_files,f)?15:30;eg-=15;}
+    if(!(s->black_pawns&search_file_masks[f])){mg-=(s->white_pawns&search_file_masks[f])?15:30;eg-=15;}
   }
   int shield=0,wf=s->wk&7;
   for(int df=-1;df<=1;df++){if(wf+df<0||wf+df>7)continue;int x=s->wk+8+df;if(x>=0&&x<64&&board[x]==1)shield++;}
