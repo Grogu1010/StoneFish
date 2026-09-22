@@ -174,12 +174,14 @@ static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 #define SEARCH_TT_CAP 32768
 typedef struct {
   u32 generation,hash;
-  int side,castling,ep,id;
+  u16 id;
+  i8 side,ep;
+  unsigned char castling,pad[3];
   u64 packed[4];
 } SearchPositionEntry;
 typedef struct {
   u32 generation;
-  int parent,pos,signature;
+  u16 parent,pos,signature,pad;
 } SearchPathEntry;
 typedef struct {
   u32 generation;
