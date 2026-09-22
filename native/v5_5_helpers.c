@@ -946,9 +946,11 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     int quiet=!move_captured(m)&&!move_promotion(m),score;
     if(index==0)score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
     else{
-      int childking=child.side>0?child.wk:child.bk;
-      int gives_check=search_attacked_occ(childking,-child.side,search_white_occ|search_black_occ);
-      int reduce=depth>=3&&index>=4&&!check&&quiet&&!gives_check?1:0;
+      int reduce=0;
+      if(depth>=3&&index>=4&&!check&&quiet){
+        int childking=child.side>0?child.wk:child.bk;
+        reduce=!search_attacked_occ(childking,-child.side,search_white_occ|search_black_occ);
+      }
       score=-search_ab(&child,depth-1-reduce,-alpha-1,-alpha,ply+1,m);
       if(!search_abort&&score>alpha&&(reduce||score<beta))
         score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
