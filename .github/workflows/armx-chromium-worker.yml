@@ -1,0 +1,32 @@
+name: ARMX Chromium worker benchmark
+
+on:
+  pull_request:
+    branches:
+      - chatgpt/armx-shortgen-tt-path
+    paths:
+      - 'benchmark_armx_chromium_workers.js'
+      - '.github/workflows/armx-chromium-worker.yml'
+  workflow_dispatch:
+
+jobs:
+  chromium-worker-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build compiled ARMX search
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install chromium
+      - name: Run real browser worker benchmark
+        env:
+          GAMES: '100'
+        run: node benchmark_armx_chromium_workers.js
