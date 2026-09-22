@@ -46,8 +46,8 @@ const ARMX_PREVIEW = Object.freeze({
   quietChoiceWeightLimit: 6,
   predictionQualityDecay: 0.9,
   predictionSurpriseScale: 0.3,
-  maxExtraSearchNodes: 3600,
-  evidenceSearchNodes: 4800,
+  maxExtraSearchNodes: 3060,
+  evidenceSearchNodes: 4080,
   fullSearchEvidence: 8,
   maxExtraSearchDepth: 2,
 });
