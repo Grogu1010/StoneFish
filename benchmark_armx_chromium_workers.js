@@ -47,12 +47,13 @@ const server=http.createServer((req,res)=>{
       const compiled=/compiled-search moves (\d+)/.exec(armxRow||'');
       const fallback=/fallback\/base moves (\d+)/.exec(armxRow||'');
       const armxMs=extract(armxRow||''),noArmxMs=extract(noRow||'');
-      return {games,workers:workers?Number(workers[1]):null,armxMs,noArmxMs,
+      return {workers:workers?Number(workers[1]):null,armxMs,noArmxMs,
         ratio:armxMs&&noArmxMs?armxMs/noArmxMs:null,
         compiledMoves:compiled?Number(compiled[1]):null,
         fallbackMoves:fallback?Number(fallback[1]):null,
         overall,text};
     });
+    result.games=games;
     console.log('ARMX_CHROMIUM_WORKERS '+JSON.stringify(result));
   } finally {
     await browser.close();
