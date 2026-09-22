@@ -258,10 +258,11 @@ static void search_init_eval_masks(void){
   for(int sq=0;sq<64;sq++){
     int f=sq&7,r=sq>>3;
     u64 wpass=0,bpass=0,wshield=0,bshield=0;
-    for(int ff=f>0?f-1:f;ff<=(f<7?f+1:f);ff++){
-      for(int rr=r+1;rr<8;rr++)wpass|=(u64)1<<(rr*8+ff);
-      for(int rr=0;rr<r;rr++)bpass|=(u64)1<<(rr*8+ff);
-    }
+    u64 files=search_file_mask(f);
+    if(f>0)files|=search_file_mask(f-1);
+    if(f<7)files|=search_file_mask(f+1);
+    wpass=files&(sq==63?0:(~(u64)0<<(sq+1)));
+    bpass=files&(sq==0?0:(((u64)1<<sq)-1));
     for(int df=-1;df<=1;df++){
       int ff=f+df;
       if(ff<0||ff>7)continue;
