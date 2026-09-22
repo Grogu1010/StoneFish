@@ -465,7 +465,6 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
 function sf55cNativeAcceleratedHost(g,replyPolicy){
   const k=SF55C_KERNEL;
   if(!k||!k.api.search_all||!k.scores||!k.policyWeights||!replyPolicy)return null;
-  sf55cSyncKernelConfig();
   k.board.set(g.boardState);
   k.policyWeights.fill(0);
   if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
