@@ -49,6 +49,25 @@ on:
 
 jobs:
 
+  armx-parallel-workers:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-browser-phase-profile'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build compiled ARMX search
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Reproduce eight-worker ARMX timing
+        env:
+          WORKERS: '8'
+          GAMES_PER_WORKER: '4'
+        run: node benchmark_armx_parallel_workers.js
+
   armx-browser-phase-profile:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-browser-phase-profile'
     runs-on: ubuntu-latest
