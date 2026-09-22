@@ -327,6 +327,26 @@ static void search_initial_eval(SearchState *s){
   s->white_occ=s->black_occ=0;
   for(int sq=0;sq<64;sq++)if(board[sq])search_eval_piece(s,sq,board[sq],1);
 }
+static void search_initial_state(SearchState *s){
+  s->eval_mg=s->eval_eg=s->eval_phase=0;
+  s->white_bishops=s->black_bishops=0;
+  s->white_pawn_files=s->black_pawn_files=0;
+  s->white_pawns=s->black_pawns=s->white_rooks=s->black_rooks=0;
+  s->white_occ=s->black_occ=0;
+  for(int word=0;word<4;word++)search_packed_board[word]=0;
+  u32 hash=search_meta_token(s->side,s->castling,s->ep);
+  int material=0;
+  for(int sq=0;sq<64;sq++){
+    int piece=board[sq];
+    search_packed_board[sq>>4]|=(u64)(piece+6)<<((sq&15)<<2);
+    if(!piece)continue;
+    hash^=search_piece_token(sq,piece);
+    search_eval_piece(s,sq,piece,1);
+    int type=absolute(piece);
+    if(type==1||type==4||type==5)material++;
+  }
+  s->hash=hash;s->material=material;
+}
 static void search_hash_set_square(SearchState *s,int sq,int value){
   int old=board[sq];
   if(old){s->hash^=search_piece_token(sq,old);search_eval_piece(s,sq,old,-1);}
@@ -897,11 +917,9 @@ static void root_insert(u32 *moves,int *scores,int *exact,int *count,u32 move,in
 
 int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
-  int material=0;
-  for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
   SearchState s={0};
-  s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;s.material=material;
-  s.hash=search_initial_hash(&s);search_initial_eval(&s);search_init_packed_board();search_init_eval_masks();
+  s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;
+  search_initial_state(&s);search_init_eval_masks();
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
