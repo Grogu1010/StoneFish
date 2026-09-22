@@ -1,5 +1,8 @@
 name: Stonefish v5.5 testunit1 dev
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -70,6 +73,49 @@ jobs:
           name: rebuilt-v55-native
           path: Stonefish_v5_5_native.js
           retention-days: 1
+      - name: Commit rebuilt native kernel to PR branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const repo = process.env.GITHUB_REPOSITORY;
+          const branch = process.env.HEAD_REF;
+          const path = 'Stonefish_v5_5_native.js';
+          const headers = {
+            Authorization: 'Bearer ' + process.env.GH_TOKEN,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'Content-Type': 'application/json',
+          };
+          const url = 'https://api.github.com/repos/' + repo + '/contents/' + path;
+          const metaResponse = await fetch(url + '?ref=' + encodeURIComponent(branch), { headers });
+          if (!metaResponse.ok) throw new Error('Could not read branch native file: ' + metaResponse.status);
+          const meta = await metaResponse.json();
+          const content = fs.readFileSync(path).toString('base64');
+          const current = String(meta.content || '').replace(/\s/g, '');
+          if (current === content) {
+            console.log('Embedded native kernel already matches rebuilt output.');
+            process.exit(0);
+          }
+          const writeResponse = await fetch(url, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({
+              message: 'Rebuild embedded v5.5 native kernel',
+              content,
+              sha: meta.sha,
+              branch,
+            }),
+          });
+          if (!writeResponse.ok) {
+            throw new Error('Could not commit rebuilt native kernel: ' + writeResponse.status + ' ' + await writeResponse.text());
+          }
+          const written = await writeResponse.json();
+          console.log('Committed rebuilt kernel: ' + written.commit.sha);
+          NODE
       - name: Syntax check ARMX-preview
         run: node --check ARMX-preview.js
       - name: Syntax check v5.5 native search
