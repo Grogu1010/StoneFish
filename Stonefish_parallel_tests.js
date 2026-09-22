@@ -16,6 +16,10 @@ function stonefishTimedCreateStats(selectedKeys) {
   for (const key of selectedKeys) {
     stats.overall[key].moves = 0;
     stats.overall[key].thinkMs = 0;
+    stats.overall[key].compiledMoves = 0;
+    stats.overall[key].fallbackMoves = 0;
+    stats.overall[key].nativeKernelYes = 0;
+    stats.overall[key].nativeKernelNo = 0;
   }
   for (const matchup of Object.values(stats.matchups)) {
     matchup.performance = {
@@ -39,6 +43,10 @@ function stonefishTimedApplyResult(stats, job, result) {
     const thinkMs = Number(metric.thinkMs) || 0;
     stats.overall[key].moves += moves;
     stats.overall[key].thinkMs += thinkMs;
+    stats.overall[key].compiledMoves += Number(metric.compiledMoves) || 0;
+    stats.overall[key].fallbackMoves += Number(metric.fallbackMoves) || 0;
+    if (metric.nativeKernelAvailable === true) stats.overall[key].nativeKernelYes += 1;
+    if (metric.nativeKernelAvailable === false) stats.overall[key].nativeKernelNo += 1;
     if (matchup.performance && matchup.performance[key]) {
       matchup.performance[key].moves += moves;
       matchup.performance[key].thinkMs += thinkMs;
@@ -133,6 +141,7 @@ async function stonefishParallelRoundRobinTest() {
   const stats = createStats(selectedKeys);
   const schedule = stonefishAssignMirroredOpenings(buildSchedule(selectedKeys, totalGames, stats));
   const workerCount = stonefishParallelWorkerCount(schedule.length);
+  stats.workerCount = workerCount;
   let nextJobIndex = 0;
   let completed = 0;
 
