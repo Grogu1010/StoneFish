@@ -7,6 +7,7 @@
   const params = new URLSearchParams(location.search);
   const games = Math.max(2, Number(params.get('games')) || 40);
   const maxPlies = Math.max(20, Number(params.get('maxPlies')) || 360);
+  const profileARMX = params.get('profile') === '1';
   const worker = new Worker('test-worker.js?v=' + Date.now());
   let nextJobId = 1;
   const pending = new Map();
@@ -34,7 +35,8 @@
         whiteModelKey: armxIsWhite ? 'v55test1' : 'v55test1noarmx',
         blackModelKey: armxIsWhite ? 'v55test1noarmx' : 'v55test1',
         maxPlies,
-        openingIndex: Math.floor(index / 2)
+        openingIndex: Math.floor(index / 2),
+        profileARMX
       });
     });
   }
@@ -44,6 +46,13 @@
     const armx = { moves: 0, thinkMs: 0, compiledMoves: 0, fallbackMoves: 0 };
     const control = { moves: 0, thinkMs: 0 };
     const records = [];
+    const profile = {
+      policyMs: 0, policyCalls: 0,
+      hostMs: 0, hostCalls: 0,
+      nativeMs: 0, nativeCalls: 0,
+      historyMs: 0, historyCalls: 0,
+      reviewMs: 0, reviewCalls: 0,
+    };
 
     for (let index = 0; index < games; index++) {
       document.getElementById('status').textContent = 'game ' + (index + 1) + '/' + games;
@@ -63,6 +72,9 @@
       armx.fallbackMoves += fast.fallbackMoves || 0;
       control.moves += current.moves;
       control.thinkMs += current.thinkMs;
+      if (result.armxProfile) {
+        for (const key of Object.keys(profile)) profile[key] += result.armxProfile[key] || 0;
+      }
       records.push({
         index,
         armxIsWhite,
@@ -89,6 +101,7 @@
         averageTimePerMoveMs: controlAvg
       },
       armxVsControlTimeRatio: controlAvg ? armxAvg / controlAvg : Infinity,
+      profile: profileARMX ? profile : null,
       records
     };
     document.getElementById('status').textContent = 'ARMX_BROWSER_VS_NOARMX ' + JSON.stringify(result);
