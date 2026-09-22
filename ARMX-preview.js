@@ -679,9 +679,31 @@ function armxPreviewCandidateReport(game, entry, profile) {
   const replyOptions = context.replyOptions;
   let signal = 0;
   let evidence = 0;
-  const independentObservations = new Set();
+  let observationMarks = profile._candidateObservationMarks;
+  if (!observationMarks) observationMarks = profile._candidateObservationMarks = new Uint32Array(512);
+  let observationGeneration = ((profile._candidateObservationGeneration || 0) + 1) >>> 0;
+  if (!observationGeneration) {
+    observationMarks.fill(0);
+    observationGeneration = 1;
+  }
+  profile._candidateObservationGeneration = observationGeneration;
+  let independentObservationCount = 0;
   const recordObservations = observations => {
-    for (const observation of observations || []) independentObservations.add(observation);
+    if (!observations) return;
+    for (const observation of observations) {
+      const index = observation >>> 0;
+      if (index >= observationMarks.length) {
+        let capacity = observationMarks.length;
+        while (capacity <= index) capacity <<= 1;
+        const grown = new Uint32Array(capacity);
+        grown.set(observationMarks);
+        observationMarks = profile._candidateObservationMarks = grown;
+      }
+      if (observationMarks[index] !== observationGeneration) {
+        observationMarks[index] = observationGeneration;
+        independentObservationCount++;
+      }
+    }
   };
   const reasons = [];
 
@@ -738,7 +760,7 @@ function armxPreviewCandidateReport(game, entry, profile) {
 
   const featureEvidence = evidence;
   // Correlated labels and the two horizons do not create new observations.
-  evidence = Math.min(evidence, independentObservations.size);
+  evidence = Math.min(evidence, independentObservationCount);
   const confidence = armxPreviewClamp(evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0, 1);
   const delta = armxPreviewClamp(signal * ARMX_PREVIEW.multiplierSignalScale * confidence, -ARMX_PREVIEW.maxMultiplierDelta, ARMX_PREVIEW.maxMultiplierDelta);
   const multiplier = 1 + delta;
@@ -755,7 +777,7 @@ function armxPreviewCandidateReport(game, entry, profile) {
     confidence,
     evidence,
     featureEvidence,
-    independentObservations: independentObservations.size,
+    independentObservations: independentObservationCount,
     features: Array.from(features),
     reasons,
   };
