@@ -840,7 +840,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   }
   search_exit_position(pos);
   if(!search_abort){
-    SearchTTEntry *slot=search_tt_slot(pos,s->halfmove,ply,search_path_signature);
+    SearchTTEntry *slot=hit?hit:search_tt_slot(pos,s->halfmove,ply,search_path_signature);
     if(slot){
       slot->depth=depth;slot->score=best;slot->move=best_move;
       slot->flag=best<=original?-1:best>=beta?1:0;
