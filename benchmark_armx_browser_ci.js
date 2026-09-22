@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const games = Math.max(2, Number.parseInt(process.env.ARMX_BROWSER_GAMES || '40', 10));
 const maxRatio = Number.parseFloat(process.env.ARMX_BROWSER_MAX_TIME_RATIO || '1.4');
+const profile = process.env.ARMX_BROWSER_PROFILE === '1';
 const port = 18765 + (process.pid % 1000);
 const debugPort = port + 1000;
 
@@ -90,7 +91,8 @@ function cdpSocket(url) {
 
   try {
     await pollJson('http://127.0.0.1:' + debugPort + '/json/version');
-    const pageUrl = 'http://127.0.0.1:' + port + '/benchmark_armx_browser.html?games=' + games;
+    const pageUrl = 'http://127.0.0.1:' + port + '/benchmark_armx_browser.html?games=' + games
+      + (profile ? '&profile=1' : '');
     const target = await pollJson('http://127.0.0.1:' + debugPort + '/json/new?' + encodeURIComponent(pageUrl), 1)
       .catch(async () => {
         const response = await fetch('http://127.0.0.1:' + debugPort + '/json/new?' + encodeURIComponent(pageUrl), { method: 'PUT' });
@@ -132,7 +134,7 @@ function cdpSocket(url) {
   } finally {
     browser.kill('SIGTERM');
     server.kill('SIGTERM');
-    fs.rmSync(userDataDir, { recursive: true, force: true });
+    try { fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch {}
   }
 })().catch(error => {
   console.error(error && (error.stack || error.message) || error);
