@@ -748,9 +748,10 @@ static u32 search_pick_ordered(u32 *moves,int *priorities,int n,int index){
   return moves[index];
 }
 
-static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
+static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining,int known_check){
   search_nodes_count++;
-  int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
+  int check=known_check;
+  if(check<0){int king=s->side>0?s->wk:s->bk;check=in_check(s->side,king);}
   int pos=s->halfmove?search_position_id(s):0;
   u32 moves[512];int n=0;
   if(check){
@@ -778,7 +779,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
     u32 m=search_pick_ordered(moves,priorities,n,i);
     if(!check&&!move_promotion(m)&&stand+config[move_captured(m)]+160<alpha)continue;
     SearchState child;SearchBoardUndo u;search_apply_child(s,&child,m,&u);
-    int score=-search_q(&child,-beta,-alpha,ply+1,remaining-1);
+    int score=-search_q(&child,-beta,-alpha,ply+1,remaining-1,-1);
     search_undo_board(s->side,m,&u);
     if(search_abort)break;
     if(score>stand)stand=score;if(score>alpha)alpha=score;if(alpha>=beta)break;
@@ -787,13 +788,14 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
   return stand;
 }
 
-static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 last_move){
-  if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
+static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 last_move,int known_check){
+  if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth,known_check);
+  int check=known_check;
   if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
     &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6){
-    int king=s->side>0?s->wk:s->bk;
-    if(!in_check(s->side,king)&&policy_direct_entry(last_move)->low){
-      int probe=search_q(s,alpha,beta,ply,search_qdepth);
+    if(check<0){int king=s->side>0?s->wk:s->bk;check=in_check(s->side,king);}
+    if(!check&&policy_direct_entry(last_move)->low){
+      int probe=search_q(s,alpha,beta,ply,search_qdepth,check);
       if(search_abort||probe>=beta)return probe;
     }
   }
@@ -806,7 +808,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     if(hit->flag==1&&hit->score>=beta)return hit->score;
     if(hit->flag==-1&&hit->score<=alpha)return hit->score;
   }
-  int king=s->side>0?s->wk:s->bk,check=in_check(s->side,king);
+  if(check<0){int king=s->side>0?s->wk:s->bk;check=in_check(s->side,king);}
   int n=search_generate(s,0);
   if(!n)return check?-SEARCH_MATE+ply:0;
   if(search_draw(s,pos))return 0;
@@ -819,14 +821,14 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     u32 m=search_pick_ordered(moves,priorities,n,i);SearchState child;SearchBoardUndo u;
     search_apply_child(s,&child,m,&u);
     int quiet=!move_captured(m)&&!move_promotion(m),score;
-    if(index==0)score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
+    if(index==0)score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m,-1);
     else{
       int childking=child.side>0?child.wk:child.bk;
       int gives_check=in_check(child.side,childking);
       int reduce=depth>=3&&index>=4&&!check&&quiet&&!gives_check?1:0;
-      score=-search_ab(&child,depth-1-reduce,-alpha-1,-alpha,ply+1,m);
+      score=-search_ab(&child,depth-1-reduce,-alpha-1,-alpha,ply+1,m,gives_check);
       if(!search_abort&&score>alpha&&(reduce||score<beta))
-        score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
+        score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m,gives_check);
     }
     search_undo_board(s->side,m,&u);
     if(search_abort)break;
@@ -907,7 +909,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
     search_iter_depth=depth;search_abort=0;int next_count=0,threshold=-SEARCH_MATE;
     for(int i=0;i<current_count;i++){
       u32 m=current_moves[i];SearchState child;SearchBoardUndo u;search_apply_child(&s,&child,m,&u);
-      int score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
+      int score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m,-1);
       search_undo_board(s.side,m,&u);
       if(search_abort)break;
       int is_exact=threshold==-SEARCH_MATE||score>threshold;
