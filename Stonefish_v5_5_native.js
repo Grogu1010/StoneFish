@@ -468,14 +468,16 @@ let SF55C_NATIVE_PUBLIC_GAME = null;
 function sf55cSyncNativePublicHistory(g, k) {
   if (!k.publicKeys || !k.publicCounts) return 0;
   const historyLength = g.historyStack ? g.historyStack.length : 0;
+  const lastHistoryState = historyLength ? g.historyStack[historyLength - 1] : null;
   let cache = SF55C_NATIVE_PUBLIC_CACHE.get(g);
   const mustRebuild = !cache
     || historyLength < cache.historyLength
+    || (historyLength === cache.historyLength && lastHistoryState !== cache.lastHistoryState)
     || g.positionCounts.size < cache.count
     || SF55C_NATIVE_PUBLIC_GAME !== g;
 
   if (mustRebuild) {
-    cache = { indices: new Map(), counts: [], count: 0, historyLength };
+    cache = { indices: new Map(), counts: [], count: 0, historyLength, lastHistoryState };
     let index = 0;
     for (const [historyKey, countValue] of g.positionCounts) {
       if (index >= 512) break;
@@ -489,6 +491,7 @@ function sf55cSyncNativePublicHistory(g, k) {
     }
     cache.count = index;
     cache.historyLength = historyLength;
+    cache.lastHistoryState = lastHistoryState;
     SF55C_NATIVE_PUBLIC_CACHE.set(g, cache);
     SF55C_NATIVE_PUBLIC_GAME = g;
     return index;
@@ -511,6 +514,7 @@ function sf55cSyncNativePublicHistory(g, k) {
     }
   }
   cache.historyLength = historyLength;
+  cache.lastHistoryState = lastHistoryState;
   return cache.count;
 }
 
