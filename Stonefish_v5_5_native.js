@@ -466,7 +466,7 @@ const SF55C_NATIVE_PUBLIC_CACHE = new WeakMap();
 let SF55C_NATIVE_PUBLIC_GAME = null;
 
 function sf55cSyncNativePublicHistory(g, k) {
-  if (!k.publicKeys || !k.publicCounts) return 0;
+  if (!k.publicKeys || !k.publicCounts) return { count: 0, reset: 1, changedFrom: 0 };
   const historyLength = g.historyStack ? g.historyStack.length : 0;
   const lastHistoryState = historyLength ? g.historyStack[historyLength - 1] : null;
   let cache = SF55C_NATIVE_PUBLIC_CACHE.get(g);
@@ -494,9 +494,10 @@ function sf55cSyncNativePublicHistory(g, k) {
     cache.lastHistoryState = lastHistoryState;
     SF55C_NATIVE_PUBLIC_CACHE.set(g, cache);
     SF55C_NATIVE_PUBLIC_GAME = g;
-    return index;
+    return { count: index, reset: 1, changedFrom: 0 };
   }
 
+  let changedFrom = cache.count;
   for (const [historyKey, countValue] of g.positionCounts) {
     let index = cache.indices.get(historyKey);
     if (index === undefined) {
@@ -508,14 +509,16 @@ function sf55cSyncNativePublicHistory(g, k) {
       cache.indices.set(historyKey, index);
       cache.counts[index] = countValue;
       k.publicCounts[index] = countValue;
+      if (index < changedFrom) changedFrom = index;
     } else if (cache.counts[index] !== countValue) {
       cache.counts[index] = countValue;
       k.publicCounts[index] = countValue;
+      if (index < changedFrom) changedFrom = index;
     }
   }
   cache.historyLength = historyLength;
   cache.lastHistoryState = lastHistoryState;
-  return cache.count;
+  return { count: cache.count, reset: 0, changedFrom };
 }
 
 function sf55cNativeAcceleratedHost(g,replyPolicy){
@@ -528,11 +531,12 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(replyPolicy.searchBudget))):SF55C.nodes;
   const depthLimit=Number.isFinite(replyPolicy.maxDepth)
     ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(replyPolicy.maxDepth))):SF55C.maxDepth;
-  const publicHistoryCount=sf55cSyncNativePublicHistory(g,k);
+  const publicHistory=sf55cSyncNativePublicHistory(g,k);
   const policyEnabled=replyPolicy.policyEnabled===false?0:1;
   const count=k.api.search_all(
     g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-    depthLimit,limit,SF55C.qDepth,policyEnabled,publicHistoryCount);
+    depthLimit,limit,SF55C.qDepth,policyEnabled,publicHistory.count,
+    publicHistory.reset,publicHistory.changedFrom);
   const finished=new Array(count);
   for(let i=0;i<count;i++){
     const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
