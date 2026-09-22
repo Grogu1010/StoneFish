@@ -24,7 +24,7 @@ function findChrome() {
   throw new Error('Chrome/Chromium executable not found');
 }
 
-async function pollJson(url, attempts = 100) {
+async function pollJson(url, attempts = 300) {
   let lastError;
   for (let i = 0; i < attempts; i++) {
     try {
