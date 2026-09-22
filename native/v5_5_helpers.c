@@ -1,6 +1,7 @@
 /* Exact native v5.5 evaluation and StonefishChess legal move order.
    Prototype: no imports, no search, no opponent state, no runtime allocation. */
 typedef signed char i8;
+typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned short u16;
 typedef unsigned long long u64;
@@ -10,6 +11,30 @@ static u32 output[512];
 static const int ndf[8]={1,2,2,1,-1,-2,-2,-1};
 static const int ndr[8]={2,1,-1,-2,-2,-1,1,2};
 static const int dirs[16]={1,1,1,-1,-1,1,-1,-1,1,0,-1,0,0,1,0,-1};
+static u8 attack_ray_count[64][8],attack_ray_square[64][8][7];
+static u8 attack_knight_count[64],attack_knight_square[64][8];
+static int attack_tables_ready;
+static void init_attack_tables(void){
+  if(attack_tables_ready)return;
+  for(int square=0;square<64;square++){
+    int file=square&7,rank=square>>3;
+    for(int d=0;d<8;d++){
+      int f=file+dirs[d<<1],r=rank+dirs[(d<<1)+1],n=0;
+      while(f>=0&&f<8&&r>=0&&r<8){
+        attack_ray_square[square][d][n++]=(u8)(r*8+f);
+        f+=dirs[d<<1];r+=dirs[(d<<1)+1];
+      }
+      attack_ray_count[square][d]=(u8)n;
+    }
+    int n=0;
+    for(int i=0;i<8;i++){
+      int f=file+ndf[i],r=rank+ndr[i];
+      if(f>=0&&f<8&&r>=0&&r<8)attack_knight_square[square][n++]=(u8)(r*8+f);
+    }
+    attack_knight_count[square]=(u8)n;
+  }
+  attack_tables_ready=1;
+}
 static int absolute(int x){return x<0?-x:x;}
 static int maximum(int a,int b){return a>b?a:b;}
 void *memset(void *p,int value,unsigned long count){unsigned char *b=p;for(unsigned long i=0;i<count;i++)b[i]=(unsigned char)value;return p;}
@@ -71,14 +96,25 @@ int evaluate(int side,int white_king,int black_king){
   return (int)__builtin_floor(score*side+0.5)+8;
 }
 static int attacked(int square,int by_side){
+  if(!attack_tables_ready)init_attack_tables();
   int file=square&7,rank=square>>3,r=rank-by_side;
-  if(r>=0&&r<8){if(file>0&&board[r*8+file-1]==by_side)return 1;if(file<7&&board[r*8+file+1]==by_side)return 1;}
-  for(int i=0;i<8;i++){int f=file+ndf[i],nr=rank+ndr[i];if(f>=0&&f<8&&nr>=0&&nr<8&&board[nr*8+f]==by_side*2)return 1;}
-  for(int i=0;i<16;i+=2){
-    int f=file+dirs[i],nr=rank+dirs[i+1];
-    while(f>=0&&f<8&&nr>=0&&nr<8){int p=board[nr*8+f];if(p){if(p==by_side*5||p==by_side*(i<8?3:4))return 1;break;}f+=dirs[i];nr+=dirs[i+1];}
+  if(r>=0&&r<8){
+    if(file>0&&board[r*8+file-1]==by_side)return 1;
+    if(file<7&&board[r*8+file+1]==by_side)return 1;
   }
-  for(int i=0;i<16;i+=2){int f=file+dirs[i],nr=rank+dirs[i+1];if(f>=0&&f<8&&nr>=0&&nr<8&&board[nr*8+f]==by_side*6)return 1;}
+  int knight=by_side*2;
+  for(int i=0,n=attack_knight_count[square];i<n;i++)
+    if(board[attack_knight_square[square][i]]==knight)return 1;
+  int queen=by_side*5,king=by_side*6;
+  for(int d=0;d<8;d++){
+    int slider=by_side*(d<4?3:4),n=attack_ray_count[square][d];
+    for(int i=0;i<n;i++){
+      int p=board[attack_ray_square[square][d][i]];
+      if(!p)continue;
+      if(p==queen||p==slider||(i==0&&p==king))return 1;
+      break;
+    }
+  }
   return 0;
 }
 int in_check(int side,int king){return attacked(king,-side);}
