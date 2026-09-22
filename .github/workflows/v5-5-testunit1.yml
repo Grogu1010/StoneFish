@@ -48,8 +48,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  budget-75-strength:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-budget-75'
+  budget-70-strength:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-budget-70'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -69,15 +69,15 @@ jobs:
         env:
           STONEFISH_CC: clang
         run: node build_v5_5_kernel.cjs
-      - name: Run 100-game 75-percent strength matrix
+      - name: Run 100-game 70-percent strength matrix
         env:
           SAMPLES: '4'
           GAMES: '100'
           MATCHUP: ${{ matrix.matchup }}
         run: node benchmark_v5_5_testunit1.js
 
-  budget-75-screen:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-budget-75'
+  budget-70-screen:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-budget-70'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -89,7 +89,7 @@ jobs:
         env:
           STONEFISH_CC: clang
         run: node build_v5_5_kernel.cjs
-      - name: Measure 75% extra ARMX effort
+      - name: Measure 70% extra ARMX effort
         env:
           ARMX_H2H_GAMES: '20'
         run: node benchmark_armx_compiled_vs_noarmx.js
