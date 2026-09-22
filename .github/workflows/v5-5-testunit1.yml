@@ -22,6 +22,8 @@ on:
       - 'benchmark_v5_5_testunit1.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_browser.html'
+      - 'benchmark_armx_browser_ci.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
   pull_request:
@@ -43,6 +45,8 @@ on:
       - 'benchmark_v5_5_testunit1.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_browser.html'
+      - 'benchmark_armx_browser_ci.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5-testunit1.yml'
   workflow_dispatch:
@@ -76,6 +80,8 @@ jobs:
         run: node --check benchmark_v5_5_teacher.js
       - name: Syntax check ARMX-preview in-game diagnostics
         run: node --check benchmark_armx_preview.js
+      - name: Syntax check browser ARMX benchmark runner
+        run: node --check benchmark_armx_browser_ci.js
       - name: Verify native search and capture generation
         run: node benchmark_v5_5_native_contract.js
       - name: Verify opponent memory contracts
@@ -99,6 +105,11 @@ jobs:
           ARMX_H2H_GAMES: '60'
           ARMX_MAX_TIME_RATIO: '1.25'
         run: node benchmark_armx_compiled_vs_noarmx.js
+      - name: Measure ARMX versus No-ARMX in Chrome worker
+        env:
+          ARMX_BROWSER_GAMES: '40'
+          ARMX_BROWSER_MAX_TIME_RATIO: '1.30'
+        run: node benchmark_armx_browser_ci.js
       - name: Smoke test the frozen ARMX strength baseline
         env:
           SAMPLES: '4'
