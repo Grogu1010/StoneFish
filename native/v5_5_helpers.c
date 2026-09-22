@@ -201,6 +201,9 @@ static int search_path_stack[64],search_path_top,search_path_signature;
 static int search_position_count,search_signature_count;
 static u32 search_generation;
 static u64 search_packed_board[4];
+static u64 search_white_passed_mask[64],search_black_passed_mask[64];
+static u64 search_white_shield_mask[64],search_black_shield_mask[64];
+static int search_eval_masks_ready;
 
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
 int exact_ptr(void){return (int)(unsigned long)root_exact;}
@@ -249,6 +252,28 @@ static void search_init_packed_board(void){
     for(int i=0;i<16;i++)value|=(u64)(board[(word<<4)+i]+6)<<(i<<2);
     search_packed_board[word]=value;
   }
+}
+static void search_init_eval_masks(void){
+  if(search_eval_masks_ready)return;
+  for(int sq=0;sq<64;sq++){
+    int f=sq&7,r=sq>>3;
+    u64 wpass=0,bpass=0,wshield=0,bshield=0;
+    for(int ff=f>0?f-1:f;ff<=(f<7?f+1:f);ff++){
+      for(int rr=r+1;rr<8;rr++)wpass|=(u64)1<<(rr*8+ff);
+      for(int rr=0;rr<r;rr++)bpass|=(u64)1<<(rr*8+ff);
+    }
+    for(int df=-1;df<=1;df++){
+      int ff=f+df;
+      if(ff<0||ff>7)continue;
+      if(r<7)wshield|=(u64)1<<((r+1)*8+ff);
+      if(r>0)bshield|=(u64)1<<((r-1)*8+ff);
+    }
+    search_white_passed_mask[sq]=wpass;
+    search_black_passed_mask[sq]=bpass;
+    search_white_shield_mask[sq]=wshield;
+    search_black_shield_mask[sq]=bshield;
+  }
+  search_eval_masks_ready=1;
 }
 static void search_set_packed_square(int sq,int value){
   int word=sq>>4,shift=(sq&15)<<2;
@@ -473,10 +498,7 @@ static int search_evaluate_state(const SearchState *s){
     int f=sq&7,r=sq>>3,own=search_file_count(s->white_pawn_files,f);
     if(own>1){mg-=12;eg-=16;}
     if(!(f>0&&search_file_count(s->white_pawn_files,f-1))&&!(f<7&&search_file_count(s->white_pawn_files,f+1))){mg-=11;eg-=15;}
-    u64 files=search_file_mask(f);
-    if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
-    u64 ahead=sq==63?0:(~(u64)0<<(sq+1));
-    if(!(s->black_pawns&files&ahead)){
+    if(!(s->black_pawns&search_white_passed_mask[sq])){
       mg+=middle[r];eg+=endingPawn[r];
       if(r>=4){
         int ed=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-7));
@@ -491,10 +513,7 @@ static int search_evaluate_state(const SearchState *s){
     int f=sq&7,r=7-(sq>>3),own=search_file_count(s->black_pawn_files,f);
     if(own>1){mg+=12;eg+=16;}
     if(!(f>0&&search_file_count(s->black_pawn_files,f-1))&&!(f<7&&search_file_count(s->black_pawn_files,f+1))){mg+=11;eg+=15;}
-    u64 files=search_file_mask(f);
-    if(f>0)files|=search_file_mask(f-1);if(f<7)files|=search_file_mask(f+1);
-    u64 behind=sq==0?0:(((u64)1<<sq)-1);
-    if(!(s->white_pawns&files&behind)){
+    if(!(s->white_pawns&search_black_passed_mask[sq])){
       mg-=middle[r];eg-=endingPawn[r];
       if(r>=4){
         int ed=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-0));
@@ -514,12 +533,8 @@ static int search_evaluate_state(const SearchState *s){
     int sq=__builtin_ctzll(rooks);rooks&=rooks-1;int f=sq&7;
     if(!search_file_count(s->black_pawn_files,f)){mg-=search_file_count(s->white_pawn_files,f)?15:30;eg-=15;}
   }
-  int shield=0,wf=s->wk&7;
-  for(int df=-1;df<=1;df++){if(wf+df<0||wf+df>7)continue;int x=s->wk+8+df;if(x>=0&&x<64&&board[x]==1)shield++;}
-  mg+=shield*12;shield=0;
-  int bf=s->bk&7;
-  for(int df=-1;df<=1;df++){if(bf+df<0||bf+df>7)continue;int x=s->bk-8+df;if(x>=0&&x<64&&board[x]==-1)shield++;}
-  mg-=shield*12;
+  mg+=__builtin_popcountll(s->white_pawns&search_white_shield_mask[s->wk])*12;
+  mg-=__builtin_popcountll(s->black_pawns&search_black_shield_mask[s->bk])*12;
   if(phase>24)phase=24;
   double score=(mg*phase+eg*(24-phase))/24.0;
   if(phase<=4&&absolute(eg)>400){
@@ -877,7 +892,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<64;i++){int t=absolute(board[i]);if(t==1||t==4||t==5)material++;}
   SearchState s={0};
   s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;s.material=material;
-  s.hash=search_initial_hash(&s);search_initial_eval(&s);search_init_packed_board();
+  s.hash=search_initial_hash(&s);search_initial_eval(&s);search_init_packed_board();search_init_eval_masks();
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
