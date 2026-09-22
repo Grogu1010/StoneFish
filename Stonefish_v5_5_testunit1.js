@@ -25,8 +25,31 @@ const STONEFISH_V5_5_ARMX_CONTRASTIVE_MIN_CONFIDENCE = 0.90;
 const STONEFISH_V5_5_ARMX_CONTRASTIVE_MIN_EVIDENCE = 5.5;
 let STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
 
+const STONEFISH_V5_5_NEUTRAL_COMPILED_WEIGHTS = new Float64Array(13);
+
 function stonefishV55Testunit1HostSearch(game, replyPolicy = null) {
   return sf55cHost(game, replyPolicy);
+}
+
+// ARMX has useful work to do before the learned reply policy reaches its
+// activation threshold. When WebAssembly is available, use the already parity-
+// checked native search from the first ARMX turn with neutral policy weights.
+// This changes only the implementation path: learned ordering, node budgets,
+// depth, review logic, and the No-ARMX control remain exactly as before.
+function stonefishV55Testunit1ARMXHostSearch(game, replyPolicy = null) {
+  if (replyPolicy || typeof sf55cNativeAcceleratedHost !== 'function') {
+    return stonefishV55Testunit1HostSearch(game, replyPolicy);
+  }
+  const accelerated = sf55cNativeAcceleratedHost(game, {
+    weights: STONEFISH_V5_5_NEUTRAL_COMPILED_WEIGHTS,
+    searchBudget: SF55C.nodes,
+    maxDepth: SF55C.maxDepth,
+  });
+  if (accelerated) {
+    globalThis.SF55C_LAST = accelerated;
+    return accelerated;
+  }
+  return stonefishV55Testunit1HostSearch(game, null);
 }
 
 function stonefishV55FindEntry(finished, raw) {
@@ -223,7 +246,7 @@ function stonefishV55Testunit1ScoreAllMoves(game) {
   const perspective = game.side;
   const replyPolicy = typeof armxPreviewOpponentPolicy === 'function'
     ? armxPreviewOpponentPolicy(game, perspective) : null;
-  const host = stonefishV55Testunit1HostSearch(game, replyPolicy);
+  const host = stonefishV55Testunit1ARMXHostSearch(game, replyPolicy);
   const finished = host.finished;
   if (!finished.length) {
     STONEFISH_V5_5_TESTUNIT1_LAST_ARMX = null;
