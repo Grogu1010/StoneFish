@@ -466,19 +466,19 @@ function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
   let availableMask = 0;
   for (const move of legal) availableMask |= armxPreviewCheapFeatureMask(move);
   const chosenMask = armxPreviewCheapFeatureMask(chosenMove);
-  const available = armxPreviewAddCheapFeatureMask(new Set(), availableMask);
-  const chosen = armxPreviewAddCheapFeatureMask(new Set(), chosenMask);
   profile.opponentMoves += 1;
-  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
-    if (available.has(feature)) {
+  for (let i = 0; i < ARMX_PREVIEW_REPLY_FEATURES.length; i++) {
+    const feature = ARMX_PREVIEW_REPLY_FEATURES[i];
+    const bit = 1 << i;
+    if (availableMask & bit) {
       profile.opponentOpportunities[feature] = (profile.opponentOpportunities[feature] || 0) + 1;
-      if (chosen.has(feature)) profile.opponentChoices[feature] = (profile.opponentChoices[feature] || 0) + 1;
+      if (chosenMask & bit) profile.opponentChoices[feature] = (profile.opponentChoices[feature] || 0) + 1;
       if (!profile.opponentOpportunityPlies[feature]) profile.opponentOpportunityPlies[feature] = new Set();
       profile.opponentOpportunityPlies[feature].add(profile.processedPlies);
     }
   }
   armxPreviewObserveQuietChoice(profile, game, chosenMove, legal);
-  return { available, chosen, move: chosenMove, actor: game.side };
+  return { availableMask, chosenMask, move: chosenMove, actor: game.side };
 }
 
 function armxPreviewCapturedSquare(move, actor) {
@@ -493,11 +493,9 @@ function armxPreviewRecordAcceptedResponse(profile, observed, opponentPlyIndex) 
   // A capture elsewhere is an opponent choice, but is not acceptance of the
   // piece we just offered. Keep this more specific outcome memory attributable.
   if (armxPreviewCapturedSquare(observed.move, observed.actor) !== offer.to) return;
-  const accepted = new Set();
-  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
-    if (observed.available.has(feature) && observed.chosen.has(feature)) accepted.add(feature);
-  }
-  if (!accepted.size) return;
+  const acceptedMask = observed.availableMask & observed.chosenMask;
+  if (!acceptedMask) return;
+  const accepted = armxPreviewAddCheapFeatureMask(new Set(), acceptedMask);
 
   profile.pending.push({
     bucket: 'accepted-response',
