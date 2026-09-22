@@ -166,7 +166,7 @@ static int search_nodes_count,search_node_limit,search_qdepth,search_abort,searc
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
 #define SEARCH_POLICY_DIRECT_CAP 65536
-typedef struct {u32 generation;int priority,low;} SearchPolicyDirectEntry;
+typedef struct {u32 generation;short priority;signed char low;unsigned char pad;} SearchPolicyDirectEntry;
 static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 
 #define SEARCH_POS_CAP 16384
