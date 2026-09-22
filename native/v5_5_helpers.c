@@ -268,7 +268,7 @@ static int search_position_public_counts[SEARCH_POS_CAP+1];
 static int search_path_counts[SEARCH_POS_CAP+1];
 static int search_path_stack[64],search_path_top,search_path_signature;
 static int search_position_count,search_signature_count;
-static u32 search_generation;
+static u32 search_generation,search_public_generation;
 static u64 search_packed_board[4];
 static u32 search_white_pawn_files,search_black_pawn_files;
 static u64 search_white_pawns,search_black_pawns,search_white_rooks,search_black_rooks,search_white_occ,search_black_occ;
@@ -696,15 +696,20 @@ static int search_public_state_equal(const SearchPublicEntry *e,const SearchStat
   for(int i=0;i<4;i++)if(e->packed[i]!=search_packed_board[i])return 0;
   return 1;
 }
-static void search_public_build(int count){
+static void search_public_build(int count,int reset,int changed_from){
   if(count<0)count=0;if(count>SEARCH_PUBLIC_INPUT_CAP)count=SEARCH_PUBLIC_INPUT_CAP;
-  for(int i=0;i<count;i++){
+  if(reset||!search_public_generation){
+    search_public_generation++;if(!search_public_generation)search_public_generation=1;
+    changed_from=0;
+  }
+  if(changed_from<0)changed_from=0;if(changed_from>count)changed_from=count;
+  for(int i=changed_from;i<count;i++){
     const u16 *key=search_public_keys_input+i*17;
     u32 hash=search_public_key_hash(key),slot=hash&(SEARCH_PUBLIC_CAP-1);
     for(int probe=0;probe<SEARCH_PUBLIC_CAP;probe++,slot=(slot+1)&(SEARCH_PUBLIC_CAP-1)){
       SearchPublicEntry *e=&search_public[slot];
-      if(e->generation!=search_generation){
-        e->generation=search_generation;e->hash=hash;e->count=search_public_counts_input[i];
+      if(e->generation!=search_public_generation){
+        e->generation=search_public_generation;e->hash=hash;e->count=search_public_counts_input[i];
         search_public_store_key(e,key);break;
       }
       if(e->hash==hash&&search_public_input_equal(e,key)){e->count=search_public_counts_input[i];break;}
@@ -715,7 +720,7 @@ static int search_public_lookup(const SearchState *s){
   u32 hash=search_public_state_hash(s),slot=hash&(SEARCH_PUBLIC_CAP-1);
   for(int probe=0;probe<SEARCH_PUBLIC_CAP;probe++,slot=(slot+1)&(SEARCH_PUBLIC_CAP-1)){
     SearchPublicEntry *e=&search_public[slot];
-    if(e->generation!=search_generation)return 0;
+    if(e->generation!=search_public_generation)return 0;
     if(e->hash==hash&&search_public_state_equal(e,s))return e->count;
   }
   return 0;
@@ -998,7 +1003,8 @@ static void root_insert(u32 *moves,int *scores,int *exact,int *count,u32 move,in
 }
 
 int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
-               int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
+               int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count,
+               int public_history_reset,int public_history_changed_from){
   SearchState s={0};
   s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;
   search_initial_state(&s);search_init_eval_masks();search_init_attack_tables();
@@ -1006,7 +1012,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
   search_generation++;if(!search_generation)search_generation=1;
-  search_public_build(public_history_count);
+  search_public_build(public_history_count,public_history_reset,public_history_changed_from);
   search_position_count=0;search_signature_count=0;search_path_signature=0;search_path_top=0;
   for(int i=0;i<32;i++)search_killers[i]=0;
   int king=side>0?wk:bk,n=search_generate(&s,0);
