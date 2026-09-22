@@ -732,18 +732,21 @@ static int search_order(u32 m,int ply,int tt_move){
   return value;
 }
 static int search_order_priorities[32][512];
-static int *search_prepare_order(u32 *moves,int n,int ply,int tt_move){
-  int *priorities=search_order_priorities[ply<32?ply:31];
-  for(int i=0;i<n;i++)priorities[i]=search_order(moves[i],ply,tt_move);
-  return priorities;
+static u16 search_order_original[32][512];
+static int *search_prepare_order(u32 *moves,int n,int ply,int tt_move,u16 **original_out){
+  int row=ply<32?ply:31;
+  int *priorities=search_order_priorities[row];u16 *original=search_order_original[row];
+  for(int i=0;i<n;i++){priorities[i]=search_order(moves[i],ply,tt_move);original[i]=(u16)i;}
+  *original_out=original;return priorities;
 }
-static u32 search_pick_ordered(u32 *moves,int *priorities,int n,int index){
+static u32 search_pick_ordered(u32 *moves,int *priorities,u16 *original,int n,int index){
   int best=index;
-  for(int i=index+1;i<n;i++)if(priorities[i]>priorities[best])best=i;
+  for(int i=index+1;i<n;i++)
+    if(priorities[i]>priorities[best]||(priorities[i]==priorities[best]&&original[i]<original[best]))best=i;
   if(best!=index){
-    u32 move=moves[best];int priority=priorities[best];
-    for(int i=best;i>index;i--){moves[i]=moves[i-1];priorities[i]=priorities[i-1];}
-    moves[index]=move;priorities[index]=priority;
+    u32 move=moves[index];moves[index]=moves[best];moves[best]=move;
+    int priority=priorities[index];priorities[index]=priorities[best];priorities[best]=priority;
+    u16 order=original[index];original[index]=original[best];original[best]=order;
   }
   return moves[index];
 }
@@ -772,10 +775,10 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
     if(!n)return search_generate(s,2)?stand:0;
     for(int i=0;i<n;i++)moves[i]=output[i];
   }
-  int *priorities=search_prepare_order(moves,n,ply,0);
+  u16 *original;int *priorities=search_prepare_order(moves,n,ply,0,&original);
   if(pos)search_enter_position(pos);
   for(int i=0;i<n;i++){
-    u32 m=search_pick_ordered(moves,priorities,n,i);
+    u32 m=search_pick_ordered(moves,priorities,original,n,i);
     if(!check&&!move_promotion(m)&&stand+config[move_captured(m)]+160<alpha)continue;
     SearchState child;SearchBoardUndo u;search_apply_child(s,&child,m,&u);
     int score=-search_q(&child,-beta,-alpha,ply+1,remaining-1);
@@ -812,11 +815,11 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_state(s);}
   u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
-  int *priorities=search_prepare_order(moves,n,ply,hit?hit->move:0);
+  u16 *original;int *priorities=search_prepare_order(moves,n,ply,hit?hit->move:0,&original);
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
   for(int i=0;i<n;i++){
-    u32 m=search_pick_ordered(moves,priorities,n,i);SearchState child;SearchBoardUndo u;
+    u32 m=search_pick_ordered(moves,priorities,original,n,i);SearchState child;SearchBoardUndo u;
     search_apply_child(s,&child,m,&u);
     int quiet=!move_captured(m)&&!move_promotion(m),score;
     if(index==0)score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);
