@@ -475,11 +475,17 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(replyPolicy.maxDepth))):SF55C.maxDepth;
   let publicHistoryCount=0;
   if(k.publicKeys&&k.publicCounts){
+    const packedHistoryCache=g._sf55cPackedHistoryCache||(g._sf55cPackedHistoryCache=new Map());
     for(const [historyKey,countValue] of g.positionCounts){
       if(publicHistoryCount>=512)break;
-      const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
-      const offset=publicHistoryCount*17;
-      for(let i=0;i<17;i++)k.publicKeys[offset+i]=packed.charCodeAt(i);
+      let packedCodes=packedHistoryCache.get(historyKey);
+      if(!packedCodes){
+        const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
+        packedCodes=new Uint16Array(17);
+        for(let i=0;i<17;i++)packedCodes[i]=packed.charCodeAt(i);
+        packedHistoryCache.set(historyKey,packedCodes);
+      }
+      k.publicKeys.set(packedCodes,publicHistoryCount*17);
       k.publicCounts[publicHistoryCount]=countValue;
       publicHistoryCount++;
     }
