@@ -59,31 +59,33 @@ function fastMove(game){
   return withFastMode(false,()=>getStonefishV55Testunit1Move(game));
 }
 function currentMove(game){return withFastMode(false,()=>getStonefishV55Testunit1NoARMXMove(game));}
-function perfSummary(moves,ms){return{moves,thinkMs:ms,averageTimePerMoveMs:moves?ms/moves:0};}
+function perfSummary(moves,ms,nodes){return{moves,thinkMs:ms,nodes,averageTimePerMoveMs:moves?ms/moves:0,averageNodesPerMove:moves?nodes/moves:0};}
 function simulate(index){
   const pair=Math.floor(index/2),fastIsWhite=index%2===0,game=positionAfter(generateOpening(pair,10));
-  clearCaches();let plies=game.historyStack.length,fastMoves=0,currentMoves=0,fastMs=0,currentMs=0;
+  clearCaches();let plies=game.historyStack.length,fastMoves=0,currentMoves=0,fastMs=0,currentMs=0,fastNodes=0,currentNodes=0;
   return withSeed((0xD550000+pair*1103+index)>>>0,()=>{
     while(!game.game_over()&&plies<360){
       const fastTurn=(game.side===1)===fastIsWhite,start=performance.now();
       const move=fastTurn?fastMove(game):currentMove(game),elapsed=performance.now()-start;
+      const searchedNodes=typeof SF55C_LAST!=='undefined'&&SF55C_LAST&&Number.isFinite(SF55C_LAST.nodes)?SF55C_LAST.nodes:0;
       if(!play(game,move))throw new Error('Invalid move at ply '+plies);
-      if(fastTurn){fastMoves++;fastMs+=elapsed;}else{currentMoves++;currentMs+=elapsed;}plies++;
+      if(fastTurn){fastMoves++;fastMs+=elapsed;fastNodes+=searchedNodes;}
+      else{currentMoves++;currentMs+=elapsed;currentNodes+=searchedNodes;}plies++;
     }
     let result='draw',reason=game.game_over()?'draw-rule':'max-plies';
     if(game.in_checkmate()){const winnerIsWhite=game.side===-1;result=winnerIsWhite===fastIsWhite?'win':'loss';reason='checkmate';}
-    return{index,pair,fastIsWhite,result,reason,plies,fast:perfSummary(fastMoves,fastMs),current:perfSummary(currentMoves,currentMs)};
+    return{index,pair,fastIsWhite,result,reason,plies,fast:perfSummary(fastMoves,fastMs,fastNodes),current:perfSummary(currentMoves,currentMs,currentNodes)};
   });
 }
 const games=Math.max(2,Number.parseInt(process.env.ARMX_H2H_GAMES||'100',10)||100);
 if(games%2)throw new Error('ARMX_H2H_GAMES must be even');
-const totals={win:0,loss:0,draw:0,fastMoves:0,currentMoves:0,fastMs:0,currentMs:0},records=[];
+const totals={win:0,loss:0,draw:0,fastMoves:0,currentMoves:0,fastMs:0,currentMs:0,fastNodes:0,currentNodes:0},records=[];
 for(let i=0;i<games;i++){
-  const r=simulate(i);records.push(r);totals[r.result]++;totals.fastMoves+=r.fast.moves;totals.currentMoves+=r.current.moves;totals.fastMs+=r.fast.thinkMs;totals.currentMs+=r.current.thinkMs;
+  const r=simulate(i);records.push(r);totals[r.result]++;totals.fastMoves+=r.fast.moves;totals.currentMoves+=r.current.moves;totals.fastMs+=r.fast.thinkMs;totals.currentMs+=r.current.thinkMs;totals.fastNodes+=r.fast.nodes;totals.currentNodes+=r.current.nodes;
   console.log(`ARMX_COMPILED_H2H game ${i+1}/${games}: ${r.fastIsWhite?'W':'B'} ${r.result} ${r.reason} ${r.plies} plies`);
 }
 const result={games,win:totals.win,loss:totals.loss,draw:totals.draw,score:(totals.win+totals.draw*0.5)/games,
-  fast:perfSummary(totals.fastMoves,totals.fastMs),current:perfSummary(totals.currentMoves,totals.currentMs),
+  fast:perfSummary(totals.fastMoves,totals.fastMs,totals.fastNodes),current:perfSummary(totals.currentMoves,totals.currentMs,totals.currentNodes),
   fastVsCurrentTimeRatio:totals.currentMoves&&totals.fastMoves?(totals.fastMs/totals.fastMoves)/(totals.currentMs/totals.currentMoves):0,
   acceptance:{minWins:40,maxLosses:40},selectiveStats,records};
 console.log('ARMX_COMPILED_VS_NOARMX '+JSON.stringify(result));
