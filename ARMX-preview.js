@@ -111,9 +111,9 @@ function armxPreviewQuietLogit(features, weights) {
   return value;
 }
 
-function armxPreviewObserveQuietChoice(profile, game, chosen) {
+function armxPreviewObserveQuietChoice(profile, game, chosen, legalMoves = null) {
   if (chosen.captured || chosen.promotion || game.in_check()) return;
-  const moves = game.fastMoves().filter(move => !move.captured && !move.promotion);
+  const moves = (legalMoves || game.fastMoves()).filter(move => !move.captured && !move.promotion);
   if (moves.length < 2) return;
   if (!profile.quietPolicy) profile.quietPolicy = {
     weights: new Float64Array(13), count: 0, qualitySum: 0, qualityWeight: 0
@@ -151,8 +151,10 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
   if (!model || model.count < ARMX_PREVIEW.quietChoiceMinObservations) return null;
   // Freeze the learned preferences for this search. Cache only geometry-based
   // scores, including piece type and flags in the identity; nothing crosses turns.
-  const weights = new Float64Array(model.weights), cache = new Map();
+  const weights = new Float64Array(model.weights);
+  let cache = null;
   const score = move => {
+    if (!cache) cache = new Map();
     const key = move.from | (move.to << 6) | (move.piece << 12)
       | ((move.promotion || 0) << 15) | ((move.flags || 0) << 18);
     let value = cache.get(key);
@@ -280,19 +282,32 @@ function armxPreviewFeatureSet(game, move) {
   return features;
 }
 
-function armxPreviewCheapFeatureSet(move) {
-  const features = new Set();
-  if (!move) return features;
+function armxPreviewCheapFeatureMask(move) {
+  if (!move) return 0;
   const piece = move.piece || 0;
   const captured = move.captured || 0;
   const moveValue = ARMX_PREVIEW_PIECE_VALUES[piece] || 0;
   const capturedValue = ARMX_PREVIEW_PIECE_VALUES[captured] || 0;
-  if (captured) features.add('capture');
-  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) features.add('trade');
-  if (captured && piece === 4 && captured === 4) features.add('rookTrade');
-  if (captured && piece === 5 && captured === 5) features.add('queenTrade');
-  if (captured >= 2) features.add('simplify');
-  return features;
+  let mask = 0;
+  if (captured) mask |= 1;
+  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) mask |= 2;
+  if (captured && piece === 4 && captured === 4) mask |= 4;
+  if (captured && piece === 5 && captured === 5) mask |= 8;
+  if (captured >= 2) mask |= 16;
+  return mask;
+}
+
+function armxPreviewAddCheapFeatureMask(target, mask) {
+  if (mask & 1) target.add('capture');
+  if (mask & 2) target.add('trade');
+  if (mask & 4) target.add('rookTrade');
+  if (mask & 8) target.add('queenTrade');
+  if (mask & 16) target.add('simplify');
+  return target;
+}
+
+function armxPreviewCheapFeatureSet(move) {
+  return armxPreviewAddCheapFeatureMask(new Set(), armxPreviewCheapFeatureMask(move));
 }
 
 function armxPreviewFreshStats() {
@@ -398,12 +413,11 @@ function armxPreviewResolvePending(profile, currentPly, currentSnapshot = profil
 
 function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
   const legal = game.fastMoves();
-  const available = new Set();
-  for (const move of legal) {
-    const features = armxPreviewCheapFeatureSet(move);
-    for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (features.has(feature)) available.add(feature);
-  }
-  const chosen = armxPreviewCheapFeatureSet(chosenMove);
+  let availableMask = 0;
+  for (const move of legal) availableMask |= armxPreviewCheapFeatureMask(move);
+  const chosenMask = armxPreviewCheapFeatureMask(chosenMove);
+  const available = armxPreviewAddCheapFeatureMask(new Set(), availableMask);
+  const chosen = armxPreviewAddCheapFeatureMask(new Set(), chosenMask);
   profile.opponentMoves += 1;
   for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
     if (available.has(feature)) {
@@ -413,7 +427,7 @@ function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
       profile.opponentOpportunityPlies[feature].add(profile.processedPlies);
     }
   }
-  armxPreviewObserveQuietChoice(profile, game, chosenMove);
+  armxPreviewObserveQuietChoice(profile, game, chosenMove, legal);
   return { available, chosen, move: chosenMove, actor: game.side };
 }
 
@@ -552,30 +566,69 @@ function armxPreviewProfileMatureForThirdCandidate(profile) {
   return false;
 }
 
-function armxPreviewCandidateReplyOpportunities(game, raw) {
-  const historyDepth = game.historyStack.length;
+function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
+  const features = new Set();
   const available = new Set();
   const offered = new Set();
+  if (!raw) return { features, replyOptions: { available, offered } };
+
+  const historyDepth = game.historyStack.length;
+  const actor = game.side;
+  const piece = raw.piece || Math.abs(game.boardState[raw.from] || 0);
+  const captured = raw.captured || 0;
+  const moveValue = ARMX_PREVIEW_PIECE_VALUES[piece] || 0;
+  const capturedValue = ARMX_PREVIEW_PIECE_VALUES[captured] || 0;
+  const enemyKing = game.kingSq[-actor];
+
+  if (captured) features.add('capture');
+  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) features.add('trade');
+  if (captured && piece === 4 && captured === 4) features.add('rookTrade');
+  if (captured && piece === 5 && captured === 5) features.add('queenTrade');
+  if (captured && (piece === 2 || piece === 3) && (captured === 2 || captured === 3)) features.add('minorTrade');
+  if (captured >= 2) features.add('simplify');
+  if (piece === 1) features.add('pawnPush');
+  if (raw.flags & (4 | 8)) features.add('castle');
+
   try {
     game.fastApply(raw);
-    for (const reply of game.fastMoves()) {
-      const features = armxPreviewCheapFeatureSet(reply);
-      for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (features.has(feature)) available.add(feature);
-      if (armxPreviewCapturedSquare(reply, game.side) === raw.to) {
-        for (const feature of ARMX_PREVIEW_REPLY_FEATURES) if (features.has(feature)) offered.add(feature);
+    const givesCheck = game.in_check();
+    if (givesCheck) features.add('check');
+    if (givesCheck || (piece !== 6 && armxPreviewSquareDistance(raw.to, enemyKing) <= 2)) features.add('kingAttack');
+
+    const fromRank = raw.from >> 3;
+    const toRank = raw.to >> 3;
+    const forward = actor === 1 ? toRank - fromRank : fromRank - toRank;
+    if (forward > 0) features.add('advance');
+    if (forward < 0) features.add('retreat');
+    if (!captured && !givesCheck && !raw.promotion && !(raw.flags & (4 | 8))) features.add('quiet');
+
+    if (includeReplyOptions) {
+      for (const reply of game.fastMoves()) {
+        const replyMask = armxPreviewCheapFeatureMask(reply);
+        armxPreviewAddCheapFeatureMask(available, replyMask);
+        if (armxPreviewCapturedSquare(reply, game.side) === raw.to) {
+          armxPreviewAddCheapFeatureMask(offered, replyMask);
+        }
       }
     }
   } finally {
     while (game.historyStack.length > historyDepth) game.fastUndo();
   }
-  return { available, offered };
+
+  return { features, replyOptions: { available, offered } };
+}
+
+function armxPreviewCandidateReplyOpportunities(game, raw) {
+  return armxPreviewCandidateContext(game, raw, true).replyOptions;
 }
 
 function armxPreviewCandidateReport(game, entry, profile) {
-  const features = armxPreviewFeatureSet(game, entry.raw);
-  const replyOptions = armxPreviewHasUsefulReplyEvidence(profile)
-    ? armxPreviewCandidateReplyOpportunities(game, entry.raw)
-    : { available: new Set(), offered: new Set() };
+  const includeReplyOptions = armxPreviewHasUsefulReplyEvidence(profile);
+  const context = includeReplyOptions
+    ? armxPreviewCandidateContext(game, entry.raw, true)
+    : { features: armxPreviewFeatureSet(game, entry.raw), replyOptions: { available: new Set(), offered: new Set() } };
+  const features = context.features;
+  const replyOptions = context.replyOptions;
   let signal = 0;
   let evidence = 0;
   const independentObservations = new Set();

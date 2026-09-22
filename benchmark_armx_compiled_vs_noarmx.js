@@ -82,9 +82,14 @@ for(let i=0;i<games;i++){
   const r=simulate(i);records.push(r);totals[r.result]++;totals.fastMoves+=r.fast.moves;totals.currentMoves+=r.current.moves;totals.fastMs+=r.fast.thinkMs;totals.currentMs+=r.current.thinkMs;
   console.log(`ARMX_COMPILED_H2H game ${i+1}/${games}: ${r.fastIsWhite?'W':'B'} ${r.result} ${r.reason} ${r.plies} plies`);
 }
+const maxTimeRatio=Number.parseFloat(process.env.ARMX_MAX_TIME_RATIO||'1.4');
 const result={games,win:totals.win,loss:totals.loss,draw:totals.draw,score:(totals.win+totals.draw*0.5)/games,
   fast:perfSummary(totals.fastMoves,totals.fastMs),current:perfSummary(totals.currentMoves,totals.currentMs),
   fastVsCurrentTimeRatio:totals.currentMoves&&totals.fastMoves?(totals.fastMs/totals.fastMoves)/(totals.currentMs/totals.currentMoves):0,
-  acceptance:{minWins:40,maxLosses:40},selectiveStats,records};
+  acceptance:{minWins:40,maxLosses:40,maxTimeRatio},selectiveStats,records};
 console.log('ARMX_COMPILED_VS_NOARMX '+JSON.stringify(result));
+if(Number.isFinite(maxTimeRatio)&&maxTimeRatio>0&&result.fastVsCurrentTimeRatio>maxTimeRatio){
+  console.error(`ARMX timing gate failed: ratio ${result.fastVsCurrentTimeRatio.toFixed(4)} > ${maxTimeRatio.toFixed(4)}`);
+  process.exitCode=3;
+}
 if(games>=100&&(result.win<40||result.loss>40))process.exitCode=2;
