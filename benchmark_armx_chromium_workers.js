@@ -25,7 +25,9 @@ const server=http.createServer((req,res)=>{
     const page=await browser.newPage();
     await page.addInitScript(()=>Object.defineProperty(navigator,'hardwareConcurrency',{configurable:true,get:()=>9}));
     await page.goto(`http://127.0.0.1:${port}/index.html`,{waitUntil:'load'});
-    await page.locator('input[name="test-model"]').uncheck();
+    await page.evaluate(()=>{
+      for(const box of document.querySelectorAll('input[name="test-model"]'))box.checked=false;
+    });
     await page.locator('input[name="test-model"][value="v55test1noarmx"]').check();
     await page.locator('input[name="test-model"][value="v55test1"]').check();
     await page.locator('#test-count').fill(String(games));
