@@ -174,8 +174,7 @@ static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 #define SEARCH_TT_CAP 32768
 typedef struct {
   u32 generation,hash;
-  int side,castling,ep,id;
-  u64 packed[4];
+  int id,meta;
 } SearchPositionEntry;
 typedef struct {
   u32 generation;
@@ -192,6 +191,7 @@ typedef struct {
   u64 packed[4];
 } SearchPublicEntry;
 static SearchPositionEntry search_positions[SEARCH_POS_CAP];
+static u64 search_position_packed[SEARCH_POS_CAP][4];
 static SearchPathEntry search_paths[SEARCH_PATH_CAP];
 static SearchTTEntry search_tt[SEARCH_TT_CAP];
 static SearchPublicEntry search_public[SEARCH_PUBLIC_CAP];
@@ -602,23 +602,27 @@ static int search_public_lookup(const SearchState *s){
   return 0;
 }
 static u32 search_position_hash(const SearchState *s){return s->hash;}
-static int search_position_equal(const SearchPositionEntry *e,const SearchState *s){
-  if(e->side!=s->side||e->castling!=s->castling||e->ep!=s->ep)return 0;
-  for(int i=0;i<4;i++)if(e->packed[i]!=search_packed_board[i])return 0;
+static int search_position_meta(const SearchState *s){
+  return (s->side>0?1:0)|(s->castling<<1)|((s->ep+1)<<5);
+}
+static int search_position_equal(u32 slot,const SearchPositionEntry *e,const SearchState *s,int meta){
+  if(e->meta!=meta)return 0;
+  for(int i=0;i<4;i++)if(search_position_packed[slot][i]!=search_packed_board[i])return 0;
   return 1;
 }
 static int search_position_id(const SearchState *s){
   u32 hash=search_position_hash(s),slot=hash&(SEARCH_POS_CAP-1);
+  int meta=search_position_meta(s);
   for(int probe=0;probe<SEARCH_POS_CAP;probe++,slot=(slot+1)&(SEARCH_POS_CAP-1)){
     SearchPositionEntry *e=&search_positions[slot];
     if(e->generation!=search_generation){
-      e->generation=search_generation;e->hash=hash;e->side=s->side;e->castling=s->castling;e->ep=s->ep;
-      for(int i=0;i<4;i++)e->packed[i]=search_packed_board[i];
+      e->generation=search_generation;e->hash=hash;e->meta=meta;
+      for(int i=0;i<4;i++)search_position_packed[slot][i]=search_packed_board[i];
       e->id=++search_position_count;
       search_position_public_counts[e->id]=s->halfmove>=8?search_public_lookup(s):0;
       return e->id;
     }
-    if(e->hash==hash&&search_position_equal(e,s))return e->id;
+    if(e->hash==hash&&search_position_equal(slot,e,s,meta))return e->id;
   }
   return 0;
 }
