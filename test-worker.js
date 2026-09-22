@@ -140,6 +140,46 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
   return { outcome: 'draw', metrics, plies, openingIndex };
 }
 
+let stonefishWorkerARMXProfile = null;
+let stonefishWorkerARMXProfilerInstalled = false;
+
+function stonefishWorkerInstallARMXProfiler() {
+  if (stonefishWorkerARMXProfilerInstalled) return;
+  stonefishWorkerARMXProfilerInstalled = true;
+  stonefishWorkerARMXProfile = {
+    policyMs: 0, policyCalls: 0,
+    hostMs: 0, hostCalls: 0,
+    nativeMs: 0, nativeCalls: 0,
+    historyMs: 0, historyCalls: 0,
+    reviewMs: 0, reviewCalls: 0,
+  };
+  const wrap = (name, msKey, callsKey) => {
+    const original = globalThis[name];
+    if (typeof original !== 'function') return;
+    globalThis[name] = function profiledARMXCall(...args) {
+      const started = performance.now();
+      try {
+        return original.apply(this, args);
+      } finally {
+        stonefishWorkerARMXProfile[msKey] += performance.now() - started;
+        stonefishWorkerARMXProfile[callsKey] += 1;
+      }
+    };
+  };
+  wrap('armxPreviewOpponentPolicy', 'policyMs', 'policyCalls');
+  wrap('stonefishV55Testunit1ARMXHostSearch', 'hostMs', 'hostCalls');
+  wrap('sf55cNativeAcceleratedHost', 'nativeMs', 'nativeCalls');
+  wrap('sf55cSyncNativePublicHistory', 'historyMs', 'historyCalls');
+  wrap('armxPreviewReview', 'reviewMs', 'reviewCalls');
+}
+
+function stonefishWorkerResetARMXProfile() {
+  if (!stonefishWorkerARMXProfile) return;
+  for (const key of Object.keys(stonefishWorkerARMXProfile)) {
+    stonefishWorkerARMXProfile[key] = 0;
+  }
+}
+
 self.onmessage = event => {
   const { jobId, whiteModelKey, blackModelKey, maxPlies, openingIndex } = event.data;
 
@@ -150,6 +190,9 @@ self.onmessage = event => {
       maxPlies || 360,
       Number.isFinite(Number(openingIndex)) ? Number(openingIndex) : 0
     );
+    if (profileARMX && stonefishWorkerARMXProfile) {
+      result.armxProfile = Object.assign({}, stonefishWorkerARMXProfile);
+    }
     self.postMessage({ jobId, result });
   } catch (error) {
     self.postMessage({
