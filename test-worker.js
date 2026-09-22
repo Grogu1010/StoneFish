@@ -181,9 +181,13 @@ function stonefishWorkerResetARMXProfile() {
 }
 
 self.onmessage = event => {
-  const { jobId, whiteModelKey, blackModelKey, maxPlies, openingIndex } = event.data;
+  const { jobId, whiteModelKey, blackModelKey, maxPlies, openingIndex, profileARMX } = event.data;
 
   try {
+    if (profileARMX) {
+      stonefishWorkerInstallARMXProfiler();
+      stonefishWorkerResetARMXProfile();
+    }
     const result = playTestGame(
       whiteModelKey,
       blackModelKey,
