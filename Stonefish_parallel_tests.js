@@ -70,7 +70,10 @@ function stonefishTimedRenderRoundRobin(stats, selectedKeys, completed, total, d
   const overallRows = selectedKeys.map(key => {
     const s = stats.overall[key];
     const performance = stonefishPerformanceSummary(s, s.games);
-    return `<div class="result-row"><strong>${models[key].name}</strong><span>${s.wins}W · ${s.losses}L · ${s.draws}D · ${s.games} played</span><span>W ${percent(s.wins, s.games)} · L ${percent(s.losses, s.games)} · D ${percent(s.draws, s.games)}</span><span>${performance.text}</span></div>`;
+    const backend = key === 'v55test1'
+      ? `<span>ARMX backend: ${s.nativeKernelNo ? 'JS fallback detected' : 'compiled WASM available'} · compiled-search moves ${s.compiledMoves} · fallback/base moves ${s.fallbackMoves}</span>`
+      : '';
+    return `<div class="result-row"><strong>${models[key].name}</strong><span>${s.wins}W · ${s.losses}L · ${s.draws}D · ${s.games} played</span><span>W ${percent(s.wins, s.games)} · L ${percent(s.losses, s.games)} · D ${percent(s.draws, s.games)}</span><span>${performance.text}</span>${backend}</div>`;
   }).join('');
 
   const matchupRows = Object.values(stats.matchups).map(m => {
@@ -81,7 +84,8 @@ function stonefishTimedRenderRoundRobin(stats, selectedKeys, completed, total, d
     return `<div class="matchup-row"><strong>${models[m.a].name} vs ${models[m.b].name}</strong><span>${m.games}/${m.targetGames} games</span><span>${models[m.a].name}: ${m.aWins}W · ${aLosses}L · ${m.draws}D — W ${percent(m.aWins, m.games)} · D ${percent(m.draws, m.games)}</span><span>${aPerformance.text}</span><span>${models[m.b].name}: ${m.bWins}W · ${bLosses}L · ${m.draws}D — W ${percent(m.bWins, m.games)} · D ${percent(m.draws, m.games)}</span><span>${bPerformance.text}</span></div>`;
   }).join('');
 
-  testResults.innerHTML = `<div class="test-progress-heading">${done ? 'Final' : 'Running'} — ${completed} / ${total} total games</div><div class="developer-note">Games use mirrored varied openings: each opening is replayed with colors swapped before moving to the next seed. Timing is engine-only: opponent think time is excluded. Engine time/game = average time/move × average moves/game.</div><div class="results-section-title">Overall</div>${overallRows}<div class="results-section-title">Matchups</div>${matchupRows}`;
+  const workers = stats.workerCount || 1;
+  testResults.innerHTML = `<div class="test-progress-heading">${done ? 'Final' : 'Running'} — ${completed} / ${total} total games</div><div class="developer-note">Games use mirrored varied openings: each opening is replayed with colors swapped before moving to the next seed. Timing excludes opponent think time, but it is wall-clock timing under ${workers} concurrent worker${workers === 1 ? '' : 's'}; multi-worker CPU contention can change timing ratios. Engine time/game = average time/move × average moves/game.</div><div class="results-section-title">Overall</div>${overallRows}<div class="results-section-title">Matchups</div>${matchupRows}`;
 }
 
 createStats = stonefishTimedCreateStats;
@@ -136,7 +140,8 @@ async function stonefishParallelRoundRobinTest() {
   setTestControlsDisabled(true);
   renderRoundRobin(stats, selectedKeys, 0, schedule.length);
   stonefishCloseParallelWorkers();
-  stonefishParallelWorkerPool = Array.from({ length: workerCount }, () => new Worker('test-worker.js'));
+  const assetVersion = Date.now();
+  stonefishParallelWorkerPool = Array.from({ length: workerCount }, () => new Worker(`test-worker.js?v=${assetVersion}`));
 
   try {
     async function runQueue(worker) {
