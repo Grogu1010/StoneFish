@@ -462,6 +462,58 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
 }
 
 
+const SF55C_NATIVE_PUBLIC_CACHE = new WeakMap();
+let SF55C_NATIVE_PUBLIC_GAME = null;
+
+function sf55cSyncNativePublicHistory(g, k) {
+  if (!k.publicKeys || !k.publicCounts) return 0;
+  const historyLength = g.historyStack ? g.historyStack.length : 0;
+  let cache = SF55C_NATIVE_PUBLIC_CACHE.get(g);
+  const mustRebuild = !cache
+    || historyLength < cache.historyLength
+    || g.positionCounts.size < cache.count
+    || SF55C_NATIVE_PUBLIC_GAME !== g;
+
+  if (mustRebuild) {
+    cache = { indices: new Map(), counts: [], count: 0, historyLength };
+    let index = 0;
+    for (const [historyKey, countValue] of g.positionCounts) {
+      if (index >= 512) break;
+      const packed = historyKey.length === 17 ? historyKey : sf55cPackHistoryKey(historyKey);
+      const offset = index * 17;
+      for (let i = 0; i < 17; i++) k.publicKeys[offset + i] = packed.charCodeAt(i);
+      k.publicCounts[index] = countValue;
+      cache.indices.set(historyKey, index);
+      cache.counts[index] = countValue;
+      index++;
+    }
+    cache.count = index;
+    cache.historyLength = historyLength;
+    SF55C_NATIVE_PUBLIC_CACHE.set(g, cache);
+    SF55C_NATIVE_PUBLIC_GAME = g;
+    return index;
+  }
+
+  for (const [historyKey, countValue] of g.positionCounts) {
+    let index = cache.indices.get(historyKey);
+    if (index === undefined) {
+      if (cache.count >= 512) break;
+      index = cache.count++;
+      const packed = historyKey.length === 17 ? historyKey : sf55cPackHistoryKey(historyKey);
+      const offset = index * 17;
+      for (let i = 0; i < 17; i++) k.publicKeys[offset + i] = packed.charCodeAt(i);
+      cache.indices.set(historyKey, index);
+      cache.counts[index] = countValue;
+      k.publicCounts[index] = countValue;
+    } else if (cache.counts[index] !== countValue) {
+      cache.counts[index] = countValue;
+      k.publicCounts[index] = countValue;
+    }
+  }
+  cache.historyLength = historyLength;
+  return cache.count;
+}
+
 function sf55cNativeAcceleratedHost(g,replyPolicy){
   const k=SF55C_KERNEL;
   if(!k||!k.api.search_all||!k.scores||!k.policyWeights||!replyPolicy)return null;
@@ -472,17 +524,7 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(replyPolicy.searchBudget))):SF55C.nodes;
   const depthLimit=Number.isFinite(replyPolicy.maxDepth)
     ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(replyPolicy.maxDepth))):SF55C.maxDepth;
-  let publicHistoryCount=0;
-  if(k.publicKeys&&k.publicCounts){
-    for(const [historyKey,countValue] of g.positionCounts){
-      if(publicHistoryCount>=512)break;
-      const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
-      const offset=publicHistoryCount*17;
-      for(let i=0;i<17;i++)k.publicKeys[offset+i]=packed.charCodeAt(i);
-      k.publicCounts[publicHistoryCount]=countValue;
-      publicHistoryCount++;
-    }
-  }
+  const publicHistoryCount=sf55cSyncNativePublicHistory(g,k);
   const policyEnabled=replyPolicy.policyEnabled===false?0:1;
   const count=k.api.search_all(
     g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
