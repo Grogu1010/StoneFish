@@ -234,7 +234,7 @@ function setTestControlsDisabled(disabled) {
   runTestButton.disabled = disabled; modelSelect.disabled = disabled; testCountInput.disabled = disabled; watchButton.disabled = disabled; newGameButton.disabled = disabled;
   testModelCheckboxes.forEach(box => { box.disabled = disabled; });
 }
-function getTestWorker() { if (!testWorker) testWorker = new Worker('test-worker.js'); return testWorker; }
+function getTestWorker() { if (!testWorker) testWorker = new Worker(`test-worker.js?v=${Date.now()}`); return testWorker; }
 function runWorkerGame(worker, job) {
   return new Promise((resolve, reject) => {
     const handler = event => {
