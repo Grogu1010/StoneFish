@@ -908,9 +908,9 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   search_generation++;if(!search_generation)search_generation=1;
   search_public_build(public_history_count);
   search_position_count=0;search_signature_count=0;search_path_signature=0;search_path_top=0;
-  for(int i=0;i<=SEARCH_POS_CAP;i++)search_path_counts[i]=0;
-  for(int i=0;i<32768;i++)search_history[i]=0;
-  for(int i=0;i<32;i++)search_killers[i]=0;
+  __builtin_memset(search_path_counts,0,sizeof(search_path_counts));
+  __builtin_memset(search_history,0,sizeof(search_history));
+  __builtin_memset(search_killers,0,sizeof(search_killers));
   int king=side>0?wk:bk,n=search_generate(&s,0);
   if(!n)return 0;
   u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
