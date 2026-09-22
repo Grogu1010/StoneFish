@@ -11,8 +11,8 @@ try {
  const directCC=process.env.STONEFISH_CC;
  const compiler=directCC||(process.env.ZIG||'zig');
  const args=directCC
-  ?['--target=wasm32','-O3','-msimd128','-mbulk-memory','-nostdlib','-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output]
-  :['cc','-target','wasm32-freestanding','-O3','-msimd128','-mbulk-memory','-nostdlib','-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output];
+  ?['--target=wasm32','-O3','-fno-unroll-loops','-msimd128','-mbulk-memory','-nostdlib','-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output]
+  :['cc','-target','wasm32-freestanding','-O3','-fno-unroll-loops','-msimd128','-mbulk-memory','-nostdlib','-Wl,--no-entry',...exports.map(name=>'-Wl,--export='+name),'-Wl,--export-memory',source,'-o',output];
  execFileSync(compiler,args,{stdio:'inherit'});
  const bytes=fs.readFileSync(output),module=new WebAssembly.Module(bytes);
  if(WebAssembly.Module.imports(module).length)throw Error('Kernel must have no imports');
