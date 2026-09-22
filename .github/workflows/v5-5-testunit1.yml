@@ -48,6 +48,25 @@ on:
   workflow_dispatch:
 
 jobs:
+
+  armx-browser-phase-profile:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-browser-phase-profile'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build compiled ARMX search
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Profile ARMX policy, native search, and review phases
+        env:
+          GAMES: '20'
+        run: node benchmark_armx_phase_profile.js
+
   dev-testunit1:
     runs-on: ubuntu-latest
     timeout-minutes: 15
