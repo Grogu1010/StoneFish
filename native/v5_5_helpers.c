@@ -796,7 +796,9 @@ static int search_draw(const SearchState *s,int pos){
 }
 static int js_round(double x){return (int)__builtin_floor(x+0.5);}
 
-static int quiet_activity(int piece,int sq){
+static short search_quiet_activity_table[7][64],search_quiet_ending_table[7][64];
+static int search_quiet_tables_ready;
+static int quiet_activity_value(int piece,int sq){
   int f=sq&7,r=sq>>3,center=7-absolute(2*f-7)-absolute(2*r-7),fc=7-absolute(2*f-7);
   if(piece==1)return r*7+fc*3+((r>=3&&f>=2&&f<=5)?14:0);
   if(piece==2)return center*7-(r==0?15:0);
@@ -805,7 +807,7 @@ static int quiet_activity(int piece,int sq){
   if(piece==5)return center*2-(r>2?8:0);
   return -center*5-r*12+((r==0&&(f==6||f==2))?45:0);
 }
-static int quiet_ending(int piece,int sq){
+static int quiet_ending_value(int piece,int sq){
   int f=sq&7,r=sq>>3,center=7-absolute(2*f-7)-absolute(2*r-7),fc=7-absolute(2*f-7);
   if(piece==1)return r*r*5+fc;
   if(piece==2)return center*5;
@@ -814,12 +816,20 @@ static int quiet_ending(int piece,int sq){
   if(piece==5)return center*3;
   return center*8;
 }
+static void search_init_quiet_tables(void){
+  if(search_quiet_tables_ready)return;
+  for(int piece=1;piece<=6;piece++)for(int sq=0;sq<64;sq++){
+    search_quiet_activity_table[piece][sq]=(short)quiet_activity_value(piece,sq);
+    search_quiet_ending_table[piece][sq]=(short)quiet_ending_value(piece,sq);
+  }
+  search_quiet_tables_ready=1;
+}
 static double policy_logit_uncached(u32 m){
   int piece=move_piece(m),from=move_from(m),to=move_to(m);
   if(search_policy_side<0){from^=56;to^=56;}
   double v=policy_weights[piece-1];
-  v+=((double)(quiet_activity(piece,to)-quiet_activity(piece,from))/100.0)*policy_weights[6];
-  v+=((double)(quiet_ending(piece,to)-quiet_ending(piece,from))/100.0)*policy_weights[7];
+  v+=((double)(search_quiet_activity_table[piece][to]-search_quiet_activity_table[piece][from])/100.0)*policy_weights[6];
+  v+=((double)(search_quiet_ending_table[piece][to]-search_quiet_ending_table[piece][from])/100.0)*policy_weights[7];
   int adv=(to>>3)-(from>>3);if(adv>3)adv=3;if(adv<-3)adv=-3;
   v+=((double)adv/3.0)*policy_weights[8];
   if(move_flags(m)&12)v+=policy_weights[9];
@@ -1001,7 +1011,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
   SearchState s={0};
   s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;
-  search_initial_state(&s);search_init_eval_masks();search_init_attack_tables();
+  search_initial_state(&s);search_init_eval_masks();search_init_attack_tables();search_init_quiet_tables();
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
