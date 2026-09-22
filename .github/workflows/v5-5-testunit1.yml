@@ -50,7 +50,7 @@ on:
 jobs:
 
   candidate-vs-main:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-eval-mask-stack'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/armx-eval-bulk-reset'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
