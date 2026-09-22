@@ -183,7 +183,10 @@ typedef struct {
 } SearchPathEntry;
 typedef struct {
   u32 generation;
-  int pos,halfmove,ply,path,depth,score,move,flag;
+  int score,halfmove;
+  u16 pos,path,move,ply,depth;
+  i8 flag;
+  unsigned char pad;
 } SearchTTEntry;
 typedef struct {
   u32 generation,hash;
