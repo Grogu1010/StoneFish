@@ -49,7 +49,7 @@ const ARMX_PREVIEW = Object.freeze({
   maxExtraSearchNodes: 3600,
   evidenceSearchNodes: 4800,
   fullSearchEvidence: 8,
-  maxSearchNodes: 4800,
+  maxSearchNodes: 3600,
   maxExtraSearchDepth: 2,
 });
 
