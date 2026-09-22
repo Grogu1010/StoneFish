@@ -258,9 +258,9 @@ static void search_init_eval_masks(void){
   for(int sq=0;sq<64;sq++){
     int f=sq&7,r=sq>>3;
     u64 wpass=0,bpass=0,wshield=0,bshield=0;
-    u64 files=search_file_mask(f);
-    if(f>0)files|=search_file_mask(f-1);
-    if(f<7)files|=search_file_mask(f+1);
+    u64 files=((u64)0x0101010101010101ULL)<<f;
+    if(f>0)files|=((u64)0x0101010101010101ULL)<<(f-1);
+    if(f<7)files|=((u64)0x0101010101010101ULL)<<(f+1);
     wpass=files&(sq==63?0:(~(u64)0<<(sq+1)));
     bpass=files&(sq==0?0:(((u64)1<<sq)-1));
     for(int df=-1;df<=1;df++){
