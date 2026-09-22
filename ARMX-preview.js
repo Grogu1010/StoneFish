@@ -111,9 +111,9 @@ function armxPreviewQuietLogit(features, weights) {
   return value;
 }
 
-function armxPreviewObserveQuietChoice(profile, game, chosen) {
+function armxPreviewObserveQuietChoice(profile, game, chosen, legalMoves = null) {
   if (chosen.captured || chosen.promotion || game.in_check()) return;
-  const moves = game.fastMoves().filter(move => !move.captured && !move.promotion);
+  const moves = (legalMoves || game.fastMoves()).filter(move => !move.captured && !move.promotion);
   if (moves.length < 2) return;
   if (!profile.quietPolicy) profile.quietPolicy = {
     weights: new Float64Array(13), count: 0, qualitySum: 0, qualityWeight: 0
@@ -151,8 +151,10 @@ function armxPreviewOpponentPolicy(game, perspective = game.side) {
   if (!model || model.count < ARMX_PREVIEW.quietChoiceMinObservations) return null;
   // Freeze the learned preferences for this search. Cache only geometry-based
   // scores, including piece type and flags in the identity; nothing crosses turns.
-  const weights = new Float64Array(model.weights), cache = new Map();
+  const weights = new Float64Array(model.weights);
+  let cache = null;
   const score = move => {
+    if (!cache) cache = new Map();
     const key = move.from | (move.to << 6) | (move.piece << 12)
       | ((move.promotion || 0) << 15) | ((move.flags || 0) << 18);
     let value = cache.get(key);
@@ -425,7 +427,7 @@ function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
       profile.opponentOpportunityPlies[feature].add(profile.processedPlies);
     }
   }
-  armxPreviewObserveQuietChoice(profile, game, chosenMove);
+  armxPreviewObserveQuietChoice(profile, game, chosenMove, legal);
   return { available, chosen, move: chosenMove, actor: game.side };
 }
 
@@ -621,7 +623,10 @@ function armxPreviewCandidateReplyOpportunities(game, raw) {
 }
 
 function armxPreviewCandidateReport(game, entry, profile) {
-  const context = armxPreviewCandidateContext(game, entry.raw, armxPreviewHasUsefulReplyEvidence(profile));
+  const includeReplyOptions = armxPreviewHasUsefulReplyEvidence(profile);
+  const context = includeReplyOptions
+    ? armxPreviewCandidateContext(game, entry.raw, true)
+    : { features: armxPreviewFeatureSet(game, entry.raw), replyOptions: { available: new Set(), offered: new Set() } };
   const features = context.features;
   const replyOptions = context.replyOptions;
   let signal = 0;
