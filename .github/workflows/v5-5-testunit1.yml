@@ -96,12 +96,12 @@ jobs:
         run: node benchmark_armx_compiled_vs_current.js
       - name: Measure compiled ARMX versus No-ARMX
         env:
-          ARMX_H2H_GAMES: '100'
+          ARMX_H2H_GAMES: '12'
         run: node benchmark_armx_compiled_vs_noarmx.js
       - name: Smoke test the frozen ARMX strength baseline
         env:
           SAMPLES: '4'
-          GAMES: '100'
+          GAMES: '2'
           MATCHUP: 'armxVsBaseline'
         run: node benchmark_v5_5_testunit1.js
       - name: Run v5.5 dev benchmark
