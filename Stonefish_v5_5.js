@@ -25,8 +25,30 @@ const STONEFISH_V5_5_ARMX_CONTRASTIVE_MIN_CONFIDENCE = 0.90;
 const STONEFISH_V5_5_ARMX_CONTRASTIVE_MIN_EVIDENCE = 5.5;
 let STONEFISH_V5_5_LAST_ARMX = null;
 
+const STONEFISH_V5_5_NEUTRAL_COMPILED_WEIGHTS = new Float64Array(13);
+
 function stonefishV55HostSearch(game, replyPolicy = null) {
   return sf55cHost(game, replyPolicy);
+}
+
+// Keep ARMX on the parity-checked compiled host even before the learned quiet
+// policy activates. Neutral policy weights preserve the original search work
+// while avoiding the much slower JavaScript fallback on early ARMX turns.
+function stonefishV55ARMXHostSearch(game, replyPolicy = null) {
+  if (replyPolicy || typeof sf55cNativeAcceleratedHost !== 'function') {
+    return stonefishV55HostSearch(game, replyPolicy);
+  }
+  const accelerated = sf55cNativeAcceleratedHost(game, {
+    weights: STONEFISH_V5_5_NEUTRAL_COMPILED_WEIGHTS,
+    searchBudget: SF55C.nodes,
+    maxDepth: SF55C.maxDepth,
+    policyEnabled: false,
+  });
+  if (accelerated) {
+    globalThis.SF55C_LAST = accelerated;
+    return accelerated;
+  }
+  return stonefishV55HostSearch(game, null);
 }
 
 function stonefishV55FindEntry(finished, raw) {
@@ -223,7 +245,7 @@ function stonefishV55ScoreAllMoves(game) {
   const perspective = game.side;
   const replyPolicy = typeof armxPreviewOpponentPolicy === 'function'
     ? armxPreviewOpponentPolicy(game, perspective) : null;
-  const host = stonefishV55HostSearch(game, replyPolicy);
+  const host = stonefishV55ARMXHostSearch(game, replyPolicy);
   const finished = host.finished;
   if (!finished.length) {
     STONEFISH_V5_5_LAST_ARMX = null;

@@ -90,19 +90,24 @@ for (let square = 0; square < 64; square++) {
   ending[6][square] = center * 8;
 }
 
-function armxPreviewQuietFeatures(move, side) {
-  const features = new Float64Array(13), piece = move.piece;
+function armxPreviewWriteQuietFeatures(target, offset, move, side) {
+  target.fill(0, offset, offset + 13);
+  const piece = move.piece;
   const from = side === 1 ? move.from : move.from ^ 56;
   const to = side === 1 ? move.to : move.to ^ 56;
-  features[piece - 1] = 1;
-  features[6] = (ARMX_PREVIEW_QUIET_ACTIVITY[piece][to] - ARMX_PREVIEW_QUIET_ACTIVITY[piece][from]) / 100;
-  features[7] = (ARMX_PREVIEW_QUIET_ENDGAME[piece][to] - ARMX_PREVIEW_QUIET_ENDGAME[piece][from]) / 100;
-  features[8] = Math.max(-1, Math.min(1, ((to >> 3) - (from >> 3)) / 3));
-  features[9] = move.flags & (4 | 8) ? 1 : 0;
-  features[10] = (piece === 2 || piece === 3) && (from >> 3) === 0 ? 1 : 0;
-  features[11] = (Math.abs((from & 7) - 3.5) - Math.abs((to & 7) - 3.5)) / 4;
-  features[12] = piece === 1 && (to >> 3) >= 4 ? 1 : 0;
-  return features;
+  target[offset + piece - 1] = 1;
+  target[offset + 6] = (ARMX_PREVIEW_QUIET_ACTIVITY[piece][to] - ARMX_PREVIEW_QUIET_ACTIVITY[piece][from]) / 100;
+  target[offset + 7] = (ARMX_PREVIEW_QUIET_ENDGAME[piece][to] - ARMX_PREVIEW_QUIET_ENDGAME[piece][from]) / 100;
+  target[offset + 8] = Math.max(-1, Math.min(1, ((to >> 3) - (from >> 3)) / 3));
+  target[offset + 9] = move.flags & (4 | 8) ? 1 : 0;
+  target[offset + 10] = (piece === 2 || piece === 3) && (from >> 3) === 0 ? 1 : 0;
+  target[offset + 11] = (Math.abs((from & 7) - 3.5) - Math.abs((to & 7) - 3.5)) / 4;
+  target[offset + 12] = piece === 1 && (to >> 3) >= 4 ? 1 : 0;
+  return target;
+}
+
+function armxPreviewQuietFeatures(move, side) {
+  return armxPreviewWriteQuietFeatures(new Float64Array(13), 0, move, side);
 }
 
 function armxPreviewQuietLogit(features, weights) {
@@ -113,33 +118,78 @@ function armxPreviewQuietLogit(features, weights) {
 
 function armxPreviewObserveQuietChoice(profile, game, chosen, legalMoves = null) {
   if (chosen.captured || chosen.promotion || game.in_check()) return;
-  const moves = (legalMoves || game.fastMoves()).filter(move => !move.captured && !move.promotion);
-  if (moves.length < 2) return;
+  const sourceMoves = legalMoves || game.fastMoves();
+  let quietCount = 0;
+  for (const move of sourceMoves) {
+    if (!move.captured && !move.promotion) quietCount++;
+  }
+  if (quietCount < 2) return;
   if (!profile.quietPolicy) profile.quietPolicy = {
-    weights: new Float64Array(13), count: 0, qualitySum: 0, qualityWeight: 0
+    weights: new Float64Array(13), count: 0, qualitySum: 0, qualityWeight: 0, scratch: null
   };
   const model = profile.quietPolicy;
-  const rows = moves.map(move => armxPreviewQuietFeatures(move, game.side));
-  const logits = rows.map(row => armxPreviewQuietLogit(row, model.weights));
-  const maximum = Math.max(...logits);
-  const probabilities = logits.map(logit => Math.exp(logit - maximum));
-  const sum = probabilities.reduce((a, b) => a + b, 0);
+  let scratch = model.scratch;
+  if (!scratch || scratch.capacity < quietCount) {
+    let capacity = scratch ? scratch.capacity : 8;
+    while (capacity < quietCount) capacity <<= 1;
+    scratch = model.scratch = {
+      capacity,
+      features: new Float64Array(capacity * 13),
+      logits: new Float64Array(capacity),
+      probabilities: new Float64Array(capacity),
+      selected: new Float64Array(13),
+    };
+  }
+
+  const rows = scratch.features;
+  const logits = scratch.logits;
+  const probabilities = scratch.probabilities;
+  let rowCount = 0;
+  let selectedIndex = -1;
+  for (const move of sourceMoves) {
+    if (move.captured || move.promotion) continue;
+    const offset = rowCount * 13;
+    armxPreviewWriteQuietFeatures(rows, offset, move, game.side);
+    let logit = 0;
+    for (let i = 0; i < 13; i++) logit += rows[offset + i] * model.weights[i];
+    logits[rowCount] = logit;
+    if (move.from === chosen.from && move.to === chosen.to
+      && (move.promotion || 0) === (chosen.promotion || 0)) selectedIndex = rowCount;
+    rowCount++;
+  }
+
+  let maximum = -Infinity;
+  for (let j = 0; j < rowCount; j++) maximum = Math.max(maximum, logits[j]);
+  let sum = 0;
+  for (let j = 0; j < rowCount; j++) {
+    const probability = Math.exp(logits[j] - maximum);
+    probabilities[j] = probability;
+    sum += probability;
+  }
+
   // Measure the prediction before learning from this choice. Compare its
   // probability with uniform selection among the available quiet moves.
-  const selectedIndex = moves.findIndex(move => move.from === chosen.from && move.to === chosen.to
-    && (move.promotion || 0) === (chosen.promotion || 0));
   if (model.count >= 1 && selectedIndex >= 0) {
-    const gain = Math.log(moves.length * probabilities[selectedIndex] / sum);
+    const gain = Math.log(rowCount * probabilities[selectedIndex] / sum);
     model.qualitySum = model.qualitySum * ARMX_PREVIEW.predictionQualityDecay + gain;
     model.qualityWeight = model.qualityWeight * ARMX_PREVIEW.predictionQualityDecay + 1;
   }
-  const selected = armxPreviewQuietFeatures(chosen, game.side);
+
+  let selectedOffset = selectedIndex * 13;
+  let selected = rows;
+  if (selectedIndex < 0) {
+    armxPreviewWriteQuietFeatures(scratch.selected, 0, chosen, game.side);
+    selected = scratch.selected;
+    selectedOffset = 0;
+  }
   for (let i = 0; i < model.weights.length; i++) {
     let expected = 0;
-    for (let j = 0; j < rows.length; j++) expected += probabilities[j] * rows[j][i] / sum;
+    for (let j = 0; j < rowCount; j++) {
+      expected += probabilities[j] * rows[j * 13 + i] / sum;
+    }
     model.weights[i] = armxPreviewClamp(
       model.weights[i] * ARMX_PREVIEW.quietChoiceDecay
-        + ARMX_PREVIEW.quietChoiceLearningRate * (selected[i] - expected),
+        + ARMX_PREVIEW.quietChoiceLearningRate * (selected[selectedOffset + i] - expected),
       -ARMX_PREVIEW.quietChoiceWeightLimit, ARMX_PREVIEW.quietChoiceWeightLimit
     );
   }
@@ -416,19 +466,19 @@ function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
   let availableMask = 0;
   for (const move of legal) availableMask |= armxPreviewCheapFeatureMask(move);
   const chosenMask = armxPreviewCheapFeatureMask(chosenMove);
-  const available = armxPreviewAddCheapFeatureMask(new Set(), availableMask);
-  const chosen = armxPreviewAddCheapFeatureMask(new Set(), chosenMask);
   profile.opponentMoves += 1;
-  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
-    if (available.has(feature)) {
+  for (let i = 0; i < ARMX_PREVIEW_REPLY_FEATURES.length; i++) {
+    const feature = ARMX_PREVIEW_REPLY_FEATURES[i];
+    const bit = 1 << i;
+    if (availableMask & bit) {
       profile.opponentOpportunities[feature] = (profile.opponentOpportunities[feature] || 0) + 1;
-      if (chosen.has(feature)) profile.opponentChoices[feature] = (profile.opponentChoices[feature] || 0) + 1;
+      if (chosenMask & bit) profile.opponentChoices[feature] = (profile.opponentChoices[feature] || 0) + 1;
       if (!profile.opponentOpportunityPlies[feature]) profile.opponentOpportunityPlies[feature] = new Set();
       profile.opponentOpportunityPlies[feature].add(profile.processedPlies);
     }
   }
   armxPreviewObserveQuietChoice(profile, game, chosenMove, legal);
-  return { available, chosen, move: chosenMove, actor: game.side };
+  return { availableMask, chosenMask, move: chosenMove, actor: game.side };
 }
 
 function armxPreviewCapturedSquare(move, actor) {
@@ -443,11 +493,9 @@ function armxPreviewRecordAcceptedResponse(profile, observed, opponentPlyIndex) 
   // A capture elsewhere is an opponent choice, but is not acceptance of the
   // piece we just offered. Keep this more specific outcome memory attributable.
   if (armxPreviewCapturedSquare(observed.move, observed.actor) !== offer.to) return;
-  const accepted = new Set();
-  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
-    if (observed.available.has(feature) && observed.chosen.has(feature)) accepted.add(feature);
-  }
-  if (!accepted.size) return;
+  const acceptedMask = observed.availableMask & observed.chosenMask;
+  if (!acceptedMask) return;
+  const accepted = armxPreviewAddCheapFeatureMask(new Set(), acceptedMask);
 
   profile.pending.push({
     bucket: 'accepted-response',
@@ -631,9 +679,31 @@ function armxPreviewCandidateReport(game, entry, profile) {
   const replyOptions = context.replyOptions;
   let signal = 0;
   let evidence = 0;
-  const independentObservations = new Set();
+  let observationMarks = profile._candidateObservationMarks;
+  if (!observationMarks) observationMarks = profile._candidateObservationMarks = new Uint32Array(512);
+  let observationGeneration = ((profile._candidateObservationGeneration || 0) + 1) >>> 0;
+  if (!observationGeneration) {
+    observationMarks.fill(0);
+    observationGeneration = 1;
+  }
+  profile._candidateObservationGeneration = observationGeneration;
+  let independentObservationCount = 0;
   const recordObservations = observations => {
-    for (const observation of observations || []) independentObservations.add(observation);
+    if (!observations) return;
+    for (const observation of observations) {
+      const index = observation >>> 0;
+      if (index >= observationMarks.length) {
+        let capacity = observationMarks.length;
+        while (capacity <= index) capacity <<= 1;
+        const grown = new Uint32Array(capacity);
+        grown.set(observationMarks);
+        observationMarks = profile._candidateObservationMarks = grown;
+      }
+      if (observationMarks[index] !== observationGeneration) {
+        observationMarks[index] = observationGeneration;
+        independentObservationCount++;
+      }
+    }
   };
   const reasons = [];
 
@@ -690,7 +760,7 @@ function armxPreviewCandidateReport(game, entry, profile) {
 
   const featureEvidence = evidence;
   // Correlated labels and the two horizons do not create new observations.
-  evidence = Math.min(evidence, independentObservations.size);
+  evidence = Math.min(evidence, independentObservationCount);
   const confidence = armxPreviewClamp(evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0, 1);
   const delta = armxPreviewClamp(signal * ARMX_PREVIEW.multiplierSignalScale * confidence, -ARMX_PREVIEW.maxMultiplierDelta, ARMX_PREVIEW.maxMultiplierDelta);
   const multiplier = 1 + delta;
@@ -707,7 +777,7 @@ function armxPreviewCandidateReport(game, entry, profile) {
     confidence,
     evidence,
     featureEvidence,
-    independentObservations: independentObservations.size,
+    independentObservations: independentObservationCount,
     features: Array.from(features),
     reasons,
   };

@@ -1,0 +1,124 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ARMX browser benchmark</title>
+<pre id="status">starting</pre>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const games = Math.max(2, Number(params.get('games')) || 40);
+  const maxPlies = Math.max(20, Number(params.get('maxPlies')) || 360);
+  const profileARMX = params.get('profile') === '1';
+  const worker = new Worker('test-worker.js?v=' + Date.now());
+  let nextJobId = 1;
+  const pending = new Map();
+
+  worker.onmessage = event => {
+    const message = event.data || {};
+    const entry = pending.get(message.jobId);
+    if (!entry) return;
+    pending.delete(message.jobId);
+    if (message.error) entry.reject(new Error(message.error));
+    else entry.resolve(message.result);
+  };
+  worker.onerror = event => {
+    for (const entry of pending.values()) entry.reject(new Error(event.message || 'worker error'));
+    pending.clear();
+  };
+
+  function runGame(index) {
+    const armxIsWhite = (index & 1) === 0;
+    const jobId = nextJobId++;
+    return new Promise((resolve, reject) => {
+      pending.set(jobId, { resolve, reject });
+      worker.postMessage({
+        jobId,
+        whiteModelKey: armxIsWhite ? 'v55' : 'v55noarmx',
+        blackModelKey: armxIsWhite ? 'v55noarmx' : 'v55',
+        maxPlies,
+        openingIndex: Math.floor(index / 2),
+        profileARMX
+      });
+    });
+  }
+
+  window.armxBrowserBenchmarkPromise = (async () => {
+    let win = 0, loss = 0, draw = 0;
+    const armx = { moves: 0, thinkMs: 0, nodes: 0, depthSum: 0, compiledMoves: 0, fallbackMoves: 0 };
+    const control = { moves: 0, thinkMs: 0, nodes: 0, depthSum: 0 };
+    const records = [];
+    const profile = {
+      policyMs: 0, policyCalls: 0,
+      hostMs: 0, hostCalls: 0,
+      nativeMs: 0, nativeCalls: 0,
+      historyMs: 0, historyCalls: 0,
+      reviewMs: 0, reviewCalls: 0,
+    };
+
+    for (let index = 0; index < games; index++) {
+      document.getElementById('status').textContent = 'game ' + (index + 1) + '/' + games;
+      const result = await runGame(index);
+      const armxIsWhite = (index & 1) === 0;
+      const won = result.outcome === (armxIsWhite ? 'white' : 'black');
+      const lost = result.outcome === (armxIsWhite ? 'black' : 'white');
+      if (won) win++;
+      else if (lost) loss++;
+      else draw++;
+
+      const fast = result.metrics.v55;
+      const current = result.metrics.v55noarmx;
+      armx.moves += fast.moves;
+      armx.thinkMs += fast.thinkMs;
+      armx.nodes += fast.nodes || 0;
+      armx.depthSum += fast.depthSum || 0;
+      armx.compiledMoves += fast.compiledMoves || 0;
+      armx.fallbackMoves += fast.fallbackMoves || 0;
+      control.moves += current.moves;
+      control.thinkMs += current.thinkMs;
+      control.nodes += current.nodes || 0;
+      control.depthSum += current.depthSum || 0;
+      if (result.armxProfile) {
+        for (const key of Object.keys(profile)) profile[key] += result.armxProfile[key] || 0;
+      }
+      records.push({
+        index,
+        armxIsWhite,
+        outcome: result.outcome,
+        plies: result.plies,
+        armxMsPerMove: fast.moves ? fast.thinkMs / fast.moves : 0,
+        controlMsPerMove: current.moves ? current.thinkMs / current.moves : 0
+      });
+    }
+
+    worker.terminate();
+    const armxAvg = armx.moves ? armx.thinkMs / armx.moves : 0;
+    const controlAvg = control.moves ? control.thinkMs / control.moves : 0;
+    const result = {
+      games, win, loss, draw,
+      score: games ? (win + draw * 0.5) / games : 0,
+      armx: {
+        ...armx,
+        averageTimePerMoveMs: armxAvg,
+        averageNodesPerMove: armx.moves ? armx.nodes / armx.moves : 0,
+        averageDepth: armx.moves ? armx.depthSum / armx.moves : 0,
+        compiledRate: armx.moves ? armx.compiledMoves / armx.moves : 0
+      },
+      control: {
+        ...control,
+        averageTimePerMoveMs: controlAvg,
+        averageNodesPerMove: control.moves ? control.nodes / control.moves : 0,
+        averageDepth: control.moves ? control.depthSum / control.moves : 0
+      },
+      armxVsControlTimeRatio: controlAvg ? armxAvg / controlAvg : Infinity,
+      armxVsControlNodeRatio: control.nodes ? armx.nodes / control.nodes : Infinity,
+      profile: profileARMX ? profile : null,
+      records
+    };
+    document.getElementById('status').textContent = 'ARMX_BROWSER_VS_NOARMX ' + JSON.stringify(result);
+    return result;
+  })().catch(error => {
+    document.getElementById('status').textContent = 'ARMX_BROWSER_ERROR ' + (error && (error.stack || error.message) || error);
+    worker.terminate();
+    throw error;
+  });
+})();
+</script>
