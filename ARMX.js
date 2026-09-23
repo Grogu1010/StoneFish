@@ -145,7 +145,7 @@ function armxFullFreshCounts() {
 }
 function armxFullFreshEffects() {
   return Object.fromEntries(ARMX_FULL_NOTE_FEATURES.map(feature=>[
-    feature,{weight:0,impact:0,observations:new Set()}
+    feature,{weight:0,impact:0,impactSq:0,observations:new Set()}
   ]));
 }
 function armxFullPieceFeature(piece) {
@@ -214,8 +214,15 @@ function armxFullPredictiveMoveFeatures(game,move){
   return features;
 }
 function armxFullEffectValue(row) {
-  if (!row || row.weight < ARMX_FULL.minEffectEvidence) return {value:0,evidence:row?row.weight:0};
-  return {value:row.impact/row.weight,evidence:row.weight};
+  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
+    return {value:0,evidence:row?row.weight:0,consistency:0};
+  }
+  const mean=row.impact/row.weight;
+  const rms=Math.sqrt(Math.max(0,(row.impactSq||0)/row.weight));
+  const consistency=rms>1e-9?armxFullClamp(Math.abs(mean)/(rms+0.04),0,1):0;
+  // Keep the direction learned from this opponent, but shrink noisy effects.
+  const reliableValue=mean*(0.30+0.70*consistency);
+  return {value:reliableValue,evidence:row.weight,consistency};
 }
 function armxFullRecordEffect(bucket, features, impact, weight, observationId) {
   const normalized=armxFullClamp(impact/360,-1,1);
@@ -224,6 +231,7 @@ function armxFullRecordEffect(bucket, features, impact, weight, observationId) {
     if(!row)continue;
     row.weight+=weight;
     row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
     row.observations.add(observationId);
   }
 }
@@ -232,7 +240,7 @@ function armxFullResponseKey(contextFeature, replyFeature) {
 }
 function armxFullResponseRow(book,key) {
   let row=book.responseEffects[key];
-  if(!row)row=book.responseEffects[key]={weight:0,impact:0,observations:new Set()};
+  if(!row)row=book.responseEffects[key]={weight:0,impact:0,impactSq:0,observations:new Set()};
   return row;
 }
 function armxFullRecordResponseEffect(book, pairKeys, impact, weight, observationId) {
@@ -241,6 +249,7 @@ function armxFullRecordResponseEffect(book, pairKeys, impact, weight, observatio
     const row=armxFullResponseRow(book,key);
     row.weight+=weight;
     row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
     row.observations.add(observationId);
   }
 }
@@ -421,7 +430,7 @@ function armxFullNotebookSummary(book){
     const importance=Math.abs(choice.rate-0.5)*Math.min(1,choice.evidence/6)
       +Math.abs(effect.value)*Math.min(1,effect.evidence/4);
     if(importance>0.10)rows.push({feature,choiceRate:choice.rate,choiceEvidence:choice.evidence,
-      effect:effect.value,effectEvidence:effect.evidence,importance});
+      effect:effect.value,effectEvidence:effect.evidence,effectConsistency:effect.consistency||0,importance});
   }
   rows.sort((a,b)=>b.importance-a.importance);
   return rows.slice(0,10);
