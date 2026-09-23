@@ -375,9 +375,9 @@ const targets={
   // All three are peers. Current v5.5 is a common baseline, not a ladder:
   // each Full-ARMX model must score strongly while keeping losses bounded.
   // Draws are always preferable to losses and count normally toward score.
-  athenaVsCurrent:{minScore:0.75,maxLossRate:0.20},
-  aresVsCurrent:{minScore:0.75,maxLossRate:0.20},
-  artemisVsCurrent:{minScore:0.75,maxLossRate:0.20},
+  athenaVsCurrent:{minScore:0.75,maxScore:0.85,maxLossRate:0.20},
+  aresVsCurrent:{minScore:0.75,maxScore:0.85,maxLossRate:0.20},
+  artemisVsCurrent:{minScore:0.80,maxScore:0.90,maxLossRate:0.20},
 
   // Sibling matchups are intentionally close. These are hard relationship
   // bounds, not quotas: each intended winner must clear 50%, but a large edge
