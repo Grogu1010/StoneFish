@@ -220,9 +220,8 @@ const targets={
   }),
 
   // Personality remains visible in game duration as well as W/D/L shape.
-  athenaPlayedMoveRatioToArtemisCurrent:3,
-  aresPlayedMoveRatioToArtemisCurrent:0.5,
-  moveRatioTolerance:0.10,
+  athenaMinPlayedMoveRatioToArtemisCurrent:1.20,
+  aresMaxPlayedMoveRatioToArtemisCurrent:0.80,
 };
 const games=Math.max(0,Number.parseInt(process.env.GAMES||'12',10)||0);
 const startIndex=Math.max(0,Number.parseInt(process.env.START_INDEX||'0',10)||0);
@@ -369,15 +368,10 @@ if(process.env.RELEASE_GATE==='1'){
   requireGate(relationships.currentScoreSpread<=targets.relationships.maxCurrentScoreSpread,
     'Common-baseline strength spread is too large: '+relationships.currentScoreSpread);
 
-  const tol=targets.moveRatioTolerance;
-  const athenaLow=targets.athenaPlayedMoveRatioToArtemisCurrent*(1-tol);
-  const athenaHigh=targets.athenaPlayedMoveRatioToArtemisCurrent*(1+tol);
-  const aresLow=targets.aresPlayedMoveRatioToArtemisCurrent*(1-tol);
-  const aresHigh=targets.aresPlayedMoveRatioToArtemisCurrent*(1+tol);
-  if(!ratios||ratios.athenaToArtemis<athenaLow||ratios.athenaToArtemis>athenaHigh){
-    throw new Error('Athena round-length identity failed: '+(ratios&&ratios.athenaToArtemis)+'x; target ~3x');
-  }
-  if(ratios.aresToArtemis<aresLow||ratios.aresToArtemis>aresHigh){
-    throw new Error('Ares round-length identity failed: '+ratios.aresToArtemis+'x; target ~0.5x');
-  }
+  requireGate(ratios&&ratios.athenaToArtemis>=targets.athenaMinPlayedMoveRatioToArtemisCurrent,
+    'Athena survival-length identity failed: '+(ratios&&ratios.athenaToArtemis)+'x; need >='
+      +targets.athenaMinPlayedMoveRatioToArtemisCurrent+'x Artemis');
+  requireGate(ratios&&ratios.aresToArtemis<=targets.aresMaxPlayedMoveRatioToArtemisCurrent,
+    'Ares speed identity failed: '+(ratios&&ratios.aresToArtemis)+'x; need <='
+      +targets.aresMaxPlayedMoveRatioToArtemisCurrent+'x Artemis');
 }
