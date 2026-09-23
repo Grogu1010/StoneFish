@@ -231,7 +231,9 @@ const targets={
   relationships:Object.freeze({
     maxFieldScoreSpread:0.06,
     maxArtemisLead:0.05,
-    maxCurrentScoreSpread:0.10,
+    maxCurrentScoreSpread:0.06,
+    maxArtemisCurrentLead:0.05,
+    artemisBestAgainstCurrent:true,
     aresBeatsAthenaMoreOftenThanArtemis:true,
     athenaDrawsMoreThanItLosesToAres:true,
     athenaDrawsAresMoreThanArtemisDoes:true,
@@ -401,6 +403,16 @@ if(process.env.RELEASE_GATE==='1'){
     'Artemis overall lead is too large: '+JSON.stringify(relationships.fieldScore));
   requireGate(relationships.currentScoreSpread<=targets.relationships.maxCurrentScoreSpread,
     'Common-baseline strength spread is too large: '+relationships.currentScoreSpread);
+  requireGate(results.artemisVsCurrent.score>results.athenaVsCurrent.score
+      && results.artemisVsCurrent.score>results.aresVsCurrent.score,
+    'Artemis must be the best default against current v5.5: Artemis '
+      +results.artemisVsCurrent.score+', Athena '+results.athenaVsCurrent.score
+      +', Ares '+results.aresVsCurrent.score);
+  requireGate(results.artemisVsCurrent.score-results.athenaVsCurrent.score
+      <=targets.relationships.maxArtemisCurrentLead
+      && results.artemisVsCurrent.score-results.aresVsCurrent.score
+      <=targets.relationships.maxArtemisCurrentLead,
+    'Artemis current-v5.5 lead must stay modest');
 
   const tol=targets.moveRatioTolerance;
   const athenaLow=targets.athenaPlayedMoveRatioToArtemisCurrent*(1-tol);
