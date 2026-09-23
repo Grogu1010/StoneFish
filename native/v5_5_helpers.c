@@ -219,21 +219,7 @@ static int search_ray_check_through(int king,int square,int by_side,u64 occupied
   }
   return 0;
 }
-static int search_quiet_move_gives_check(const SearchState *child,u32 m){
-  int by_side=-child->side,king=child->side>0?child->wk:child->bk;
-  int piece=move_piece(m),from=move_from(m),to=move_to(m),flags=move_flags(m);
-  u64 occupied=search_white_occ|search_black_occ,toBit=(u64)1<<to;
-  if(flags&12)return search_attacked_synced(king,by_side,occupied);
-  if(piece==1){
-    u64 mask=by_side>0?search_attack_white_pawn_mask[king]:search_attack_black_pawn_mask[king];
-    if(mask&toBit)return 1;
-  }else if(piece==2){
-    if(search_attack_knight_mask[king]&toBit)return 1;
-  }else if(piece==6){
-    if(search_attack_king_mask[king]&toBit)return 1;
-  }else if(search_ray_check_through(king,to,by_side,occupied))return 1;
-  return search_ray_check_through(king,from,by_side,occupied);
-}
+
 int in_check(int side,int king){return attacked(king,-side);}
 static int gen_side,gen_king,gen_mode,gen_count,gen_search_fast;
 static u64 gen_search_occ;
@@ -403,6 +389,22 @@ static int move_captured(u32 m){return (m>>15)&7;}
 static int move_promotion(u32 m){return (m>>18)&7;}
 static int move_flags(u32 m){return (int)(m>>21);}
 static int move_id(u32 m){return move_from(m)|(move_to(m)<<6)|(move_promotion(m)<<12);}
+
+static int search_quiet_move_gives_check(const SearchState *child,u32 m){
+  int by_side=-child->side,king=child->side>0?child->wk:child->bk;
+  int piece=move_piece(m),from=move_from(m),to=move_to(m),flags=move_flags(m);
+  u64 occupied=search_white_occ|search_black_occ,toBit=(u64)1<<to;
+  if(flags&12)return search_attacked_synced(king,by_side,occupied);
+  if(piece==1){
+    u64 mask=by_side>0?search_attack_white_pawn_mask[king]:search_attack_black_pawn_mask[king];
+    if(mask&toBit)return 1;
+  }else if(piece==2){
+    if(search_attack_knight_mask[king]&toBit)return 1;
+  }else if(piece==6){
+    if(search_attack_king_mask[king]&toBit)return 1;
+  }else if(search_ray_check_through(king,to,by_side,occupied))return 1;
+  return search_ray_check_through(king,from,by_side,occupied);
+}
 
 static u32 search_hash_mix(u32 x){
   x^=x>>16;x*=0x7feb352du;x^=x>>15;x*=0x846ca68bu;x^=x>>16;return x;
