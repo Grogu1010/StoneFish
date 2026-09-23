@@ -55,6 +55,7 @@ const ARMX_FULL = Object.freeze({
   pieceBaselinePrior: 0.22,
   pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.82,
+  extendedReplyScanCandidates: 2,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -80,7 +81,7 @@ const ARMX_FULL = Object.freeze({
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
   styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 155, ares: 130, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 110, ares: 125, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -121,17 +122,17 @@ const ARMX_FULL = Object.freeze({
         simplify:4.00,check:0.42,kingAttack:0.28,quiet:-1.35,retreat:1.15,castle:1.45,
       }),
       baseScale:10, earlyBoost:2.40, lateBoost:-0.35, paceTargetPlies:260,
-      aheadThreshold:120, behindThreshold:15, advantageRange:360, minStyleLead:10,
-      aheadScale:0.25, behindScale:4.20, replyCompressionWeight:-1.25, capturedValueWeight:-0.38,
+      aheadThreshold:120, behindThreshold:15, advantageRange:360, minStyleLead:20,
+      aheadScale:0.20, behindScale:4.35, replyCompressionWeight:0, capturedValueWeight:-0.28,
       repetitionWeight:0.10, aheadRepetitionWeight:-0.25, behindRepetitionWeight:8.60,
       advantageDelayWeight:0.45, pawnClockResetWeight:1.40, aheadCandidateFloor:170,
       patientOpponentScale:0.00, aggressiveOpponentScale:1.55,
       patientPressureWeight:0, aggressiveDefenseWeight:3.30,
-      opponentForcingReplyWeight:-0.15, behindForcingReplyWeight:-3.10,
-      opponentKingAttackReplyWeight:-0.10, behindKingAttackReplyWeight:-2.45,
-      opponentCaptureReplyWeight:-0.05, behindCaptureReplyWeight:-1.10,
+      opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
+      opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
+      opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
       aheadHostGapBonus:28, aheadDeepGapBonus:18, behindHostGapBonus:72, behindDeepGapBonus:38,
-      maxHostGap:18, maxDeepSacrifice:18,
+      maxHostGap:14, maxDeepSacrifice:14,
     }),
     ares: Object.freeze({
       weights: Object.freeze({
@@ -151,8 +152,8 @@ const ARMX_FULL = Object.freeze({
         forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
       }),
       baseScale:8, earlyBoost:0.10, lateBoost:6.20, paceTargetPlies:42,
-      aheadThreshold:10, behindThreshold:100, advantageRange:420, minStyleLead:8,
-      aheadScale:4.10, behindScale:0.20, replyCompressionWeight:1.10, capturedValueWeight:1.05,
+      aheadThreshold:10, behindThreshold:100, advantageRange:420, minStyleLead:10,
+      aheadScale:4.10, behindScale:0.20, replyCompressionWeight:0, capturedValueWeight:1.05,
       repetitionWeight:-0.85, aheadRepetitionWeight:-6.20, behindRepetitionWeight:-0.35,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
       patientOpponentScale:1.20, aggressiveOpponentScale:0.00,
@@ -161,7 +162,7 @@ const ARMX_FULL = Object.freeze({
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
       aheadHostGapBonus:118, aheadDeepGapBonus:82, behindHostGapBonus:0, behindDeepGapBonus:0,
-      maxHostGap:18, maxDeepSacrifice:18,
+      maxHostGap:16, maxDeepSacrifice:16,
     }),
   }),
 });
@@ -677,7 +678,9 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     },
   };
 }
-function armxFullCandidateResponseReport(game,entry,book,previewReport,style='artemis'){
+function armxFullCandidateResponseReport(
+  game,entry,book,previewReport,style='artemis',allowExtendedReplyScan=true
+){
   const contextFeatures=new Set(previewReport&&previewReport.features||[]);
   for(const feature of armxFullPredictiveMoveFeatures(game,entry.raw))contextFeatures.add(feature);
   for(const context of armxFullStateContextsAfterMove(game,entry.raw,book.perspective)){
@@ -693,7 +696,7 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
     const effect=armxFullPreviewEffect(book,'opponentEffects',feature);
     return effect.evidence>=ARMX_FULL.minEffectEvidence;
   });
-  const needsCoreReplyScan=extendedOutcomeFeatures.length>0;
+  const needsCoreReplyScan=allowExtendedReplyScan&&extendedOutcomeFeatures.length>0;
   const needsReplyCount=style!=='artemis'&&Boolean(styleProfile.replyCompressionWeight);
   const needsReplySafety=style!=='artemis'&&Boolean(
     styleProfile.opponentForcingReplyWeight||styleProfile.behindForcingReplyWeight
@@ -937,9 +940,12 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
   if(!candidates.length)return {reports:[],winner:null,book,maturity};
 
   const hostBest=candidates[0];
-  const reports=candidates.map(entry=>{
+  const reports=candidates.map((entry,index)=>{
     const previewReport=armxPreviewCandidateReport(game,entry,previewProfile);
-    const response=armxFullCandidateResponseReport(game,entry,book,previewReport,style);
+    const allowExtendedReplyScan=index<ARMX_FULL.extendedReplyScanCandidates;
+    const response=armxFullCandidateResponseReport(
+      game,entry,book,previewReport,style,allowExtendedReplyScan
+    );
 
     // Preview is the proven subset. Full ARMX adds only contextual information
     // that Preview does not already encode, avoiding double-counted evidence.
