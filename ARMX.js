@@ -936,6 +936,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const observedPlies=Math.max(0,(game.historyStack?game.historyStack.length:0)
     -Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)));
   const gateHost=Object.assign({},hostBest,{armxOriginalScore:hostBest.score});
+  const gateStyleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
 
   for(const report of reports){
     if(report===provisionalReport){
@@ -972,7 +973,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
     const styleLead=(Number(report.styleAdjustment)||0)
       -(Number(provisionalReport.styleAdjustment)||0);
-    const minStyleLead=Number(styleProfile.minStyleLead);
+    const minStyleLead=Number(gateStyleProfile.minStyleLead);
     const styleAllowed=style!=='artemis'
       &&styleLead>=(Number.isFinite(minStyleLead)?minStyleLead:Infinity);
 
