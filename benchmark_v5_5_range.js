@@ -220,8 +220,9 @@ const targets={
   }),
 
   // Personality remains visible in game duration as well as W/D/L shape.
-  athenaMinPlayedMoveRatioToArtemisCurrent:1.20,
-  aresMaxPlayedMoveRatioToArtemisCurrent:0.80,
+  athenaPlayedMoveRatioToArtemisCurrent:3.0,
+  aresPlayedMoveRatioToArtemisCurrent:0.5,
+  moveRatioTolerance:0.25,
 };
 const games=Math.max(0,Number.parseInt(process.env.GAMES||'12',10)||0);
 const startIndex=Math.max(0,Number.parseInt(process.env.START_INDEX||'0',10)||0);
@@ -368,10 +369,15 @@ if(process.env.RELEASE_GATE==='1'){
   requireGate(relationships.currentScoreSpread<=targets.relationships.maxCurrentScoreSpread,
     'Common-baseline strength spread is too large: '+relationships.currentScoreSpread);
 
-  requireGate(ratios&&ratios.athenaToArtemis>=targets.athenaMinPlayedMoveRatioToArtemisCurrent,
-    'Athena survival-length identity failed: '+(ratios&&ratios.athenaToArtemis)+'x; need >='
-      +targets.athenaMinPlayedMoveRatioToArtemisCurrent+'x Artemis');
-  requireGate(ratios&&ratios.aresToArtemis<=targets.aresMaxPlayedMoveRatioToArtemisCurrent,
-    'Ares speed identity failed: '+(ratios&&ratios.aresToArtemis)+'x; need <='
-      +targets.aresMaxPlayedMoveRatioToArtemisCurrent+'x Artemis');
+  const tol=targets.moveRatioTolerance;
+  const athenaLow=targets.athenaPlayedMoveRatioToArtemisCurrent*(1-tol);
+  const athenaHigh=targets.athenaPlayedMoveRatioToArtemisCurrent*(1+tol);
+  const aresLow=targets.aresPlayedMoveRatioToArtemisCurrent*(1-tol);
+  const aresHigh=targets.aresPlayedMoveRatioToArtemisCurrent*(1+tol);
+  requireGate(ratios&&ratios.athenaToArtemis>=athenaLow&&ratios.athenaToArtemis<=athenaHigh,
+    'Athena survival-length identity failed: '+(ratios&&ratios.athenaToArtemis)+'x; rough target '
+      +targets.athenaPlayedMoveRatioToArtemisCurrent+'x');
+  requireGate(ratios&&ratios.aresToArtemis>=aresLow&&ratios.aresToArtemis<=aresHigh,
+    'Ares speed identity failed: '+(ratios&&ratios.aresToArtemis)+'x; rough target '
+      +targets.aresPlayedMoveRatioToArtemisCurrent+'x');
 }
