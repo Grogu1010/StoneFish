@@ -39,9 +39,9 @@ const ARMX_FULL = Object.freeze({
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
   candidateLimit: 4,
   baseSearchNodes: 1200,
-  maxEvidenceSearchNodes: 8000,
-  maxSurpriseSearchNodes: 1500,
-  maxExtraNodes: 10000,
+  maxEvidenceSearchNodes: 2200,
+  maxSurpriseSearchNodes: 500,
+  maxExtraNodes: 3600,
   baseDepth: 4,
   maxEvidenceDepth: 6,
   maxExtraDepth: 2,
@@ -56,8 +56,8 @@ const ARMX_FULL = Object.freeze({
   pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.62,
   extendedReplyScanCandidates: 2,
-  policyWeightDeltaScale: 0.22,
-  policyPriorityScale: 45,
+  policyWeightDeltaScale: 0.06,
+  policyPriorityScale: 12,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -622,10 +622,13 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const surprise=book.surpriseWeight
     ?armxFullClamp((book.surpriseSum/book.surpriseWeight-0.45)/1.4,0,1):0;
 
+  const fullEvidenceActivation=armxFullClamp(
+    (learnedStrength-0.82)/0.18,0,1
+  );
   const fullEvidenceBudget=Math.round(
     ARMX_FULL.baseSearchNodes
-    +ARMX_FULL.maxEvidenceSearchNodes*learnedStrength
-    +ARMX_FULL.maxSurpriseSearchNodes*surprise*learnedStrength
+    +ARMX_FULL.maxEvidenceSearchNodes*fullEvidenceActivation
+    +ARMX_FULL.maxSurpriseSearchNodes*surprise*fullEvidenceActivation
   );
   const previewSearchBudget=preview&&Number.isFinite(preview.searchBudget)
     ?preview.searchBudget:ARMX_FULL.baseSearchNodes;
@@ -644,14 +647,23 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const maxDepth=Math.max(previewDepth,fullEvidenceDepth);
 
   const previewWeights=preview&&preview.weights?preview.weights:new Float64Array(13);
-  const compiledWeights=armxFullCompiledPolicyWeights(previewWeights,book);
+  const policyEvidenceScale=armxFullClamp((learnedStrength-0.72)/0.28,0,1);
+  const compiledWeights=policyEvidenceScale>0
+    ?armxFullCompiledPolicyWeights(previewWeights,book)
+    :new Float64Array(previewWeights);
+  if(policyEvidenceScale>0&&policyEvidenceScale<1){
+    for(let i=0;i<compiledWeights.length;i++){
+      compiledWeights[i]=previewWeights[i]
+        +(compiledWeights[i]-previewWeights[i])*policyEvidenceScale;
+    }
+  }
   const cache=new Map();
   const side=-perspective;
   const notePriority=move=>{
     const key=move.from|(move.to<<6)|((move.piece||0)<<12)|((move.promotion||0)<<15)|((move.flags||0)<<18);
     if(cache.has(key))return cache.get(key);
     const value=Math.round(
-      ARMX_FULL.policyPriorityScale
+      ARMX_FULL.policyPriorityScale*policyEvidenceScale
         *armxFullPolicyFeatureScore(book,armxFullCheapMoveFeatures(move,side))
     );
     cache.set(key,value);
