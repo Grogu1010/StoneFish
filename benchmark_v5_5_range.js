@@ -227,6 +227,12 @@ const targets={
     artemisVsAthena:Object.freeze({win:25,loss:23,draw:52}),
     artemisVsAres:Object.freeze({win:33,loss:29,draw:38}),
   }),
+  // Soft centres only: Artemis should be the best default, but not by much.
+  preferredCurrentScore:Object.freeze({
+    athena:0.79,
+    ares:0.78,
+    artemis:0.82,
+  }),
 
   relationships:Object.freeze({
     maxFieldScoreSpread:0.06,
