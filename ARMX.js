@@ -50,9 +50,10 @@ const ARMX_FULL = Object.freeze({
   fullNoteEarlyEvidence: 10,
   fullNoteEarlyConfidence: 0.90,
 
-  // Full ARMX is its own notebook rather than Preview plus another layer.
-  // These retained fields are telemetry/compatibility only.
-  previewDecisionGain: 0,
+  // Preview's proven opponent model is the strict subset of Full ARMX. Full
+  // ARMX reuses that evidence and adds broader/contextual notes; it does not
+  // pay to relearn the same history a second time.
+  previewDecisionGain: 1.25,
   fullDecisionGain: 1.00,
   fullNoteScale: 135,
   maxNoteAdjustment: 120,
@@ -384,16 +385,18 @@ function armxFullCompiledPolicyWeights(previewWeights,book){
   return weights;
 }
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
-  // style is deliberately ignored: all three models receive the same Full ARMX.
-  const book=armxFullSyncNotebook(game,perspective);
+  // Style is deliberately ignored: all three models receive the same Full ARMX.
+  const previewProfile=armxPreviewSyncProfile(game,perspective);
+  const preview=armxPreviewOpponentPolicy(game,perspective);
+  const book=armxFullSyncNotebook(game,perspective,previewProfile);
   const maturity=armxFullNotebookMaturity(book);
   const noteSummary=armxFullNotebookSummary(book);
   const noteUsefulness=armxFullClamp(
-    noteSummary.reduce((sum,row)=>sum+row.importance,0)/2.5,0,1
+    noteSummary.reduce((sum,row)=>sum+row.importance,0)/3.5,0,1
   );
   const learnedStrength=maturity*noteUsefulness;
   const surprise=book.surpriseWeight
-    ?armxFullClamp((book.surpriseSum/book.surpriseWeight-0.35)/1.2,0,1):0;
+    ?armxFullClamp((book.surpriseSum/book.surpriseWeight-0.45)/1.4,0,1):0;
 
   const searchBudget=Math.round(
     ARMX_FULL.baseSearchNodes
@@ -407,16 +410,19 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     ARMX_FULL.baseDepth+(ARMX_FULL.maxEvidenceDepth-ARMX_FULL.baseDepth)*learnedStrength
   );
 
-  const compiledWeights=armxFullCompiledPolicyWeights(new Float64Array(13),book);
+  const previewWeights=preview&&preview.weights?preview.weights:new Float64Array(13);
+  const compiledWeights=armxFullCompiledPolicyWeights(previewWeights,book);
   const cache=new Map();
   const side=-perspective;
   const notePriority=move=>{
     const key=move.from|(move.to<<6)|((move.piece||0)<<12)|((move.promotion||0)<<15)|((move.flags||0)<<18);
     if(cache.has(key))return cache.get(key);
-    const value=Math.round(520*armxFullPolicyFeatureScore(book,armxFullCheapMoveFeatures(move,side)));
+    const value=Math.round(180*armxFullPolicyFeatureScore(book,armxFullCheapMoveFeatures(move,side)));
     cache.set(key,value);
     return value;
   };
+  const previewPriority=preview&&typeof preview.priority==='function'?preview.priority:()=>0;
+
   return {
     model:ARMX_FULL.name,
     version:ARMX_FULL.version,
@@ -432,105 +438,71 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     rootWidth,
     predictionSurprise:surprise,
     weights:compiledWeights,
-    priority:move=>notePriority(move),
-    isLowPriority:move=>notePriority(move)<-80,
+    priority:move=>previewPriority(move)+notePriority(move),
+    isLowPriority:move=>{
+      const previewLow=preview&&typeof preview.isLowPriority==='function'&&preview.isLowPriority(move);
+      return previewLow||notePriority(move)<-90;
+    },
   };
 }
-function armxFullCandidateResponseReport(game,entry,book){
-  const historyDepth=game.historyStack.length;
-  const contextFeatures=armxFullMoveFeatures(game,entry.raw);
-  let expectedOutcome=0,preferenceSignal=0,evidence=0,replyCount=0,repetitionPressure=0;
-  try{
-    game.fastApply(entry.raw);
-    const resultingKey=game.fastPositionKey();
-    const resultingCount=game.positionCounts&&game.positionCounts.get(resultingKey)||0;
-    repetitionPressure=armxFullClamp(Math.max(0,resultingCount-1)/2,0,1);
-    const replies=game.fastMoves();
-    // Full ARMX models the opponent, so detailed conditional work belongs on
-    // replies this opponent is actually likely to choose. Score every legal
-    // reply cheaply, then deeply model only the most likely subset.
-    const predictedReplies=replies.map(reply=>{
-      const features=armxFullPredictiveMoveFeatures(game,reply);
-      return {reply,features,quickPreference:armxFullPolicyFeatureScore(book,features)};
-    });
-    predictedReplies.sort((a,b)=>b.quickPreference-a.quickPreference);
-    const rows=[];
-    const detailedReplies=predictedReplies.slice(0,Math.max(1,ARMX_FULL.predictedReplyLimit));
-    for(const predicted of detailedReplies){
-      const features=predicted.features;
-      let preference=predicted.quickPreference,preferenceEvidence=1,outcome=0,outcomeEvidence=0;
-      for(const feature of features){
-        const choice=armxFullChoiceRate(book,feature);
-        if(choice.evidence>=ARMX_FULL.minChoiceEvidence){
-          const confidence=armxFullClamp(choice.evidence/8,0,1);
-          preference+=(choice.rate-0.5)*confidence;
-          preferenceEvidence+=confidence;
-        }
-        const effect=armxFullEffectValue(book.opponentEffects[feature]);
-        if(effect.evidence>=ARMX_FULL.minEffectEvidence){
-          const confidence=armxFullClamp(effect.evidence/6,0,1);
-          outcome+=effect.value*confidence;
-          outcomeEvidence+=confidence;
-        }
-        for(const contextFeature of contextFeatures){
-          if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
-          const conditional=armxFullConditionalRate(book,contextFeature,feature);
-          if(conditional.evidence>=ARMX_FULL.minChoiceEvidence){
-            const confidence=armxFullClamp(conditional.evidence/6,0,1);
-            preference+=(conditional.rate-0.5)*0.85*confidence;
-            preferenceEvidence+=0.85*confidence;
-          }
-          const pairEffect=armxFullResponseEffect(book,contextFeature,feature);
-          if(pairEffect.evidence>=ARMX_FULL.minEffectEvidence){
-            const confidence=armxFullClamp(pairEffect.evidence/5,0,1);
-            outcome+=pairEffect.value*0.85*confidence;
-            outcomeEvidence+=0.85*confidence;
-          }
-        }
+function armxFullCandidateResponseReport(game,entry,book,previewReport,style='artemis'){
+  const contextFeatures=new Set(previewReport&&previewReport.features||[]);
+  for(const feature of armxFullPredictiveMoveFeatures(game,entry.raw))contextFeatures.add(feature);
+
+  let contextualOutcome=0,preferenceSignal=0,evidence=0;
+  const knownAvailable=new Set(previewReport&&previewReport.replyFeaturesAvailable||[]);
+  const previewReplyFeatures=new Set(ARMX_PREVIEW_REPLY_FEATURES||[]);
+  const usefulReplyFeatures=ARMX_FULL_NOTE_FEATURES.filter(feature=>
+    (book.choices[feature]||0)>=2
+    &&(!previewReplyFeatures.has(feature)||knownAvailable.has(feature))
+  );
+
+  for(const contextFeature of contextFeatures){
+    if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
+    for(const replyFeature of usefulReplyFeatures){
+      const conditional=armxFullConditionalRate(book,contextFeature,replyFeature);
+      if(conditional.evidence<ARMX_FULL.minChoiceEvidence)continue;
+      const baseline=armxFullChoiceRate(book,replyFeature);
+      const delta=conditional.rate-baseline.rate;
+      const confidence=armxFullClamp(conditional.evidence/8,0,1);
+      if(Math.abs(delta)<0.025)continue;
+
+      preferenceSignal+=delta*confidence;
+      evidence+=confidence;
+
+      const effect=armxFullPreviewEffect(book,'opponentEffects',replyFeature);
+      if(effect.evidence>=ARMX_FULL.minEffectEvidence){
+        const effectConfidence=armxFullClamp(effect.evidence/6,0,1);
+        contextualOutcome+=delta*effect.value*confidence*effectConfidence;
+        evidence+=0.5*effectConfidence;
       }
-      if(preferenceEvidence)preference/=Math.sqrt(preferenceEvidence);
-      if(outcomeEvidence)outcome/=Math.sqrt(outcomeEvidence);
-      rows.push({preference,outcome,evidence:preferenceEvidence+outcomeEvidence});
     }
-    if(rows.length){
-      const maxPreference=Math.max(...rows.map(row=>row.preference*1.4));
-      let sum=0;
-      for(const row of rows){
-        const weight=Math.exp(row.preference*1.4-maxPreference);
-        sum+=weight;
-        expectedOutcome+=weight*row.outcome;
-        preferenceSignal+=weight*row.preference;
-        evidence+=weight*row.evidence;
-      }
-      if(sum){
-        expectedOutcome/=sum;
-        preferenceSignal/=sum;
-        evidence/=sum;
-      }
-      replyCount=replies.length;
-    }
-  }finally{
-    while(game.historyStack.length>historyDepth)game.fastUndo();
   }
 
-  // Also remember whether our own comparable moves have historically worked.
-  let ownOutcome=0,ownEvidence=0;
-  for(const feature of contextFeatures){
-    const effect=armxFullEffectValue(book.ourEffects[feature]);
-    if(effect.evidence<ARMX_FULL.minEffectEvidence)continue;
-    const confidence=armxFullClamp(effect.evidence/6,0,1);
-    ownOutcome+=effect.value*confidence;
-    ownEvidence+=confidence;
+  let repetitionPressure=0;
+  const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
+  const needsRepetition=style!=='artemis'&&(
+    styleProfile.repetitionWeight||styleProfile.aheadRepetitionWeight||styleProfile.behindRepetitionWeight
+  );
+  if(needsRepetition){
+    const historyDepth=game.historyStack.length;
+    try{
+      game.fastApply(entry.raw);
+      const key=game.fastPositionKey();
+      const count=game.positionCounts&&game.positionCounts.get(key)||0;
+      repetitionPressure=armxFullClamp(Math.max(0,count-1)/2,0,1);
+    }finally{
+      while(game.historyStack.length>historyDepth)game.fastUndo();
+    }
   }
-  if(ownEvidence)ownOutcome/=Math.sqrt(ownEvidence);
 
   return {
     contextFeatures:Array.from(contextFeatures),
-    expectedOpponentOutcome:expectedOutcome,
+    expectedOpponentOutcome:contextualOutcome,
     opponentPreferenceSignal:preferenceSignal,
-    ownOutcome,
-    evidence:evidence+ownEvidence,
-    replyCount,
+    ownOutcome:0,
+    evidence:Math.min(book.opponentMoves,evidence),
+    replyCount:Number(previewReport&&previewReport.replyCount)||0,
     repetitionPressure,
   };
 }
@@ -605,7 +577,8 @@ function armxFullMateScale(entry){
     ||(Number.isFinite(entry.score)&&Math.abs(entry.score)>=mate*0.9);
 }
 function armxFullReview(game,finished,style='artemis',perspective=game.side){
-  const book=armxFullSyncNotebook(game,perspective);
+  const previewProfile=armxPreviewSyncProfile(game,perspective);
+  const book=armxFullSyncNotebook(game,perspective,previewProfile);
   const maturity=armxFullNotebookMaturity(book);
   const candidates=(finished||[]).filter(entry=>entry&&Number.isFinite(entry.score))
     .slice(0,ARMX_FULL.candidateLimit);
@@ -613,21 +586,21 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
   const hostBest=candidates[0];
   const reports=candidates.map(entry=>{
-    const response=armxFullCandidateResponseReport(game,entry,book);
+    const previewReport=armxPreviewCandidateReport(game,entry,previewProfile);
+    const response=armxFullCandidateResponseReport(game,entry,book,previewReport,style);
 
-    // Full ARMX is self-contained: every adaptive vote comes from this richer
-    // per-game notebook. With zero evidence, Artemis returns the native host move.
+    // Preview is the proven subset. Full ARMX adds only contextual information
+    // that Preview does not already encode, avoiding double-counted evidence.
+    const previewAdjustment=(Number(previewReport.adjustment)||0)*ARMX_FULL.previewDecisionGain;
     const noteConfidence=armxFullClamp(response.evidence/ARMX_FULL.fullConfidenceEvidence,0,1);
-    const learnedSignal=response.ownOutcome+response.expectedOpponentOutcome;
+    const learnedSignal=response.expectedOpponentOutcome;
     const noteAdjustment=armxFullClamp(
       learnedSignal*ARMX_FULL.fullNoteScale*noteConfidence*maturity,
       -ARMX_FULL.maxNoteAdjustment,ARMX_FULL.maxNoteAdjustment
     );
-    const adaptiveAdjustment=noteAdjustment;
+    const adaptiveAdjustment=previewAdjustment+noteAdjustment;
 
-    const styleResult=armxFullStyleAdjustment(
-      game,entry,response,style,hostBest,book
-    );
+    const styleResult=armxFullStyleAdjustment(game,entry,response,style,hostBest,book);
     const hostGap=hostBest.score-entry.score;
     const deepSacrifice=Number.isFinite(hostBest.deep)&&Number.isFinite(entry.deep)
       ?hostBest.deep-entry.deep:hostGap;
@@ -646,21 +619,20 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const keepsWinningMargin=!ahead||Number(entry.score)>=aheadSafetyFloor;
     const objectiveEligible=entry===hostBest||(!protectedTruth&&keepsWinningMargin
       &&hostGap<=allowedHostGap&&deepSacrifice<=allowedDeepSacrifice);
-    const fullScore=objectiveEligible
-      ?entry.score+adaptiveAdjustment+styleResult.adjustment
-      :-Infinity;
+
     return {
       raw:entry.raw,
       hostScore:entry.score,
       hostDeep:entry.deep,
-      adjustment:noteAdjustment,
-      signal:learnedSignal,
-      confidence:noteConfidence,
-      evidence:response.evidence,
+      adjustment:adaptiveAdjustment,
+      signal:Number(previewReport.signal)||0,
+      confidence:Number(previewReport.confidence)||0,
+      evidence:Number(previewReport.evidence)||0,
+      previewReport,
       entry,style,
       notebookResponse:response,
       maturity,
-      previewAdjustment:0,
+      previewAdjustment,
       noteAdjustment,
       noteConfidence,
       learnedSignal,
@@ -672,24 +644,32 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       styleCompression:styleResult.compression||0,
       styleRepetitionPressure:styleResult.repetitionPressure||0,
       hostGap,deepSacrifice,allowedHostGap,allowedDeepSacrifice,
-      objectiveEligible,eligible:objectiveEligible,fullScore,
+      objectiveEligible,eligible:objectiveEligible,fullScore:-Infinity,
     };
   });
 
-  // Full ARMX learns continuously, but only strong, repeatable notes get to
-  // overturn the native host choice. Specialist styles may choose a different
-  // objectively-close finalist independently of the adaptive notebook gate.
   const provisionalReport=reports.find(report=>report.entry===hostBest)||reports[0];
   const observedPlies=Math.max(0,(game.historyStack?game.historyStack.length:0)
     -Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)));
+  const gateHost=Object.assign({},hostBest,{armxOriginalScore:hostBest.score});
+
   for(const report of reports){
     if(report===provisionalReport){
       report.eligible=true;
+      report.previewGate={allowed:true,reason:'provisional'};
       report.fullNoteGate={allowed:true,reason:'provisional'};
       report.styleGate={allowed:true,reason:'provisional'};
-      report.fullScore=report.entry.score+(Number(report.noteAdjustment)||0)
+      report.fullScore=report.entry.score+report.previewAdjustment+report.noteAdjustment
         +(Number(report.styleAdjustment)||0);
       continue;
+    }
+
+    let previewGate={allowed:false,reason:'preview-gate-unavailable'};
+    if(typeof stonefishV55ARMXChangeDecision==='function'){
+      const gateEntry=Object.assign({},report.entry,{armxOriginalScore:report.entry.score});
+      previewGate=stonefishV55ARMXChangeDecision(
+        gateHost,gateEntry,provisionalReport.previewReport,report.previewReport,observedPlies
+      );
     }
 
     const responseEvidence=Number(report.notebookResponse&&report.notebookResponse.evidence)||0;
@@ -709,15 +689,19 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const styleLead=(Number(report.styleAdjustment)||0)
       -(Number(provisionalReport.styleAdjustment)||0);
     const styleAllowed=style!=='artemis'&&styleLead>0;
+
+    report.previewGate=previewGate;
     report.fullNoteGate={
       allowed:fullNoteAllowed,
       responseEvidence,noteConfidence,notebookDecisionLead,signalQuality,earlyEvidence,
     };
     report.styleGate={allowed:styleAllowed,styleLead};
-    report.eligible=Boolean(report.objectiveEligible&&(fullNoteAllowed||styleAllowed));
+    report.eligible=Boolean(report.objectiveEligible
+      &&(previewGate.allowed||fullNoteAllowed||styleAllowed));
+
+    const previewVote=previewGate.allowed?report.previewAdjustment:0;
     report.fullScore=report.eligible
-      ?report.entry.score+(Number(report.noteAdjustment)||0)
-        +(Number(report.styleAdjustment)||0)
+      ?report.entry.score+previewVote+report.noteAdjustment+(Number(report.styleAdjustment)||0)
       :-Infinity;
   }
 
