@@ -93,6 +93,47 @@ function getStonefishV55DiagPreviewPolicyFullReviewMove(game){
   return scored.length?stonefishV3PublicMove(game,scored[0].raw):null;
 }
 
+function stonefishV55DiagSplitPolicies(game,perspective){
+  const full=armxFullOpponentPolicy(game,perspective,'artemis');
+  const preview=armxPreviewOpponentPolicy(game,perspective);
+  const previewOrNeutral=preview||{
+    observations:0,
+    searchBudget:SF55C.nodes,
+    maxDepth:SF55C.maxDepth,
+    weights:new Float64Array(13),
+    priority:()=>0,
+    isLowPriority:()=>false,
+  };
+  return {
+    fullBudgetPreviewOrdering:{
+      ...full,
+      weights:previewOrNeutral.weights,
+      priority:previewOrNeutral.priority,
+      isLowPriority:previewOrNeutral.isLowPriority,
+    },
+    previewBudgetFullOrdering:{
+      ...previewOrNeutral,
+      weights:full.weights,
+      priority:full.priority,
+      isLowPriority:full.isLowPriority,
+    },
+  };
+}
+function getStonefishV55DiagFullBudgetPreviewOrderingMove(game){
+  const perspective=game.side;
+  const policy=stonefishV55DiagSplitPolicies(game,perspective).fullBudgetPreviewOrdering;
+  const host=stonefishV55HostSearch(game,policy);
+  const scored=stonefishV55PreviewRankHost(game,host);
+  return scored.length?stonefishV3PublicMove(game,scored[0].raw):null;
+}
+function getStonefishV55DiagPreviewBudgetFullOrderingMove(game){
+  const perspective=game.side;
+  const policy=stonefishV55DiagSplitPolicies(game,perspective).previewBudgetFullOrdering;
+  const host=stonefishV55HostSearch(game,policy);
+  const scored=stonefishV55PreviewRankHost(game,host);
+  return scored.length?stonefishV3PublicMove(game,scored[0].raw):null;
+}
+
 if (typeof globalThis !== 'undefined') {
   globalThis.STONEFISH_V5_5_RANGE = STONEFISH_V5_5_RANGE;
   globalThis.stonefishV55RangeScoreAllMoves = stonefishV55RangeScoreAllMoves;
@@ -101,4 +142,6 @@ if (typeof globalThis !== 'undefined') {
   globalThis.getStonefishV55ArtemisMove = getStonefishV55ArtemisMove;
   globalThis.getStonefishV55DiagFullPolicyPreviewReviewMove = getStonefishV55DiagFullPolicyPreviewReviewMove;
   globalThis.getStonefishV55DiagPreviewPolicyFullReviewMove = getStonefishV55DiagPreviewPolicyFullReviewMove;
+  globalThis.getStonefishV55DiagFullBudgetPreviewOrderingMove = getStonefishV55DiagFullBudgetPreviewOrderingMove;
+  globalThis.getStonefishV55DiagPreviewBudgetFullOrderingMove = getStonefishV55DiagPreviewBudgetFullOrderingMove;
 }
