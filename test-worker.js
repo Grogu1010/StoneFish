@@ -21,7 +21,7 @@ importScripts(
   stonefishWorkerAsset('./Stonefish_v5_5_refutation_guard.js'),
   stonefishWorkerAsset('./Stonefish_v5_5_native.js'),
   stonefishWorkerAsset('./ARMX-preview.js'),
-  stonefishWorkerAsset('./Stonefish_v5_5_testunit1.js')
+  stonefishWorkerAsset('./Stonefish_v5_5.js')
 );
 
 const workerModels = {
@@ -31,8 +31,8 @@ const workerModels = {
   v4: getStonefishV4Move,
   v45: getStonefishV45Move,
   v5: getStonefishV5Move,
-  v55test1noarmx: getStonefishV55Testunit1NoARMXMove,
-  v55test1: getStonefishV55Testunit1Move,
+  v55noarmx: getStonefishV55NoARMXMove,
+  v55: getStonefishV55Move,
   v5pro: getStonefishV5ProMove
 };
 
@@ -125,7 +125,7 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
 
     metrics[modelKey].moves += 1;
     metrics[modelKey].thinkMs += elapsed;
-    if (modelKey === 'v55test1') {
+    if (modelKey === 'v55') {
       const compiled = !!(globalThis.SF55C_LAST && globalThis.SF55C_LAST.refutationGuard
         && globalThis.SF55C_LAST.refutationGuard.compiledSearch);
       if (compiled) metrics[modelKey].compiledMoves += 1;
