@@ -96,8 +96,8 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   let contenderThinkMs=0,opponentThinkMs=0,contenderMoves=0,opponentMoves=0;
   const contenderStyle=emptyStyleCounts(),opponentStyle=emptyStyleCounts();
   const contenderFullStyle=fullArmxStyleFor(contenderFn),opponentFullStyle=fullArmxStyleFor(opponentFn);
-  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0};
-  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0};
+  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0};
+  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0};
   return withSeed(seed,()=>{
     while(!game.game_over()&&plies<maxPlies){
       const contenderTurn=(game.side===1)===contenderIsWhite;
@@ -113,6 +113,8 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
           bucket.moves++;
           bucket.rootWidthTotal+=Number(last.rootWidth)||3;
           bucket.rootWidthMax=Math.max(bucket.rootWidthMax,Number(last.rootWidth)||3);
+          bucket.maturityTotal+=Number(last.maturity)||0;
+          bucket.noteBreadthTotal+=Array.isArray(last.notes)?last.notes.length:0;
           if(last.changedMove)bucket.changedMoves++;
         }
       }
@@ -140,7 +142,7 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   });
 }
 function matchup(games,label,contenderFn,opponentFn,startIndex=0){
-  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0}};
+  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0}};
   for(let local=0;local<games;local++){
     const i=startIndex+local,pair=Math.floor(i/2);
     const opening=generateOpening(pair,10);
@@ -154,7 +156,7 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
       out.contenderStyle[feature]+=row.contenderStyle[feature]||0;
       out.opponentStyle[feature]+=row.opponentStyle[feature]||0;
     }
-    for(const key of ['moves','rootWidthTotal','changedMoves']){
+    for(const key of ['moves','rootWidthTotal','changedMoves','maturityTotal','noteBreadthTotal']){
       out.contenderArmx[key]+=row.contenderArmx[key]||0;
       out.opponentArmx[key]+=row.opponentArmx[key]||0;
     }
@@ -174,8 +176,12 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.opponentStyleRates=Object.fromEntries(STYLE_FEATURES.map(feature=>[feature,out.opponentMoves?out.opponentStyle[feature]/out.opponentMoves:0]));
   out.contenderArmx.averageRootWidth=out.contenderArmx.moves?out.contenderArmx.rootWidthTotal/out.contenderArmx.moves:0;
   out.contenderArmx.changedMoveRate=out.contenderArmx.moves?out.contenderArmx.changedMoves/out.contenderArmx.moves:0;
+  out.contenderArmx.averageMaturity=out.contenderArmx.moves?out.contenderArmx.maturityTotal/out.contenderArmx.moves:0;
+  out.contenderArmx.averageNoteBreadth=out.contenderArmx.moves?out.contenderArmx.noteBreadthTotal/out.contenderArmx.moves:0;
   out.opponentArmx.averageRootWidth=out.opponentArmx.moves?out.opponentArmx.rootWidthTotal/out.opponentArmx.moves:0;
   out.opponentArmx.changedMoveRate=out.opponentArmx.moves?out.opponentArmx.changedMoves/out.opponentArmx.moves:0;
+  out.opponentArmx.averageMaturity=out.opponentArmx.moves?out.opponentArmx.maturityTotal/out.opponentArmx.moves:0;
+  out.opponentArmx.averageNoteBreadth=out.opponentArmx.moves?out.opponentArmx.noteBreadthTotal/out.opponentArmx.moves:0;
   return out;
 }
 
