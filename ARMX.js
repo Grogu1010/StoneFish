@@ -44,12 +44,12 @@ const ARMX_FULL = Object.freeze({
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
   candidateLimit: 4,
   baseSearchNodes: 1200,
-  maxEvidenceSearchNodes: 0,
-  maxSurpriseSearchNodes: 0,
-  maxExtraNodes: 0,
+  maxEvidenceSearchNodes: 1800,
+  maxSurpriseSearchNodes: 400,
+  maxExtraNodes: 2400,
   baseDepth: 4,
-  maxEvidenceDepth: 6,
-  maxExtraDepth: 2,
+  maxEvidenceDepth: 5,
+  maxExtraDepth: 1,
   baseRootWidth: 3,
   maxRootWidth: 3,
   matureOpponentMoves: 6,
@@ -94,7 +94,7 @@ const ARMX_FULL = Object.freeze({
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
   styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 115, ares: 120, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 100, ares: 105, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -118,14 +118,7 @@ const ARMX_FULL = Object.freeze({
       maxHostGap:40, maxDeepSacrifice:32,
     }),
     athena: Object.freeze({
-      weights: Object.freeze({
-        capture:-0.18, trade:-0.28, rookTrade:-0.22, queenTrade:-0.26,
-        minorTrade:-0.20, simplify:-0.26, check:-0.10, kingAttack:-0.14,
-        pawnPush:0.08, castle:0.28, quiet:0.34, advance:-0.05, retreat:0.20,
-        forcing:-0.12, promotion:0.02, center:0.03, kingside:0.02,
-        queenside:0.03, centralize:0.04, development:0.05, pawnMove:0.03,
-        knightMove:0.03, bishopMove:0.03, rookMove:0, queenMove:-0.02, kingMove:0.05,
-      }),
+      weights: Object.freeze({}),
       aheadWeights:Object.freeze({
         capture:-1.65,trade:-2.45,simplify:-2.70,queenTrade:-2.30,
         quiet:1.55,retreat:1.05,pawnPush:0.62,
@@ -136,10 +129,10 @@ const ARMX_FULL = Object.freeze({
         capture:0.90,trade:1.45,rookTrade:1.10,queenTrade:2.10,minorTrade:0.95,
         simplify:1.35,check:-0.15,kingAttack:-0.35,quiet:0.85,retreat:1.45,castle:1.70,
       }),
-      baseScale:4, earlyBoost:0.70, lateBoost:-0.10, paceTargetPlies:260,
-      aheadThreshold:70, behindThreshold:55, advantageRange:280, minStyleLead:5,
-      aheadScale:5.00, behindScale:5.20, replyCompressionWeight:-0.35,
-      aheadReplyCompressionWeight:-11.00, behindReplyCompressionWeight:-6.20, capturedValueWeight:-0.45,
+      baseScale:3, earlyBoost:0.00, lateBoost:-0.05, paceTargetPlies:260,
+      aheadThreshold:50, behindThreshold:55, advantageRange:260, minStyleLead:5,
+      aheadScale:6.00, behindScale:5.50, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:-12.00, behindReplyCompressionWeight:-6.50, capturedValueWeight:-0.20,
       repetitionWeight:0, aheadRepetitionWeight:-2.60, behindRepetitionWeight:10.50,
       advantageDelayWeight:5.80, pawnClockResetWeight:5.00, aheadCandidateFloor:180,
       patientOpponentScale:0.00, aggressiveOpponentScale:1.15,
@@ -148,14 +141,14 @@ const ARMX_FULL = Object.freeze({
       opponentForcingReplyWeight:-0.35, behindForcingReplyWeight:-4.20,
       opponentKingAttackReplyWeight:-0.30, behindKingAttackReplyWeight:-3.20,
       opponentCaptureReplyWeight:-0.10, behindCaptureReplyWeight:-1.40,
-      aheadHostGapBonus:46, aheadDeepGapBonus:32, behindHostGapBonus:48, behindDeepGapBonus:32,
+      aheadHostGapBonus:28, aheadDeepGapBonus:20, behindHostGapBonus:40, behindDeepGapBonus:28,
       maxHostGap:2, maxDeepSacrifice:2,
     }),
     ares: Object.freeze({
       weights: Object.freeze({}),
       aheadWeights:Object.freeze({
-        capture:2.10,trade:1.90,rookTrade:1.45,queenTrade:1.35,minorTrade:1.20,
-        simplify:2.20,check:0.55,kingAttack:0.72,quiet:-0.72,retreat:-0.68,
+        capture:1.35,trade:1.15,rookTrade:0.90,queenTrade:0.82,minorTrade:0.76,
+        simplify:1.45,check:0.42,kingAttack:0.55,quiet:-0.48,retreat:-0.44,
       }),
       behindWeights:Object.freeze({
         capture:0.15,trade:-0.55,simplify:-0.65,check:1.55,kingAttack:1.70,
@@ -163,8 +156,8 @@ const ARMX_FULL = Object.freeze({
       }),
       baseScale:3, earlyBoost:0.00, lateBoost:9.50, paceTargetPlies:42,
       aheadThreshold:20, behindThreshold:140, advantageRange:260, minStyleLead:5,
-      aheadScale:4.20, behindScale:0.12, replyCompressionWeight:0,
-      aheadReplyCompressionWeight:7.50, behindReplyCompressionWeight:0, capturedValueWeight:3.00,
+      aheadScale:2.60, behindScale:0.10, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:4.80, behindReplyCompressionWeight:0, capturedValueWeight:1.70,
       repetitionWeight:0, aheadRepetitionWeight:-8.80, behindRepetitionWeight:-0.30,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
       patientOpponentScale:0.25, aggressiveOpponentScale:0.00,
@@ -173,7 +166,7 @@ const ARMX_FULL = Object.freeze({
       opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
-      aheadHostGapBonus:30, aheadDeepGapBonus:22, behindHostGapBonus:0, behindDeepGapBonus:0,
+      aheadHostGapBonus:20, aheadDeepGapBonus:15, behindHostGapBonus:0, behindDeepGapBonus:0,
       maxHostGap:2, maxDeepSacrifice:2,
     }),
   }),
@@ -758,7 +751,17 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
 
   const previewSearchBudget=preview&&Number.isFinite(preview.searchBudget)
     ?preview.searchBudget:ARMX_FULL.baseSearchNodes;
-  const searchBudget=previewSearchBudget;
+  // Only mature/useful opponent evidence can buy Full-ARMX verification.
+  // With no learned opponent signal, the search budget is exactly Preview's.
+  const evidenceReserve=Math.round(
+    ARMX_FULL.maxEvidenceSearchNodes*learnedStrength*learnedStrength
+  );
+  const surpriseReserve=Math.round(
+    ARMX_FULL.maxSurpriseSearchNodes*surprise*learnedStrength
+  );
+  const searchBudget=previewSearchBudget+Math.min(
+    ARMX_FULL.maxExtraNodes,evidenceReserve+surpriseReserve
+  );
   // Extra root breadth is expensive and can dilute depth. Unlock the fourth
   // finalist only when the opponent notebook is genuinely mature/useful.
   const breadthEvidence=learnedStrength*(0.85+0.15*surprise);
@@ -767,7 +770,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
       ?Math.min(1,ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth):0);
   const previewDepth=preview&&Number.isFinite(preview.maxDepth)
     ?preview.maxDepth:ARMX_FULL.baseDepth;
-  const maxDepth=previewDepth;
+  const maxDepth=previewDepth+(learnedStrength>=0.82?ARMX_FULL.maxExtraDepth:0);
 
   const previewWeights=preview&&preview.weights?preview.weights:new Float64Array(13);
   const compiledWeights=new Float64Array(previewWeights);
