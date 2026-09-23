@@ -22,6 +22,12 @@ const ARMX_FULL_CONTEXT_FEATURES = Object.freeze([
   'capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat',
   ...ARMX_FULL_STATE_CONTEXTS
 ]);
+// Preview already reasons about capture/trade reply opportunities. Full ARMX
+// extends candidate-time prediction only to broader behaviors its notebook has
+// actually observed with opportunity evidence.
+const ARMX_FULL_EXTENDED_REPLY_FEATURES = Object.freeze([
+  'minorTrade','kingAttack','pawnPush','castle','quiet','advance','retreat'
+]);
 
 const ARMX_FULL = Object.freeze({
   name: 'ARMX',
@@ -46,6 +52,7 @@ const ARMX_FULL = Object.freeze({
   rootBreadthEvidenceThreshold: 0.96,
   stateContextMinEvidence: 5,
   stateContextScale: 0.55,
+  extendedReplyOutcomeScale: 0.82,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -213,6 +220,9 @@ function armxFullCheapMoveFeatures(move, side) {
   if(piece===1){features.add('pawnPush');features.add('pawnMove');}
   if(move.promotion){features.add('promotion');features.add('forcing');}
   if(move.captured)features.add('forcing');
+  if(move.captured&&(piece===2||piece===3)&&(move.captured===2||move.captured===3)){
+    features.add('minorTrade');
+  }
   if(move.flags&(4|8))features.add('castle');
 
   const fromRank=side===1?(move.from>>3):7-(move.from>>3);
@@ -659,14 +669,105 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
     contextFeatures.add(context);
   }
 
-  let contextualOutcome=0,preferenceSignal=0,evidence=0;
-  const knownAvailable=new Set(previewReport&&previewReport.replyFeaturesAvailable||[]);
   const previewReplyFeatures=new Set(ARMX_PREVIEW_REPLY_FEATURES||[]);
-  const usefulReplyFeatures=ARMX_FULL_NOTE_FEATURES.filter(feature=>
-    (book.opportunities[feature]||0)>=ARMX_FULL.minChoiceEvidence
-    &&(!previewReplyFeatures.has(feature)||knownAvailable.has(feature))
+  const knownPreviewAvailable=new Set(previewReport&&previewReport.replyFeaturesAvailable||[]);
+  const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
+
+  const extendedOutcomeFeatures=ARMX_FULL_EXTENDED_REPLY_FEATURES.filter(feature=>{
+    if((book.opportunities[feature]||0)<ARMX_FULL.minChoiceEvidence)return false;
+    const effect=armxFullPreviewEffect(book,'opponentEffects',feature);
+    return effect.evidence>=ARMX_FULL.minEffectEvidence;
+  });
+  const needsCoreReplyScan=extendedOutcomeFeatures.length>0;
+  const needsReplyCount=style!=='artemis'&&Boolean(styleProfile.replyCompressionWeight);
+  const needsReplySafety=style!=='artemis'&&Boolean(
+    styleProfile.opponentForcingReplyWeight||styleProfile.behindForcingReplyWeight
+      ||styleProfile.opponentKingAttackReplyWeight||styleProfile.behindKingAttackReplyWeight
+      ||styleProfile.opponentCaptureReplyWeight||styleProfile.behindCaptureReplyWeight
+  );
+  const needsRepetition=style!=='artemis'&&(
+    styleProfile.repetitionWeight||styleProfile.aheadRepetitionWeight||styleProfile.behindRepetitionWeight
   );
 
+  let repetitionPressure=0,replyCount=0;
+  let forcingReplyRate=0,kingAttackReplyRate=0,captureReplyRate=0;
+  let actualReplyAvailable=null,replyFeatureCounts=null;
+
+  if(needsCoreReplyScan||needsReplyCount||needsReplySafety||needsRepetition){
+    const historyDepth=game.historyStack.length;
+    try{
+      game.fastApply(entry.raw);
+      let replies=null;
+      if(needsCoreReplyScan||needsReplyCount||needsReplySafety){
+        replies=game.fastMoves();
+        replyCount=replies.length;
+      }
+      if(replies){
+        actualReplyAvailable=new Set();
+        replyFeatureCounts=Object.create(null);
+        let forcing=0,kingAttack=0,captures=0;
+        for(const reply of replies){
+          const replyFeatures=armxFullPredictiveMoveFeatures(game,reply);
+          for(const feature of replyFeatures){
+            if(!ARMX_FULL_NOTE_FEATURES.includes(feature))continue;
+            actualReplyAvailable.add(feature);
+            replyFeatureCounts[feature]=(replyFeatureCounts[feature]||0)+1;
+          }
+          if(needsReplySafety){
+            if(replyFeatures.has('forcing'))forcing++;
+            if(replyFeatures.has('kingAttack'))kingAttack++;
+            if(replyFeatures.has('capture'))captures++;
+          }
+        }
+        if(needsReplySafety&&replyCount){
+          forcingReplyRate=forcing/replyCount;
+          kingAttackReplyRate=kingAttack/replyCount;
+          captureReplyRate=captures/replyCount;
+        }
+      }
+      if(needsRepetition){
+        const key=game.fastPositionKey();
+        const count=game.positionCounts&&game.positionCounts.get(key)||0;
+        repetitionPressure=armxFullClamp(Math.max(0,count-1)/2,0,1);
+      }
+    }finally{
+      while(game.historyStack.length>historyDepth)game.fastUndo();
+    }
+  }
+
+  let contextualOutcome=0,preferenceSignal=0,evidence=0;
+  const usefulReplyFeatures=ARMX_FULL_NOTE_FEATURES.filter(feature=>{
+    if((book.opportunities[feature]||0)<ARMX_FULL.minChoiceEvidence)return false;
+    if(actualReplyAvailable)return actualReplyAvailable.has(feature);
+    return previewReplyFeatures.has(feature)&&knownPreviewAvailable.has(feature);
+  });
+
+  // Full ARMX extends Preview's candidate model to broader reply behaviors.
+  // This term is still entirely opponent-derived: tendency when available ×
+  // observed outcome when this opponent actually chose that behavior.
+  if(actualReplyAvailable&&replyCount){
+    for(const feature of extendedOutcomeFeatures){
+      if(!actualReplyAvailable.has(feature))continue;
+      const choice=armxFullChoiceRate(book,feature);
+      const effect=armxFullPreviewEffect(book,'opponentEffects',feature);
+      if(choice.evidence<ARMX_FULL.minChoiceEvidence
+          ||effect.evidence<ARMX_FULL.minEffectEvidence)continue;
+      const choiceConfidence=armxFullClamp(choice.evidence/8,0,1);
+      const effectConfidence=armxFullClamp(effect.evidence/6,0,1);
+      const share=armxFullClamp((replyFeatureCounts[feature]||0)/replyCount,0,1);
+      const availabilityWeight=0.55+0.45*armxFullClamp(share*2.5,0,1);
+      const contribution=choice.rate*choice.rate*effect.value
+        *choiceConfidence*effectConfidence*availabilityWeight
+        *ARMX_FULL.extendedReplyOutcomeScale;
+      contextualOutcome+=contribution;
+      evidence+=Math.min(1.5,(choice.evidence*0.12+effect.evidence*0.18))
+        *Math.max(0.25,choice.rate)*availabilityWeight;
+    }
+  }
+
+  // Context-specific response notes answer a different question: after *this
+  // kind of move / in this phase*, does this opponent choose the reply behavior
+  // more or less often than its own normal baseline?
   for(const contextFeature of contextFeatures){
     if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
     for(const replyFeature of usefulReplyFeatures){
@@ -693,49 +794,6 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
     }
   }
 
-  let repetitionPressure=0,replyCount=0;
-  let forcingReplyRate=0,kingAttackReplyRate=0,captureReplyRate=0;
-  const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
-  const needsReplyCount=style!=='artemis'&&Boolean(styleProfile.replyCompressionWeight);
-  const needsReplySafety=style!=='artemis'&&Boolean(
-    styleProfile.opponentForcingReplyWeight||styleProfile.behindForcingReplyWeight
-      ||styleProfile.opponentKingAttackReplyWeight||styleProfile.behindKingAttackReplyWeight
-      ||styleProfile.opponentCaptureReplyWeight||styleProfile.behindCaptureReplyWeight
-  );
-  const needsRepetition=style!=='artemis'&&(
-    styleProfile.repetitionWeight||styleProfile.aheadRepetitionWeight||styleProfile.behindRepetitionWeight
-  );
-  if(needsReplyCount||needsReplySafety||needsRepetition){
-    const historyDepth=game.historyStack.length;
-    try{
-      game.fastApply(entry.raw);
-      let replies=null;
-      if(needsReplyCount||needsReplySafety){
-        replies=game.fastMoves();
-        replyCount=replies.length;
-      }
-      if(needsReplySafety&&replyCount){
-        let forcing=0,kingAttack=0,captures=0;
-        for(const reply of replies){
-          const replyFeatures=armxFullPredictiveMoveFeatures(game,reply);
-          if(replyFeatures.has('forcing'))forcing++;
-          if(replyFeatures.has('kingAttack'))kingAttack++;
-          if(replyFeatures.has('capture'))captures++;
-        }
-        forcingReplyRate=forcing/replyCount;
-        kingAttackReplyRate=kingAttack/replyCount;
-        captureReplyRate=captures/replyCount;
-      }
-      if(needsRepetition){
-        const key=game.fastPositionKey();
-        const count=game.positionCounts&&game.positionCounts.get(key)||0;
-        repetitionPressure=armxFullClamp(Math.max(0,count-1)/2,0,1);
-      }
-    }finally{
-      while(game.historyStack.length>historyDepth)game.fastUndo();
-    }
-  }
-
   return {
     contextFeatures:Array.from(contextFeatures),
     expectedOpponentOutcome:contextualOutcome,
@@ -747,6 +805,7 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
     kingAttackReplyRate,
     captureReplyRate,
     repetitionPressure,
+    actualReplyFeatures:actualReplyAvailable?Array.from(actualReplyAvailable):[],
   };
 }
 function armxFullOpponentTendencies(book){
