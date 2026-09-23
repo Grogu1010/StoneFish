@@ -318,8 +318,14 @@ static u32 search_history_generation[32768];
 static int search_nodes_count,search_node_limit,search_qdepth,search_abort,search_iter_depth;
 static int search_depth_done,search_policy_enabled,search_policy_side;
 static const int SEARCH_MATE=20000000;
-#define SEARCH_POLICY_DIRECT_CAP 65536
-typedef struct {u32 generation;short priority;signed char low;unsigned char pad;} SearchPolicyDirectEntry;
+#define SEARCH_POLICY_DIRECT_CAP 4096
+typedef struct {
+  u32 generation;
+  u16 key;
+  short priority;
+  signed char low;
+  unsigned char pad[3];
+} SearchPolicyDirectEntry;
 static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
 
 #define SEARCH_POS_CAP 16384
@@ -958,10 +964,12 @@ static double policy_logit_uncached(u32 m){
 static SearchPolicyDirectEntry *policy_direct_entry(u32 m){
   u32 key=(u32)move_from(m)|((u32)move_to(m)<<6)|((u32)(move_piece(m)-1)<<12)
     |((move_flags(m)&12)?32768u:0u);
-  SearchPolicyDirectEntry *e=&search_policy_direct[key];
-  if(e->generation!=search_generation){
+  u32 index=(key*2654435761u)>>(32-12);
+  SearchPolicyDirectEntry *e=&search_policy_direct[index];
+  if(e->generation!=search_generation||e->key!=(u16)key){
     double value=policy_logit_uncached(m);
     e->generation=search_generation;
+    e->key=(u16)key;
     e->priority=js_round(300.0*value);
     e->low=value<0.0;
   }
