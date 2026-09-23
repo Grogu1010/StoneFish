@@ -497,7 +497,12 @@ function armxFullFeaturePreference(book,feature){
   const rate=armxFullRawFrequency(book,feature);
   const pieceFeatures=['pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove'];
   if(pieceFeatures.includes(feature)){
-    return armxFullClamp((rate-0.22)*1.8,-1,1)*confidence;
+    const observedRates=pieceFeatures
+      .map(name=>armxFullChoiceRate(book,name))
+      .filter(row=>row.evidence>=ARMX_FULL.minChoiceEvidence)
+      .map(row=>row.rate);
+    const opponentBaseline=observedRates.length?armxFullAverage(observedRates):rate;
+    return armxFullClamp((rate-opponentBaseline)*2.2,-1,1)*confidence;
   }
   if(feature==='advance'||feature==='retreat'){
     const other=armxFullRawFrequency(book,feature==='advance'?'retreat':'advance');
