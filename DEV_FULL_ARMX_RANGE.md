@@ -58,3 +58,43 @@ reset and reply-policy contracts passed.
 The largest measured gaps are Full ARMX's strength against current v5.5 and
 the requested game-length identities. Optimize or revise a hypothesis against
 the archived results before increasing style overrides or search cost.
+
+## Follow-up decomposition and note-scale diagnostics
+
+The developer-only 20-game Artemis decomposition compared each component to
+current v5.5 on the same paired openings:
+
+| Candidate | W-L-D vs current v5.5 |
+| --- | ---: |
+| Full ARMX policy + Full finalist review | 6-13-1 |
+| Full ARMX policy + Preview finalist review | 10-10-0 |
+| Preview policy + Full finalist review | 6-13-1 |
+| Full budget + Preview ordering/review | 10-10-0 |
+| Preview budget + Full ordering + Preview review | 10-10-0 |
+
+This implicates the Full finalist review in this sample; the policy and search
+budget alone did not account for its weaker result. These games use the
+decomposition harness and should be compared within that harness, not merged
+with the range benchmark totals above.
+
+On the range benchmark's first 20 Artemis-vs-current games, disabling the
+Full-only notebook adjustment (`fullNoteScale=0`) scored 10-7-3; reducing it
+from 320 to 80 scored 11-6-3, versus 7-12-1 at 320. On a separate 20-game
+opening set (`START_INDEX=20`), the 80-scale candidate scored 7-11-2 versus
+4-14-2 at 320. Full notes therefore have a useful signal, but their current
+weight appears too high on both small samples. The zero-scale diagnostic is
+not an acceptable Full ARMX release because it removes Full notes' vote.
+
+The 80-scale candidate was **not promoted**. In the complete first-set
+six-matchup screen, Artemis improved to 11-6-3 against current v5.5, but
+Athena fell to 8-11-1 and Ares-vs-Athena to 7-11-2. Artemis's score against
+current v5.5 was 62.5%, still below its 80% floor. Athena's game-length ratio
+was 1.057x and Ares's 0.903x, still far from 3x and 0.5x. Thus the candidate
+did not satisfy the peer-strength or style-identity requirements.
+
+Two further single-matchup screens were rejected: allowing only positive
+Full-note leads retained the baseline 7-12-1; limiting Full review to two
+finalists scored 8-12-0. Adding up to 2,000 note-earned search nodes to the
+80-scale candidate scored 8-7-5 and raised Artemis's attributed overhead to
+1.662x Preview, worse than 11-6-3 without extra nodes. All used 20 games on
+the first opening set. No behavioral experiment in this section was promoted.
