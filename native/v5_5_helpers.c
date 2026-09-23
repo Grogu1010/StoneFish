@@ -206,7 +206,7 @@ static int search_attacked_synced(int square,int by_side,u64 occupied){
   return 0;
 }
 int in_check(int side,int king){return attacked(king,-side);}
-static int gen_side,gen_king,gen_mode,gen_count,gen_search_fast;
+static int gen_side,gen_king,gen_mode,gen_count,gen_search_fast,gen_in_check;
 static u64 gen_search_occ;
 static int gen_attacked(int square,int by_side,u64 occupied){
   return gen_search_fast?search_attacked_occ(square,by_side,occupied):attacked(square,by_side);
@@ -214,6 +214,14 @@ static int gen_attacked(int square,int by_side,u64 occupied){
 static int emit(int from,int to,int promotion,int flags){
   int moving=board[from],target=board[to],captured=flags&2?1:absolute(target);
   if(gen_mode==1&&!captured&&!promotion)return 0;
+  if(gen_search_fast&&!gen_in_check&&absolute(moving)!=6&&!(flags&2)){
+    u64 kingRays=search_attack_diagonal_mask[gen_king]|search_attack_straight_mask[gen_king];
+    if(!(kingRays&((u64)1<<from))){
+      if(gen_mode==2)return 1;
+      output[gen_count++]=(u32)(from|(to<<6)|(absolute(moving)<<12)|(captured<<15)|(promotion<<18)|(flags<<21));
+      return 0;
+    }
+  }
   int ep_square=-1,ep_piece=0,rook_from=-1,rook_to=-1,rook_piece=0;
   u64 occupied=gen_search_occ;
   if(gen_search_fast){
@@ -573,6 +581,7 @@ static int search_generate(const SearchState *s,int mode){
   int side=s->side,castling=s->castling,ep=s->ep,king=side>0?s->wk:s->bk;
   gen_search_fast=1;gen_search_occ=search_white_occ|search_black_occ;
   gen_side=side;gen_king=king;gen_mode=mode;gen_count=0;
+  gen_in_check=search_attacked_synced(king,-side,gen_search_occ);
   u64 occupied=side>0?search_white_occ:search_black_occ;
   while(occupied){
     int from=__builtin_ctzll(occupied);occupied&=occupied-1;
