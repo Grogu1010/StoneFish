@@ -8,7 +8,7 @@ const files = [
   'Stonefish_v5_pro_speed_patch.js', 'Stonefish_v5_pro_geometry_patch.js',
   'Stonefish_runtime_speed_patch.js', 'Stonefish_fast_moves_experiment.js',
   'Stonefish_v5_5_search.js', 'Stonefish_v5_5_refutation_guard.js',
-  'Stonefish_v5_5_native.js', 'ARMX-preview.js', 'Stonefish_v5_5_testunit1.js'
+  'Stonefish_v5_5_native.js', 'ARMX-preview.js', 'Stonefish_v5_5.js'
 ];
 vm.runInThisContext(files.map(file => fs.readFileSync(file, 'utf8')).join('\n'));
 // This contract exercises the JavaScript reply-policy callbacks and exact fallback parity.
@@ -75,12 +75,12 @@ assert.equal(forcedProfile.quietPolicy, null);
 // Callback failures unwind the board and do not leave a policy active for the
 // next call. The No-ARMX search uses the same unmodified evaluation and budget.
 const clean = new Chess(), before = snapshot(clean);
-const expected = summarize(stonefishV55Testunit1NoARMXScoreAllMoves(clean));
+const expected = summarize(stonefishV55NoARMXScoreAllMoves(clean));
 assert.throws(() => sf55cHost(clean, {
   priority() { throw new Error('injected policy failure'); }, isLowPriority() { return false; }
 }), /injected policy failure/);
 assert.equal(snapshot(clean), before);
-assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(clean)), expected);
+assert.deepEqual(summarize(stonefishV55NoARMXScoreAllMoves(clean)), expected);
 assert.equal(SF55C.nodes, 1200);
 assert.equal(SF55C.maxDepth, 4);
 for (const [request, budget] of [[-1, 1200], [99999, 9600], [NaN, 1200]]) {
@@ -120,8 +120,8 @@ for (const row of golden.positions) {
   const game = play(new Chess(), ...row.history);
   game.armxObservationStartPly = row.observationStartPly;
   const original = snapshot(game);
-  assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(game)), row.native);
-  assert.deepEqual(summarize(stonefishV55Testunit1ScoreAllMoves(game)), row.armx);
+  assert.deepEqual(summarize(stonefishV55NoARMXScoreAllMoves(game)), row.native);
+  assert.deepEqual(summarize(stonefishV55ScoreAllMoves(game)), row.armx);
   const model = armxPreviewSyncProfile(game, game.side).quietPolicy;
   assert.equal(model ? model.count : 0, row.quietChoices);
   assert.deepEqual(model ? Array.from(model.weights) : null, row.weights);
@@ -132,7 +132,7 @@ for (const row of golden.positions) {
   assert.equal(SF55C_LAST.searchBudget, row.searchBudget);
   assert.equal(policy ? policy.maxDepth : SF55C.maxDepth, row.maxDepth);
   assert.equal(SF55C_LAST.depthLimit, row.maxDepth);
-  assert.deepEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(game)), row.native);
+  assert.deepEqual(summarize(stonefishV55NoARMXScoreAllMoves(game)), row.native);
   assert.equal(snapshot(game), original);
 }
 console.log('ARMX_REPLY_POLICY passed: preference learning, reset, forced moves, snapshot isolation, failure cleanup, '
