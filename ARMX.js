@@ -10,7 +10,7 @@
 
 const ARMX_FULL = Object.freeze({
   name: 'ARMX',
-  version: '1.3-full',
+  version: '1.4-full',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 8,
@@ -32,8 +32,8 @@ const ARMX_FULL = Object.freeze({
   maxHostGap: 135,
   maxDeepSacrifice: 95,
   styleScale: Object.freeze({
-    athena: 18,
-    ares: 44,
+    athena: 5,
+    ares: 30,
     artemis: 0,
   }),
   winningStyleScale: Object.freeze({
@@ -56,8 +56,10 @@ const ARMX_FULL = Object.freeze({
     ares: 340,
     artemis: 0,
   }),
-  athenaSlowTargetPlies: 320,
-  aresFastTargetPlies: 36,
+  athenaSlowTargetPlies: 260,
+  athenaMateDelayMinScore: 900,
+  athenaMateDelayHalfmoveLimit: 60,
+  aresFastTargetPlies: 42,
 });
 
 const ARMX_FULL_LAST = Object.create(null);
@@ -113,7 +115,7 @@ function armxFullOpponentPolicy(game, perspective = game.side, style = 'artemis'
   // once safely ahead; Ares buys forcing alternatives once it has an edge.
   let rootWidth = 3;
   if (style === 'athena' && positionScore >= 140) rootWidth = ARMX_FULL.maxRootWidth;
-  else if (style === 'ares' && positionScore >= 100) rootWidth = 6;
+  else if (style === 'ares' && positionScore >= 180) rootWidth = 5;
   const rootWidthReserve = Math.max(0, rootWidth - 3) * 7000;
   const searchBudget = Math.round(
     ARMX_FULL.baseSearchNodes
@@ -231,39 +233,68 @@ function armxFullStyleSignal(game, entry, report, style, profile) {
     if (set.has('advance')) signal -= 0.42;
     // A late halfmove clock is a defensive liability. Quiet pawn moves keep the
     // long game alive without forcing exchanges.
-    if (set.has('pawnPush')) signal += game && game.halfmove >= 54 ? 2.40 : 0.20;
+    const drawRisk = game ? armxFullClamp((game.halfmove - 40) / 24, 0, 1) : 0;
+    if (set.has('pawnPush')) signal += 0.20 + 4.20 * drawRisk;
+    if (set.has('capture')) signal += 3.60 * drawRisk;
+    if (set.has('quiet') && !set.has('pawnPush')) signal -= 1.80 * drawRisk;
+    if (set.has('retreat')) signal -= 1.20 * drawRisk;
     if (shape.aggression > 0.45 && set.has('castle')) signal += 0.65 * shape.aggression;
   } else if (style === 'ares') {
-    // Ares escalates forcing play if the game survives beyond its desired pace.
+    // Ares is conversion-aggressive, not check-spam aggressive. Once it has an
+    // edge it cashes that edge into material removal and a shorter game.
     const urgency = armxFullClamp((observedPlies - ARMX_FULL.aresFastTargetPlies) / 70, 0, 1);
-    if (set.has('check')) signal += 3.10 + 1.70 * urgency;
-    if (set.has('kingAttack')) signal += 2.55 + 1.45 * urgency;
-    if (set.has('capture')) signal += 1.65 + capturedValue * 0.85 + 0.70 * urgency;
-    if (set.has('advance')) signal += 1.05 + 0.45 * urgency;
-    if (set.has('pawnPush')) signal += 0.72 + 0.28 * urgency;
-    if (set.has('trade')) signal += 0.70;
-    if (set.has('simplify')) signal += 0.62;
-    if (set.has('quiet')) signal -= 1.55 + 0.90 * urgency;
-    if (set.has('retreat')) signal -= 1.95 + 0.95 * urgency;
-    if (set.has('castle')) signal -= 0.30;
-    // A patient opponent is exactly the profile Ares is meant to crack.
+    const positionScore = profile && profile.currentSnapshot && Number.isFinite(profile.currentSnapshot.score)
+      ? profile.currentSnapshot.score : 0;
+    const advantage = armxFullClamp((positionScore - 100) / 520, 0, 1);
+    const capture = set.has('capture');
+    if (set.has('check')) signal += capture
+      ? 2.25 + 0.70 * urgency
+      : 1.35 + 0.35 * urgency;
+    if (set.has('kingAttack')) signal += 1.70 + 0.55 * urgency;
+    if (capture) signal += 2.40 + capturedValue * 1.80 + 1.90 * advantage + 0.75 * urgency;
+    if (set.has('trade')) signal += 1.05 + 1.35 * advantage;
+    if (set.has('simplify')) signal += 1.20 + 1.75 * advantage;
+    if (entry && entry.raw && entry.raw.promotion) signal += 3.50;
+    if (set.has('advance')) signal += 0.78 + 0.30 * urgency;
+    if (set.has('pawnPush')) signal += 0.50 + 0.20 * urgency;
+    if (set.has('quiet')) signal -= 1.85 + 1.05 * urgency + 0.55 * advantage;
+    if (set.has('retreat')) signal -= 2.20 + 0.85 * urgency + 0.45 * advantage;
+    if (set.has('castle')) signal -= 0.15;
     if (shape.patience > 0.15) {
-      if (set.has('check')) signal += 0.90 * shape.patience;
-      if (set.has('kingAttack')) signal += 0.75 * shape.patience;
-      if (set.has('advance')) signal += 0.35 * shape.patience;
-      if (set.has('quiet')) signal -= 0.30 * shape.patience;
+      if (capture) signal += 0.70 * shape.patience;
+      if (set.has('simplify')) signal += 0.60 * shape.patience;
+      if (set.has('kingAttack')) signal += 0.35 * shape.patience;
+      if (set.has('quiet')) signal -= 0.35 * shape.patience;
     }
   }
   return signal;
 }
 
-function armxFullMateScale(entry) {
-  if (!entry) return false;
-  const mate = typeof STONEFISH_V5_PRO_MATE === 'number'
+function armxFullMateValue() {
+  return typeof STONEFISH_V5_PRO_MATE === 'number'
     ? STONEFISH_V5_PRO_MATE
     : (typeof STONEFISH_V5_MATE === 'number' ? STONEFISH_V5_MATE : 20000000);
+}
+
+function armxFullMateScale(entry) {
+  if (!entry) return false;
+  const mate = armxFullMateValue();
   return (Number.isFinite(entry.deep) && Math.abs(entry.deep) >= mate * 0.9)
     || (Number.isFinite(entry.score) && Math.abs(entry.score) >= mate * 0.9);
+}
+
+function armxFullPositiveMate(entry) {
+  if (!entry) return false;
+  const mate = armxFullMateValue();
+  return (Number.isFinite(entry.deep) && entry.deep >= mate * 0.9)
+    || (Number.isFinite(entry.score) && entry.score >= mate * 0.9);
+}
+
+function armxFullNegativeMate(entry) {
+  if (!entry) return false;
+  const mate = armxFullMateValue();
+  return (Number.isFinite(entry.deep) && entry.deep <= -mate * 0.9)
+    || (Number.isFinite(entry.score) && entry.score <= -mate * 0.9);
 }
 
 function armxFullReview(game, finished, style = 'artemis', perspective = game.side) {
@@ -276,6 +307,11 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
   if (!candidates.length) return { reports: [], winner: null, profile, opponentMoves, maturity };
 
   const hostBest = candidates[0];
+  const observedPlies = Math.max(0, (game && game.historyStack ? game.historyStack.length : 0)
+    - Math.max(0, Math.trunc(Number(game && game.armxObservationStartPly) || 0)));
+  const athenaDelayActive = style === 'athena'
+    && armxFullPositiveMate(hostBest)
+    && observedPlies < ARMX_FULL.athenaSlowTargetPlies;
   const reports = candidates.map(entry => {
     const previewReport = armxPreviewCandidateReport(game, entry, profile);
     const adaptiveGain = ARMX_FULL.decisionGain
@@ -289,13 +325,16 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
     const adaptiveAdjustment = (Number(previewReport.adjustment) || 0) * adaptiveGain
       + counterAdjustment;
     const conversionSignal = armxFullConversionSignal(hostBest, previewReport.features);
-    const conversionAdjustment = armxFullClamp(
-      conversionSignal * ARMX_FULL.conversionScale,
-      -ARMX_FULL.maxConversionAdjustment,
-      ARMX_FULL.maxConversionAdjustment
-    );
     const winningFactor = Number.isFinite(hostBest.score)
       ? armxFullClamp((hostBest.score - 140) / 500, 0, 1) : 0;
+    const conversionWeight = style === 'athena'
+      ? 1 - 0.92 * winningFactor
+      : style === 'ares' ? 1 + 1.25 * winningFactor : 1;
+    const conversionAdjustment = armxFullClamp(
+      conversionSignal * ARMX_FULL.conversionScale * conversionWeight,
+      -ARMX_FULL.maxConversionAdjustment * conversionWeight,
+      ARMX_FULL.maxConversionAdjustment * conversionWeight
+    );
     const baseStyleScale = ARMX_FULL.styleScale[style] || 0;
     const winningStyleScale = ARMX_FULL.winningStyleScale[style] || baseStyleScale;
     const styleScale = baseStyleScale + (winningStyleScale - baseStyleScale) * winningFactor;
@@ -309,14 +348,22 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
     const deepSacrifice = Number.isFinite(hostBest.deep) && Number.isFinite(entry.deep)
       ? hostBest.deep - entry.deep
       : hostGap;
-    const protectedTruth = armxFullMateScale(hostBest) || armxFullMateScale(entry);
+    const athenaMateDelayCandidate = athenaDelayActive
+      && entry !== hostBest
+      && !armxFullNegativeMate(entry)
+      && (armxFullPositiveMate(entry)
+        || (game.halfmove < ARMX_FULL.athenaMateDelayHalfmoveLimit
+          && Number(entry.score) >= ARMX_FULL.athenaMateDelayMinScore));
+    const protectedTruth = armxFullNegativeMate(hostBest)
+      || armxFullNegativeMate(entry)
+      || (!athenaMateDelayCandidate && (armxFullMateScale(hostBest) || armxFullMateScale(entry)));
     const baseHostGap = ARMX_FULL.maxHostGapByStyle[style] || ARMX_FULL.maxHostGap;
     const baseDeepSacrifice = ARMX_FULL.maxDeepSacrificeByStyle[style] || ARMX_FULL.maxDeepSacrifice;
     const styleWinningGap = style === 'athena' ? 180 : style === 'ares' ? 100 : 0;
     const styleWinningDeep = style === 'athena' ? 130 : style === 'ares' ? 80 : 0;
     const allowedHostGap = baseHostGap + styleWinningGap * winningFactor;
     const allowedDeepSacrifice = baseDeepSacrifice + styleWinningDeep * winningFactor;
-    const eligible = entry === hostBest || (!protectedTruth
+    const eligible = entry === hostBest || athenaMateDelayCandidate || (!protectedTruth
       && hostGap <= allowedHostGap
       && deepSacrifice <= allowedDeepSacrifice);
     const fullScore = eligible
@@ -333,9 +380,11 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
       counterAdjustment,
       adaptiveAdjustment,
       conversionSignal,
+      conversionWeight,
       conversionAdjustment,
       styleScale,
       styleAdjustment,
+      athenaMateDelayCandidate,
       hostGap,
       deepSacrifice,
       allowedHostGap,
@@ -360,7 +409,21 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
     notes: armxPreviewProfileNotes(profile),
     opponentShape: armxFullOpponentShape(profile),
     reports,
-    winner: reports.length ? reports[0].entry : hostBest,
+    winner: (() => {
+      if (athenaDelayActive) {
+        const delay = reports
+          .filter(report => report.athenaMateDelayCandidate)
+          .sort((a, b) => {
+            const aNonMate = !armxFullPositiveMate(a.entry);
+            const bNonMate = !armxFullPositiveMate(b.entry);
+            if (aNonMate !== bNonMate) return aNonMate ? -1 : 1;
+            if (!aNonMate && a.hostScore !== b.hostScore) return a.hostScore - b.hostScore;
+            return b.fullScore - a.fullScore;
+          })[0];
+        if (delay) return delay.entry;
+      }
+      return reports.length ? reports[0].entry : hostBest;
+    })(),
   };
 }
 
