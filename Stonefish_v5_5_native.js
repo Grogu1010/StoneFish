@@ -464,7 +464,7 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
 
 function sf55cReplyPolicyNodeLimit(replyPolicy,requested){
   const extraCap=Number.isFinite(replyPolicy&&replyPolicy.maxExtraNodes)
-    ?Math.max(8400,Math.min(60000,Math.round(replyPolicy.maxExtraNodes))):8400;
+    ?Math.max(8400,Math.min(120000,Math.round(replyPolicy.maxExtraNodes))):8400;
   return Number.isFinite(requested)
     ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+extraCap,Math.round(requested))):SF55C.nodes;
 }
