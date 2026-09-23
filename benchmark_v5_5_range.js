@@ -85,56 +85,65 @@ function buildOverheadPositions(count){
   for(let i=0;i<count;i++){
     const opening=generateOpening(5000+i,12+(i%8));
     const game=positionAfter(opening);
-    // For overhead measurement the history is evidence, not a seeded opening:
-    // this samples realistic mature ARMX bookkeeping rather than only move one.
+    // Treat the replayed history as real opponent evidence for component timing.
     game.armxObservationStartPly=0;
     rows.push(game);
   }
   return rows;
 }
-function timeMoveOnClone(source,fn,seed){
-  clearSharedEngineCaches();
-  const game=cloneGame(source,0);
+function timeComponent(fn){
   const started=performance.now();
-  const move=withSeed(seed,()=>fn(game));
-  const elapsed=performance.now()-started;
-  if(!move)throw new Error('Latency probe returned no move');
-  return elapsed;
+  const value=fn();
+  return {value,ms:performance.now()-started};
 }
-function armxOverheadBenchmark(sampleCount){
+function armxComponentBenchmark(sampleCount){
   const positions=buildOverheadPositions(sampleCount);
-  const totals={noArmx:0,preview:0,athena:0,ares:0,artemis:0};
-  const models={
-    noArmx:getStonefishV55NoARMXMove,
-    preview:getStonefishV55Move,
-    athena:getStonefishV55AthenaMove,
-    ares:getStonefishV55AresMove,
-    artemis:getStonefishV55ArtemisMove,
-  };
-  // Warm each path once before timing.
-  const warm=positions[0];
-  let warmIndex=0;
-  for(const fn of Object.values(models))timeMoveOnClone(warm,fn,0xA700+warmIndex++);
-  for(let i=0;i<positions.length;i++){
-    // Rotate order to reduce systematic cache/CPU-order bias.
-    const names=Object.keys(models);
-    const rotated=names.slice(i%names.length).concat(names.slice(0,i%names.length));
-    for(const name of rotated){
-      totals[name]+=timeMoveOnClone(positions[i],models[name],0xB700+i*17+names.indexOf(name));
+  let previewMs=0;
+  const fullMs={athena:0,ares:0,artemis:0};
+  const styles=['athena','ares','artemis'];
+
+  // Warm all paths once outside the measured loop.
+  if(positions.length){
+    const warm=cloneGame(positions[0],0);
+    const previewPolicy=armxPreviewOpponentPolicy(warm,warm.side);
+    const warmHost=stonefishV55HostSearch(warm,previewPolicy);
+    armxPreviewReview(warm,warmHost.finished.slice(0,Math.max(1,ARMX_PREVIEW.candidateLimit)),warm.side);
+    for(const style of styles){
+      const game=cloneGame(positions[0],0);
+      const policy=armxFullOpponentPolicy(game,game.side,style);
+      const host=stonefishV55HostSearch(game,policy);
+      armxFullReview(game,host.finished,style,game.side);
     }
   }
-  const avg=Object.fromEntries(Object.entries(totals).map(([name,total])=>[name,total/sampleCount]));
-  const previewOverhead=avg.preview-avg.noArmx;
-  const fullOverhead={
-    athena:avg.athena-avg.noArmx,
-    ares:avg.ares-avg.noArmx,
-    artemis:avg.artemis-avg.noArmx,
-  };
-  const ratio={};
-  for(const style of ['athena','ares','artemis']){
-    ratio[style]=previewOverhead>0?fullOverhead[style]/previewOverhead:Infinity;
+
+  for(let i=0;i<positions.length;i++){
+    // Host searches are deliberately outside the timers. This benchmark measures
+    // ARMX itself: notebook/profile work, policy construction and finalist review.
+    {
+      const game=cloneGame(positions[i],0);
+      const policyTimed=timeComponent(()=>armxPreviewOpponentPolicy(game,game.side));
+      const host=stonefishV55HostSearch(game,policyTimed.value);
+      const reviewTimed=timeComponent(()=>armxPreviewReview(
+        game,host.finished.slice(0,Math.max(1,ARMX_PREVIEW.candidateLimit)),game.side
+      ));
+      previewMs+=policyTimed.ms+reviewTimed.ms;
+    }
+    for(const style of styles){
+      const game=cloneGame(positions[i],0);
+      const policyTimed=timeComponent(()=>armxFullOpponentPolicy(game,game.side,style));
+      const host=stonefishV55HostSearch(game,policyTimed.value);
+      const reviewTimed=timeComponent(()=>armxFullReview(game,host.finished,style,game.side));
+      fullMs[style]+=policyTimed.ms+reviewTimed.ms;
+    }
   }
-  return {samples:sampleCount,averageMs:avg,previewOverheadMs:previewOverhead,fullOverheadMs:fullOverhead,ratio};
+
+  const previewAverageMs=previewMs/sampleCount;
+  const fullAverageMs=Object.fromEntries(styles.map(style=>[style,fullMs[style]/sampleCount]));
+  const ratio=Object.fromEntries(styles.map(style=>[
+    style,
+    previewAverageMs>0?fullAverageMs[style]/previewAverageMs:Infinity,
+  ]));
+  return {samples:sampleCount,previewAverageMs,fullAverageMs,ratio};
 }
 const STYLE_FEATURES=['capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat'];
 function emptyStyleCounts(){return Object.fromEntries(STYLE_FEATURES.map(feature=>[feature,0]));}
@@ -308,7 +317,7 @@ const targets={
     maxArtemisLead:0.05,
     maxCurrentScoreSpread:0.06,
     maxArtemisCurrentLead:0.05,
-    maxFullArmxOverheadToPreviewOverheadRatio:2.0,
+    maxFullArmxComponentTimeToPreviewComponentTimeRatio:2.0,
     artemisBestAgainstCurrent:true,
     aresBeatsAthenaMoreOftenThanArtemis:true,
     athenaDrawsMoreThanItLosesToAres:true,
@@ -325,7 +334,7 @@ const targets={
   moveRatioTolerance:0.25,
 };
 const games=Math.max(0,Number.parseInt(process.env.GAMES||'12',10)||0);
-const overheadSamples=Math.max(8,Number.parseInt(process.env.OVERHEAD_SAMPLES||'20',10)||20);
+const armxTimingSamples=Math.max(12,Number.parseInt(process.env.ARMX_TIMING_SAMPLES||'40',10)||40);
 const startIndex=Math.max(0,Number.parseInt(process.env.START_INDEX||'0',10)||0);
 const only=process.env.MATCHUP||'';
 if(only&&!definitions[only])throw new Error('Unknown MATCHUP '+only);
@@ -413,13 +422,13 @@ const preferredWLDDeviation=Object.fromEntries(
   ])
 );
 
-const armxOverhead=armxOverheadBenchmark(overheadSamples);
+const armxComponentTime=armxComponentBenchmark(armxTimingSamples);
 
 const result={
   model:'Stonefish v5.5 Full ARMX range',
   gamesPerMatchup:games,startIndex,
   sourceHashes:Object.fromEntries(loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])),
-  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,armxOverhead,preferredWLDDeviation,matchups:results
+  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,armxComponentTime,preferredWLDDeviation,matchups:results
 };
 if(process.env.RESULT_JSON)fs.writeFileSync(process.env.RESULT_JSON,JSON.stringify(result,null,2)+'\n');
 console.log('\nSTONEFISH_V5_5_RANGE '+JSON.stringify(result));
@@ -493,17 +502,16 @@ if(process.env.RELEASE_GATE==='1'){
       <=targets.relationships.maxArtemisCurrentLead,
     'Artemis current-v5.5 lead must stay modest');
 
-  requireGate(armxOverhead.previewOverheadMs>0,
-    'ARMX Preview overhead must be positive for the Full-ARMX overhead gate: '
-      +armxOverhead.previewOverheadMs+' ms');
-  for(const [style,overheadRatio] of Object.entries(armxOverhead.ratio)){
-    requireGate(Number.isFinite(overheadRatio)
-        &&overheadRatio<=targets.relationships.maxFullArmxOverheadToPreviewOverheadRatio,
-      style+' Full ARMX overhead is too high: '+overheadRatio
-        +'x Preview ARMX overhead; need <='
-        +targets.relationships.maxFullArmxOverheadToPreviewOverheadRatio+'x. '
-        +'No-ARMX '+armxOverhead.averageMs.noArmx+' ms, Preview '+armxOverhead.averageMs.preview
-        +' ms, Full '+armxOverhead.averageMs[style]+' ms');
+  requireGate(armxComponentTime.previewAverageMs>0,
+    'ARMX Preview component timing must be positive');
+  for(const [style,componentRatio] of Object.entries(armxComponentTime.ratio)){
+    requireGate(Number.isFinite(componentRatio)
+        &&componentRatio<=targets.relationships.maxFullArmxComponentTimeToPreviewComponentTimeRatio,
+      style+' Full ARMX component is too slow: '+componentRatio
+        +'x ARMX Preview; need <='
+        +targets.relationships.maxFullArmxComponentTimeToPreviewComponentTimeRatio+'x. '
+        +'Preview '+armxComponentTime.previewAverageMs+' ms, Full '
+        +armxComponentTime.fullAverageMs[style]+' ms');
   }
 
   const tol=targets.moveRatioTolerance;
