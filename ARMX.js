@@ -28,12 +28,12 @@ const ARMX_FULL = Object.freeze({
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
   candidateLimit: 5,
   baseSearchNodes: 1200,
-  maxEvidenceSearchNodes: 36000,
-  maxSurpriseSearchNodes: 9000,
-  maxExtraNodes: 48000,
+  maxEvidenceSearchNodes: 52000,
+  maxSurpriseSearchNodes: 8000,
+  maxExtraNodes: 60000,
   baseDepth: 4,
-  maxEvidenceDepth: 8,
-  maxExtraDepth: 4,
+  maxEvidenceDepth: 10,
+  maxExtraDepth: 6,
   baseRootWidth: 3,
   maxRootWidth: 5,
   matureOpponentMoves: 10,
@@ -49,8 +49,8 @@ const ARMX_FULL = Object.freeze({
   maxDeepSacrifice: 32,
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
-  styleScale: Object.freeze({athena: 20, ares: 24, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 175, ares: 175, artemis: 0}),
+  styleScale: Object.freeze({athena: 15, ares: 17, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 110, ares: 110, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -79,13 +79,13 @@ const ARMX_FULL = Object.freeze({
       // When the host says Athena is worse, defensive play means converting
       // danger into a drawable ending rather than blindly preserving material.
       behindWeights:Object.freeze({
-        capture:1.80,trade:2.85,rookTrade:2.10,queenTrade:3.20,minorTrade:1.70,
-        simplify:2.90,check:0.30,kingAttack:0.15,quiet:-0.85,retreat:0.55,castle:0.75,
+        capture:1.05,trade:1.65,rookTrade:1.20,queenTrade:1.85,minorTrade:1.00,
+        simplify:1.70,check:0.18,kingAttack:0.10,quiet:-0.48,retreat:0.35,castle:0.48,
       }),
-      baseScale:20, earlyBoost:3.20, lateBoost:-0.65, paceTargetPlies:260,
-      aheadScale:0.34, behindScale:0.72, replyCompressionWeight:-1.45, capturedValueWeight:-0.85,
-      patientOpponentScale:0.10, aggressiveOpponentScale:0.85,
-      maxHostGap:70, maxDeepSacrifice:52,
+      baseScale:15, earlyBoost:3.20, lateBoost:-0.65, paceTargetPlies:260,
+      aheadScale:0.28, behindScale:0.55, replyCompressionWeight:-1.10, capturedValueWeight:-0.70,
+      patientOpponentScale:0.05, aggressiveOpponentScale:0.45,
+      maxHostGap:45, maxDeepSacrifice:35,
     }),
     ares: Object.freeze({
       weights: Object.freeze({
@@ -97,17 +97,17 @@ const ARMX_FULL = Object.freeze({
         knightMove:0.12, bishopMove:0.14, rookMove:0.20, queenMove:0.22, kingMove:-0.20,
       }),
       aheadWeights:Object.freeze({
-        capture:1.45,trade:1.45,rookTrade:1.10,queenTrade:1.05,minorTrade:0.90,
-        simplify:1.70,check:0.42,kingAttack:0.48,quiet:-0.55,retreat:-0.55,
+        capture:1.10,trade:1.05,rookTrade:0.80,queenTrade:0.78,minorTrade:0.70,
+        simplify:1.20,check:0.32,kingAttack:0.36,quiet:-0.40,retreat:-0.40,
       }),
       behindWeights:Object.freeze({
         capture:0.20,trade:-0.45,simplify:-0.55,check:1.15,kingAttack:1.25,
         forcing:0.90,advance:0.50,quiet:-0.55,retreat:-0.75,
       }),
-      baseScale:24, earlyBoost:0.45, lateBoost:3.10, paceTargetPlies:42,
-      aheadScale:0.80, behindScale:0.38, replyCompressionWeight:2.25, capturedValueWeight:1.05,
-      patientOpponentScale:1.35, aggressiveOpponentScale:0.08,
-      maxHostGap:78, maxDeepSacrifice:58,
+      baseScale:17, earlyBoost:0.35, lateBoost:2.60, paceTargetPlies:42,
+      aheadScale:0.62, behindScale:0.28, replyCompressionWeight:1.20, capturedValueWeight:0.80,
+      patientOpponentScale:0.45, aggressiveOpponentScale:0.04,
+      maxHostGap:50, maxDeepSacrifice:40,
     }),
   }),
 });
@@ -592,8 +592,10 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   if(!profile.baseScale)return {signal:0,scale:0,adjustment:0};
   const features=response.contextFeatures||[];
   const hostScore=Number(hostBest&&hostBest.score)||0;
-  const ahead=armxFullClamp(hostScore/700,0,1);
-  const behind=armxFullClamp(-hostScore/700,0,1);
+  // Style-specific conversion/survival behavior should only intensify once the
+  // shared host sees a real advantage/disadvantage, not around equality.
+  const ahead=armxFullClamp((hostScore-120)/580,0,1);
+  const behind=armxFullClamp((-hostScore-120)/580,0,1);
 
   let signal=0;
   for(const feature of features){
