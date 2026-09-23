@@ -102,8 +102,8 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
   let plies = game.historyStack.length;
   const nativeKernelAvailable = typeof SF55C_KERNEL !== 'undefined' && !!SF55C_KERNEL;
   const metrics = {
-    [whiteModelKey]: { moves: 0, thinkMs: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 },
-    [blackModelKey]: { moves: 0, thinkMs: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 }
+    [whiteModelKey]: { moves: 0, thinkMs: 0, nodes: 0, depthSum: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 },
+    [blackModelKey]: { moves: 0, thinkMs: 0, nodes: 0, depthSum: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 }
   };
 
   while (plies < maxPlies) {
@@ -125,6 +125,11 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
 
     metrics[modelKey].moves += 1;
     metrics[modelKey].thinkMs += elapsed;
+    const lastSearch = globalThis.SF55C_LAST;
+    if ((modelKey === 'v55' || modelKey === 'v55noarmx') && lastSearch) {
+      metrics[modelKey].nodes += Number(lastSearch.nodes) || 0;
+      metrics[modelKey].depthSum += Number(lastSearch.depth) || 0;
+    }
     if (modelKey === 'v55') {
       const compiled = !!(globalThis.SF55C_LAST && globalThis.SF55C_LAST.refutationGuard
         && globalThis.SF55C_LAST.refutationGuard.compiledSearch);
@@ -140,16 +145,63 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
   return { outcome: 'draw', metrics, plies, openingIndex };
 }
 
+let stonefishWorkerARMXProfile = null;
+let stonefishWorkerARMXProfilerInstalled = false;
+
+function stonefishWorkerInstallARMXProfiler() {
+  if (stonefishWorkerARMXProfilerInstalled) return;
+  stonefishWorkerARMXProfilerInstalled = true;
+  stonefishWorkerARMXProfile = {
+    policyMs: 0, policyCalls: 0,
+    hostMs: 0, hostCalls: 0,
+    nativeMs: 0, nativeCalls: 0,
+    historyMs: 0, historyCalls: 0,
+    reviewMs: 0, reviewCalls: 0,
+  };
+  const wrap = (name, msKey, callsKey) => {
+    const original = globalThis[name];
+    if (typeof original !== 'function') return;
+    globalThis[name] = function profiledARMXCall(...args) {
+      const started = performance.now();
+      try {
+        return original.apply(this, args);
+      } finally {
+        stonefishWorkerARMXProfile[msKey] += performance.now() - started;
+        stonefishWorkerARMXProfile[callsKey] += 1;
+      }
+    };
+  };
+  wrap('armxPreviewOpponentPolicy', 'policyMs', 'policyCalls');
+  wrap('stonefishV55ARMXHostSearch', 'hostMs', 'hostCalls');
+  wrap('sf55cNativeAcceleratedHost', 'nativeMs', 'nativeCalls');
+  wrap('sf55cSyncNativePublicHistory', 'historyMs', 'historyCalls');
+  wrap('armxPreviewReview', 'reviewMs', 'reviewCalls');
+}
+
+function stonefishWorkerResetARMXProfile() {
+  if (!stonefishWorkerARMXProfile) return;
+  for (const key of Object.keys(stonefishWorkerARMXProfile)) {
+    stonefishWorkerARMXProfile[key] = 0;
+  }
+}
+
 self.onmessage = event => {
-  const { jobId, whiteModelKey, blackModelKey, maxPlies, openingIndex } = event.data;
+  const { jobId, whiteModelKey, blackModelKey, maxPlies, openingIndex, profileARMX } = event.data;
 
   try {
+    if (profileARMX) {
+      stonefishWorkerInstallARMXProfiler();
+      stonefishWorkerResetARMXProfile();
+    }
     const result = playTestGame(
       whiteModelKey,
       blackModelKey,
       maxPlies || 360,
       Number.isFinite(Number(openingIndex)) ? Number(openingIndex) : 0
     );
+    if (profileARMX && stonefishWorkerARMXProfile) {
+      result.armxProfile = Object.assign({}, stonefishWorkerARMXProfile);
+    }
     self.postMessage({ jobId, result });
   } catch (error) {
     self.postMessage({
