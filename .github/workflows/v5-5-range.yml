@@ -10,6 +10,10 @@ on:
       - '.github/workflows/v5-5-range.yml'
   workflow_dispatch:
 
+concurrency:
+  group: v55-range-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   range-matchup:
     runs-on: ubuntu-latest
