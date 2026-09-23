@@ -46,7 +46,7 @@ const ARMX_FULL = Object.freeze({
   maxEvidenceDepth: 6,
   maxExtraDepth: 2,
   baseRootWidth: 3,
-  maxRootWidth: 4,
+  maxRootWidth: 3,
   matureOpponentMoves: 6,
   opportunityScanStride: 2,
   rootBreadthEvidenceThreshold: 0.80,
@@ -81,7 +81,7 @@ const ARMX_FULL = Object.freeze({
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
   styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 110, ares: 125, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 80, ares: 125, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -104,10 +104,10 @@ const ARMX_FULL = Object.freeze({
     }),
     athena: Object.freeze({
       weights: Object.freeze({
-        capture:-0.38, trade:-0.55, rookTrade:-0.48, queenTrade:-0.52,
-        minorTrade:-0.44, simplify:-0.52, check:-0.28, kingAttack:-0.34,
-        pawnPush:0.24, castle:0.78, quiet:0.72, advance:-0.12, retreat:0.46,
-        forcing:-0.26, promotion:0.08, center:0.12, kingside:0.08,
+        capture:-0.14, trade:-0.20, rookTrade:-0.18, queenTrade:-0.19,
+        minorTrade:-0.16, simplify:-0.19, check:-0.10, kingAttack:-0.12,
+        pawnPush:0.10, castle:0.28, quiet:0.26, advance:-0.04, retreat:0.17,
+        forcing:-0.09, promotion:0.05, center:0.08, kingside:0.05,
         queenside:0.12, centralize:0.22, development:0.25, pawnMove:0.42,
         knightMove:0.12, bishopMove:0.12, rookMove:0.04, queenMove:-0.08, kingMove:0.24,
       }),
@@ -121,18 +121,18 @@ const ARMX_FULL = Object.freeze({
         capture:2.20,trade:3.80,rookTrade:2.75,queenTrade:4.25,minorTrade:2.20,
         simplify:4.00,check:0.42,kingAttack:0.28,quiet:-1.35,retreat:1.15,castle:1.45,
       }),
-      baseScale:10, earlyBoost:2.40, lateBoost:-0.35, paceTargetPlies:260,
-      aheadThreshold:120, behindThreshold:15, advantageRange:360, minStyleLead:20,
-      aheadScale:0.20, behindScale:4.35, replyCompressionWeight:0, capturedValueWeight:-0.28,
-      repetitionWeight:0.10, aheadRepetitionWeight:-0.25, behindRepetitionWeight:8.60,
-      advantageDelayWeight:0.45, pawnClockResetWeight:1.40, aheadCandidateFloor:170,
-      patientOpponentScale:0.00, aggressiveOpponentScale:1.55,
-      patientPressureWeight:0, aggressiveDefenseWeight:3.30,
+      baseScale:5, earlyBoost:1.35, lateBoost:-0.15, paceTargetPlies:260,
+      aheadThreshold:170, behindThreshold:110, advantageRange:360, minStyleLead:18,
+      aheadScale:0.08, behindScale:4.80, replyCompressionWeight:0, capturedValueWeight:-0.12,
+      repetitionWeight:-0.30, aheadRepetitionWeight:-0.45, behindRepetitionWeight:9.20,
+      advantageDelayWeight:0.15, pawnClockResetWeight:1.80, aheadCandidateFloor:180,
+      patientOpponentScale:0.00, aggressiveOpponentScale:0.55,
+      patientPressureWeight:0, aggressiveDefenseWeight:1.10,
       opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
-      aheadHostGapBonus:28, aheadDeepGapBonus:18, behindHostGapBonus:72, behindDeepGapBonus:38,
-      maxHostGap:14, maxDeepSacrifice:14,
+      aheadHostGapBonus:6, aheadDeepGapBonus:5, behindHostGapBonus:84, behindDeepGapBonus:46,
+      maxHostGap:10, maxDeepSacrifice:10,
     }),
     ares: Object.freeze({
       weights: Object.freeze({
