@@ -494,9 +494,11 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
       publicHistoryCount++;
     }
   }
+  const rootWidth=replyPolicy&&Number.isFinite(replyPolicy.rootWidth)
+    ?Math.max(SF55C.multiPV,Math.min(12,Math.round(replyPolicy.rootWidth))):SF55C.multiPV;
   const count=k.api.search_all(
     g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-    depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
+    depthLimit,limit,SF55C.qDepth,1,publicHistoryCount,rootWidth);
   const finished=new Array(count);
   for(let i=0;i<count;i++){
     const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
@@ -511,7 +513,7 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
     nodes:k.api.search_nodes?k.api.search_nodes():limit,
     depth:k.api.search_depth?k.api.search_depth():depthLimit,
-    searchBudget:limit,depthLimit};
+    searchBudget:limit,depthLimit,rootWidth};
   return result;
 }
 
@@ -527,7 +529,9 @@ function sf55cHost(g,replyPolicy=null){
   const limit=sf55cReplyPolicyNodeLimit(replyPolicy,requested);
   const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
   const depthLimit=sf55cReplyPolicyDepthLimit(replyPolicy,requestedDepth);
-  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),pathCounts:[],pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],moveBuffers:[],replyPolicy};
+  const rootWidth=replyPolicy&&Number.isFinite(replyPolicy.rootWidth)
+    ?Math.max(SF55C.multiPV,Math.min(12,Math.round(replyPolicy.rootWidth))):SF55C.multiPV;
+  const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),pathCounts:[],pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],moveBuffers:[],replyPolicy,rootWidth};
   ctx.material=0;for(const piece of g.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
   for(const e of roots){sf55cApply(g,ctx,e.raw,1);try{e.score=-sf55cEvaluate(g);}finally{sf55cUndo(g,ctx,e.raw,1);}}
@@ -543,7 +547,7 @@ function sf55cHost(g,replyPolicy=null){
       e.exact=e.score>threshold || threshold===-SF55C.mate;
       e.deep=e.score;e.preliminary=e.score;
       next.push(e);next.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
-      if(next.length>=SF55C.multiPV)threshold=next[SF55C.multiPV-1].score;
+      if(next.length>=rootWidth)threshold=next[rootWidth-1].score;
     }
     if(ctx.abort)break;
     complete=next;
@@ -557,6 +561,7 @@ function sf55cHost(g,replyPolicy=null){
   result.nodes=ctx.nodes;result.depth=ctx.depth-(ctx.abort?1:0);
   result.searchBudget=ctx.limit;
   result.depthLimit=depthLimit;
+  result.rootWidth=rootWidth;
   globalThis.SF55C_LAST=result;
   g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;
   return result;
