@@ -49,9 +49,11 @@ const ARMX_FULL = Object.freeze({
   maxRootWidth: 4,
   matureOpponentMoves: 6,
   opportunityScanStride: 2,
-  rootBreadthEvidenceThreshold: 0.96,
+  rootBreadthEvidenceThreshold: 0.80,
   stateContextMinEvidence: 5,
   stateContextScale: 0.55,
+  pieceBaselinePrior: 0.22,
+  pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.82,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
@@ -509,12 +511,19 @@ function armxFullFeaturePreference(book,feature){
   const rate=armxFullRawFrequency(book,feature);
   const pieceFeatures=['pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove'];
   if(pieceFeatures.includes(feature)){
-    const observedRates=pieceFeatures
-      .map(name=>armxFullChoiceRate(book,name))
-      .filter(row=>row.evidence>=ARMX_FULL.minChoiceEvidence)
-      .map(row=>row.rate);
-    const opponentBaseline=observedRates.length?armxFullAverage(observedRates):rate;
-    return armxFullClamp((rate-opponentBaseline)*2.2,-1,1)*confidence;
+    let weightedRate=0,totalWeight=0;
+    for(const name of pieceFeatures){
+      const observed=armxFullChoiceRate(book,name);
+      if(observed.evidence<ARMX_FULL.minChoiceEvidence)continue;
+      const weight=Math.min(12,observed.evidence);
+      weightedRate+=observed.rate*weight;
+      totalWeight+=weight;
+    }
+    const priorWeight=ARMX_FULL.pieceBaselinePriorWeight;
+    const opponentBaseline=totalWeight
+      ?(ARMX_FULL.pieceBaselinePrior*priorWeight+weightedRate)/(priorWeight+totalWeight)
+      :ARMX_FULL.pieceBaselinePrior;
+    return armxFullClamp((rate-opponentBaseline)*1.8,-1,1)*confidence;
   }
   if(feature==='advance'||feature==='retreat'){
     const other=armxFullRawFrequency(book,feature==='advance'?'retreat':'advance');
@@ -607,20 +616,26 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const surprise=book.surpriseWeight
     ?armxFullClamp((book.surpriseSum/book.surpriseWeight-0.45)/1.4,0,1):0;
 
-  const searchBudget=Math.round(
+  const fullEvidenceBudget=Math.round(
     ARMX_FULL.baseSearchNodes
     +ARMX_FULL.maxEvidenceSearchNodes*learnedStrength
     +ARMX_FULL.maxSurpriseSearchNodes*surprise*learnedStrength
   );
+  const previewSearchBudget=preview&&Number.isFinite(preview.searchBudget)
+    ?preview.searchBudget:ARMX_FULL.baseSearchNodes;
+  const searchBudget=Math.max(previewSearchBudget,fullEvidenceBudget);
   // Extra root breadth is expensive and can dilute depth. Unlock the fourth
   // finalist only when the opponent notebook is genuinely mature/useful.
   const breadthEvidence=learnedStrength*(0.85+0.15*surprise);
   const rootWidth=ARMX_FULL.baseRootWidth
     +(breadthEvidence>=ARMX_FULL.rootBreadthEvidenceThreshold
       ?Math.min(1,ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth):0);
-  const maxDepth=Math.round(
+  const fullEvidenceDepth=Math.round(
     ARMX_FULL.baseDepth+(ARMX_FULL.maxEvidenceDepth-ARMX_FULL.baseDepth)*learnedStrength
   );
+  const previewDepth=preview&&Number.isFinite(preview.maxDepth)
+    ?preview.maxDepth:ARMX_FULL.baseDepth;
+  const maxDepth=Math.max(previewDepth,fullEvidenceDepth);
 
   const previewWeights=preview&&preview.weights?preview.weights:new Float64Array(13);
   const compiledWeights=armxFullCompiledPolicyWeights(previewWeights,book);
