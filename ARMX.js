@@ -75,6 +75,9 @@ const ARMX_FULL = Object.freeze({
   ownOutcomeScale: 0.80,
   ownOutcomeMinEvidence: 3.0,
   ownOutcomeMinConsistency: 0.40,
+  ownContextOutcomeScale: 0.70,
+  ownContextOutcomeMinEvidence: 2.5,
+  ownContextOutcomeMinConsistency: 0.45,
   extendedReplyScanCandidates: 2,
   extendedReplyScanStride: 2,
   policyWeightDeltaScale: 0,
@@ -372,6 +375,8 @@ function armxFullNewNotebook(perspective,game,observationStartPly,previewProfile
     pendingExtendedEffects:[],
     ourExtendedEffects:armxFullFreshEffects(),
     pendingOurExtendedEffects:[],
+    ourContextEffects:Object.create(null),
+    pendingOurContextEffects:[],
     currentScore:armxPreviewStateSnapshot(replay,perspective).score,
     lastOurFeatures:new Set(),
     surpriseSum:0,
@@ -517,6 +522,54 @@ function armxFullResolveOwnExtendedEffects(book,currentPly,currentScore){
     );
   }
   book.pendingOurExtendedEffects=keep;
+}
+function armxFullOwnContextEffect(book,stateContext,moveFeature){
+  const row=book.ourContextEffects[armxFullResponseKey(stateContext,moveFeature)];
+  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
+    return {
+      value:0,evidence:row?row.weight:0,consistency:0,
+      observations:row?row.observations:new Set()
+    };
+  }
+  const directionalWeight=(row.positiveWeight||0)+(row.negativeWeight||0);
+  const consistency=directionalWeight
+    ?Math.abs((row.positiveWeight||0)-(row.negativeWeight||0))/directionalWeight
+    :0;
+  return {
+    value:row.impact/row.weight,evidence:row.weight,consistency,
+    observations:row.observations
+  };
+}
+function armxFullRecordOwnContextEffects(book,pairKeys,impact,weight,observationId){
+  if(!pairKeys||!pairKeys.length)return;
+  const effectScale=Number(ARMX_PREVIEW.effectScale)||360;
+  const normalized=armxFullClamp(impact/effectScale,-1,1);
+  for(const key of pairKeys){
+    let row=book.ourContextEffects[key];
+    if(!row){
+      row=book.ourContextEffects[key]={
+        weight:0,impact:0,impactSq:0,positiveWeight:0,negativeWeight:0,
+        observations:new Set()
+      };
+    }
+    row.weight+=weight;
+    row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
+    if(normalized>0.015)row.positiveWeight+=weight;
+    else if(normalized<-0.015)row.negativeWeight+=weight;
+    row.observations.add(observationId);
+  }
+}
+function armxFullResolveOwnContextEffects(book,currentPly,currentScore){
+  if(!book.pendingOurContextEffects.length)return;
+  const keep=[];
+  for(const event of book.pendingOurContextEffects){
+    if(currentPly<event.resolveAt){keep.push(event);continue;}
+    armxFullRecordOwnContextEffects(
+      book,event.pairKeys,currentScore-event.before,event.weight,event.observationId
+    );
+  }
+  book.pendingOurContextEffects=keep;
 }
 function armxFullOwnOutcomeEffect(book,feature){
   // Preview already owns its proven ourEffects subset. Full ARMX's additional
@@ -667,6 +720,27 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
             features:ownExtended,before:book.currentScore,observationId:index,
             resolveAt:index+4,weight:0.35,
           });
+
+          const afterContexts=armxFullStateContextsAfterMove(
+            book.replay,move,book.perspective
+          );
+          const contextPairs=[];
+          for(const stateContext of afterContexts){
+            if(!ARMX_FULL_STATE_CONTEXTS.includes(stateContext))continue;
+            for(const moveFeature of ownExtended){
+              contextPairs.push(armxFullResponseKey(stateContext,moveFeature));
+            }
+          }
+          if(contextPairs.length){
+            book.pendingOurContextEffects.push({
+              pairKeys:contextPairs,before:book.currentScore,observationId:index,
+              resolveAt:index+2,weight:0.65,
+            });
+            book.pendingOurContextEffects.push({
+              pairKeys:contextPairs,before:book.currentScore,observationId:index,
+              resolveAt:index+4,weight:0.35,
+            });
+          }
         }
         book.lastOurFeatures=new Set(features);
       }
@@ -679,10 +753,12 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
     armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);
     armxFullResolveExtendedEffects(book,book.processedPlies,book.currentScore);
     armxFullResolveOwnExtendedEffects(book,book.processedPlies,book.currentScore);
+    armxFullResolveOwnContextEffects(book,book.processedPlies,book.currentScore);
   }
   armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);
   armxFullResolveExtendedEffects(book,book.processedPlies,book.currentScore);
   armxFullResolveOwnExtendedEffects(book,book.processedPlies,book.currentScore);
+  armxFullResolveOwnContextEffects(book,book.processedPlies,book.currentScore);
   return book;
 }
 function armxFullNotebookMaturity(book){
@@ -1082,11 +1158,36 @@ function armxFullCandidateResponseReport(
     evidence+=Math.min(1.5,0.45*ownOutcomeWeight);
   }
 
+  let ownContextOutcome=0,ownContextWeight=0;
+  const stateContexts=Array.from(contextFeatures).filter(
+    feature=>ARMX_FULL_STATE_CONTEXTS.includes(feature)
+  );
+  const moveContexts=Array.from(contextFeatures).filter(
+    feature=>ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature)
+  );
+  for(const stateContext of stateContexts){
+    for(const moveFeature of moveContexts){
+      const effect=armxFullOwnContextEffect(book,stateContext,moveFeature);
+      if(effect.evidence<ARMX_FULL.ownContextOutcomeMinEvidence
+          ||effect.consistency<ARMX_FULL.ownContextOutcomeMinConsistency)continue;
+      const confidence=armxFullClamp(effect.evidence/5,0,1)
+        *armxFullClamp(effect.consistency,0,1);
+      ownContextOutcome+=effect.value*confidence;
+      ownContextWeight+=confidence;
+      recordObservations(effect.observations);
+    }
+  }
+  if(ownContextWeight){
+    ownContextOutcome/=ownContextWeight;
+    evidence+=Math.min(1.25,0.40*ownContextWeight);
+  }
+
   return {
     contextFeatures:Array.from(contextFeatures),
     expectedOpponentOutcome:contextualOutcome,
     opponentPreferenceSignal:preferenceSignal,
     ownOutcome,
+    ownContextOutcome,
     evidence:Math.min(book.opponentMoves,evidence,independentObservations.size),
     replyCount,
     forcingReplyRate,
@@ -1251,7 +1352,8 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const previewAdjustment=(Number(previewReport.adjustment)||0)*ARMX_FULL.previewDecisionGain;
     const noteConfidence=armxFullClamp(response.evidence/ARMX_FULL.fullConfidenceEvidence,0,1);
     const learnedSignal=response.expectedOpponentOutcome
-      +ARMX_FULL.ownOutcomeScale*(Number(response.ownOutcome)||0);
+      +ARMX_FULL.ownOutcomeScale*(Number(response.ownOutcome)||0)
+      +ARMX_FULL.ownContextOutcomeScale*(Number(response.ownContextOutcome)||0);
     const noteAdjustment=armxFullClamp(
       learnedSignal*ARMX_FULL.fullNoteScale*noteConfidence*maturity,
       -ARMX_FULL.maxNoteAdjustment,ARMX_FULL.maxNoteAdjustment
