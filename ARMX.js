@@ -413,7 +413,7 @@ function armxFullCompiledPolicyWeights(previewWeights,book){
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   // Style is deliberately ignored: all three models receive the same Full ARMX.
   const previewProfile=armxPreviewSyncProfile(game,perspective);
-  const preview=armxPreviewOpponentPolicy(game,perspective,previewProfile);
+  const preview=armxPreviewOpponentPolicy(game,perspective);
   const book=armxFullSyncNotebook(game,perspective,previewProfile);
   const maturity=armxFullNotebookMaturity(book);
   const noteSummary=armxFullNotebookSummary(book);
