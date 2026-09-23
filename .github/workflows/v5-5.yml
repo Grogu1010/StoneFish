@@ -23,6 +23,8 @@ on:
       - 'benchmark_v5_5.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_browser.html'
+      - 'benchmark_armx_browser_ci.js'
       - 'benchmark_armx_compiled_parity.js'
       - 'benchmark_armx_compiled_vs_current.js'
       - 'benchmark_armx_compiled_vs_noarmx.js'
@@ -48,6 +50,8 @@ on:
       - 'benchmark_v5_5.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_browser.html'
+      - 'benchmark_armx_browser_ci.js'
       - 'benchmark_armx_compiled_parity.js'
       - 'benchmark_armx_compiled_vs_current.js'
       - 'benchmark_armx_compiled_vs_noarmx.js'
@@ -68,6 +72,8 @@ jobs:
         env:
           STONEFISH_CC: clang
         run: node build_v5_5_kernel.cjs
+      - name: Show rebuilt native kernel diff
+        run: git diff --stat -- Stonefish_v5_5_native.js
       - name: Syntax check ARMX-preview
         run: node --check ARMX-preview.js
       - name: Syntax check v5.5 native search
@@ -84,6 +90,8 @@ jobs:
         run: node --check benchmark_v5_5_teacher.js
       - name: Syntax check ARMX-preview in-game diagnostics
         run: node --check benchmark_armx_preview.js
+      - name: Syntax check browser ARMX benchmark runner
+        run: node --check benchmark_armx_browser_ci.js
       - name: Verify native search and capture generation
         run: node benchmark_v5_5_native_contract.js
       - name: Verify opponent memory contracts
@@ -102,10 +110,21 @@ jobs:
         env:
           ARMX_H2H_GAMES: '40'
         run: node benchmark_armx_compiled_vs_current.js
+      - name: Profile ARMX browser overhead
+        env:
+          ARMX_BROWSER_GAMES: '10'
+          ARMX_BROWSER_MAX_TIME_RATIO: '99'
+          ARMX_BROWSER_PROFILE: '1'
+        run: node benchmark_armx_browser_ci.js
+      - name: Measure ARMX versus No-ARMX in Chrome worker
+        env:
+          ARMX_BROWSER_GAMES: '40'
+          ARMX_BROWSER_MAX_TIME_RATIO: '1.27'
+        run: node benchmark_armx_browser_ci.js
       - name: Measure compiled ARMX versus No-ARMX
         env:
-          ARMX_H2H_GAMES: '40'
-          ARMX_MAX_TIME_RATIO: '1.4'
+          ARMX_H2H_GAMES: '60'
+          ARMX_MAX_TIME_RATIO: '1.25'
         run: node benchmark_armx_compiled_vs_noarmx.js
       - name: Smoke test the frozen ARMX strength baseline
         env:
