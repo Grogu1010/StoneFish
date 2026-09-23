@@ -1001,8 +1001,8 @@ function armxFullCandidateResponseReport(
   const effectiveReplyCompression=(Number(styleProfile.replyCompressionWeight)||0)
     +styleAhead*(Number(styleProfile.aheadReplyCompressionWeight)||0)
     +styleBehind*(Number(styleProfile.behindReplyCompressionWeight)||0);
-  const needsReplyCount=style!=='artemis'&&Math.abs(effectiveReplyCompression)>=0.08;
-  const needsReplySafety=style!=='artemis'&&Boolean(
+  const needsReplyCount=Math.abs(effectiveReplyCompression)>=0.08;
+  const needsReplySafety=Boolean(
     styleProfile.opponentForcingReplyWeight||styleProfile.behindForcingReplyWeight
       ||styleProfile.opponentKingAttackReplyWeight||styleProfile.behindKingAttackReplyWeight
       ||styleProfile.opponentCaptureReplyWeight||styleProfile.behindCaptureReplyWeight
@@ -1010,7 +1010,7 @@ function armxFullCandidateResponseReport(
   const effectiveRepetitionWeight=(Number(styleProfile.repetitionWeight)||0)
     +styleAhead*(Number(styleProfile.aheadRepetitionWeight)||0)
     +styleBehind*(Number(styleProfile.behindRepetitionWeight)||0);
-  const needsRepetition=style!=='artemis'&&Math.abs(effectiveRepetitionWeight)>=0.08;
+  const needsRepetition=Math.abs(effectiveRepetitionWeight)>=0.08;
 
   let repetitionPressure=0,replyCount=0;
   let forcingReplyRate=0,kingAttackReplyRate=0,captureReplyRate=0;
@@ -1463,8 +1463,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const styleLead=(Number(report.styleAdjustment)||0)
       -(Number(provisionalReport.styleAdjustment)||0);
     const minStyleLead=Number(gateStyleProfile.minStyleLead);
-    const styleAllowed=style!=='artemis'
-      &&styleLead>=(Number.isFinite(minStyleLead)?minStyleLead:Infinity);
+    const styleAllowed=Number.isFinite(minStyleLead)&&styleLead>=minStyleLead;
 
     // Preserve frozen Preview's exact pairwise vote. Preview itself chooses the
     // gain (normally 1.25x, 1.60x only for mature contrastive evidence).

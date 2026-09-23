@@ -393,13 +393,6 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
 // The opponent-adaptation policy itself is shared. Styles are allowed only in
 // the common finalist-style layer after this policy/search has run.
 {
-  const probe=positionAfter(generateOpening(0x55AA,14));
-  probe.armxObservationStartPly=0;
-  const policies={};
-  for(const style of ['athena','ares','artemis']){
-    const game=cloneGame(probe,0);
-    policies[style]=armxFullOpponentPolicy(game,game.side,style);
-  }
   const project=policy=>({
     observations:policy.observations,
     voluntaryObservations:policy.voluntaryObservations,
@@ -414,10 +407,34 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
     predictionSurprise:policy.predictionSurprise,
     weights:Array.from(policy.weights||[]),
   });
-  const baseline=JSON.stringify(project(policies.artemis));
-  for(const style of ['athena','ares']){
-    if(JSON.stringify(project(policies[style]))!==baseline){
-      throw new Error('Full ARMX policy must be style-independent: '+style+' differs from Artemis');
+  for(const [pair,plies] of [[0x55AA,10],[0x55AB,14],[0x55AC,18],[0x55AD,22]]){
+    const probe=positionAfter(generateOpening(pair,plies));
+    probe.armxObservationStartPly=0;
+    const paths={};
+    for(const style of ['athena','ares','artemis']){
+      const game=cloneGame(probe,0);
+      const policy=armxFullOpponentPolicy(game,game.side,style);
+      const replies=game.fastMoves();
+      const host=stonefishV55HostSearch(game,policy);
+      paths[style]={
+        policy:project(policy),
+        priorities:replies.map(move=>policy.priority(move)),
+        reductions:replies.map(move=>policy.isLowPriority(move)),
+        search:{
+          nodes:host.nodes,depth:host.depth,
+          finished:host.finished.map(entry=>({
+            move:stonefishV45RawUci(game,entry.raw),
+            score:entry.score,exact:entry.exact,
+          })),
+        },
+      };
+    }
+    const baseline=JSON.stringify(paths.artemis);
+    for(const style of ['athena','ares']){
+      if(JSON.stringify(paths[style])!==baseline){
+        throw new Error('Full ARMX policy/search must be style-independent: '
+          +style+' differs from Artemis after '+plies+' plies');
+      }
     }
   }
 }
