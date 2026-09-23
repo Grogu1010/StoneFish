@@ -60,10 +60,10 @@ const ARMX_FULL = Object.freeze({
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
   predictedReplyLimit: 10,
-  fullNoteMinEvidence: 5.5,
-  fullNoteMinConfidence: 0.65,
-  fullNoteMinDecisionLead: 1.5,
-  fullNoteMinPositiveSignal: 0.035,
+  fullNoteMinEvidence: 4.75,
+  fullNoteMinConfidence: 0.60,
+  fullNoteMinDecisionLead: 0.85,
+  fullNoteMinPositiveSignal: 0.030,
   fullNoteStrongAvoidSignal: -0.15,
   fullNoteEarlyPlies: 20,
   fullNoteEarlyEvidence: 8.5,
@@ -74,8 +74,8 @@ const ARMX_FULL = Object.freeze({
   // pay to relearn the same history a second time.
   previewDecisionGain: 1.25,
   fullDecisionGain: 1.00,
-  fullNoteScale: 155,
-  maxNoteAdjustment: 140,
+  fullNoteScale: 175,
+  maxNoteAdjustment: 160,
   maxHostGap: 40,
   maxDeepSacrifice: 32,
 
@@ -112,8 +112,8 @@ const ARMX_FULL = Object.freeze({
         knightMove:0.12, bishopMove:0.12, rookMove:0.04, queenMove:-0.08, kingMove:0.24,
       }),
       aheadWeights:Object.freeze({
-        capture:-0.35,trade:-0.55,simplify:-0.60,queenTrade:-0.50,
-        quiet:0.35,retreat:0.25,pawnPush:0.18,
+        capture:-1.15,trade:-1.75,simplify:-1.95,queenTrade:-1.65,
+        quiet:1.05,retreat:0.72,pawnPush:0.44,
       }),
       // When the host says Athena is worse, defensive play means converting
       // danger into a drawable ending rather than blindly preserving material.
@@ -122,16 +122,16 @@ const ARMX_FULL = Object.freeze({
         simplify:4.00,check:0.42,kingAttack:0.28,quiet:-1.35,retreat:1.15,castle:1.45,
       }),
       baseScale:5, earlyBoost:1.35, lateBoost:-0.15, paceTargetPlies:260,
-      aheadThreshold:170, behindThreshold:110, advantageRange:360, minStyleLead:18,
-      aheadScale:0.08, behindScale:4.80, replyCompressionWeight:0, capturedValueWeight:-0.12,
-      repetitionWeight:-0.30, aheadRepetitionWeight:-0.45, behindRepetitionWeight:9.20,
-      advantageDelayWeight:0.15, pawnClockResetWeight:1.80, aheadCandidateFloor:180,
+      aheadThreshold:80, behindThreshold:110, advantageRange:360, minStyleLead:18,
+      aheadScale:2.15, behindScale:4.80, replyCompressionWeight:0, capturedValueWeight:-0.12,
+      repetitionWeight:0, aheadRepetitionWeight:-1.10, behindRepetitionWeight:9.20,
+      advantageDelayWeight:3.10, pawnClockResetWeight:2.20, aheadCandidateFloor:180,
       patientOpponentScale:0.00, aggressiveOpponentScale:0.55,
       patientPressureWeight:0, aggressiveDefenseWeight:1.10,
       opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
-      aheadHostGapBonus:6, aheadDeepGapBonus:5, behindHostGapBonus:84, behindDeepGapBonus:46,
+      aheadHostGapBonus:62, aheadDeepGapBonus:42, behindHostGapBonus:84, behindDeepGapBonus:46,
       maxHostGap:10, maxDeepSacrifice:10,
     }),
     ares: Object.freeze({
@@ -144,24 +144,24 @@ const ARMX_FULL = Object.freeze({
         knightMove:0.12, bishopMove:0.14, rookMove:0.20, queenMove:0.22, kingMove:-0.20,
       }),
       aheadWeights:Object.freeze({
-        capture:3.45,trade:3.30,rookTrade:2.55,queenTrade:2.40,minorTrade:2.18,
-        simplify:3.85,check:0.92,kingAttack:1.14,quiet:-1.28,retreat:-1.18,
+        capture:4.20,trade:4.00,rookTrade:3.05,queenTrade:2.90,minorTrade:2.60,
+        simplify:4.55,check:1.05,kingAttack:1.30,quiet:-1.48,retreat:-1.38,
       }),
       behindWeights:Object.freeze({
         capture:0.15,trade:-0.55,simplify:-0.65,check:1.55,kingAttack:1.70,
         forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
       }),
-      baseScale:8, earlyBoost:0.10, lateBoost:6.20, paceTargetPlies:42,
-      aheadThreshold:10, behindThreshold:100, advantageRange:420, minStyleLead:10,
-      aheadScale:4.10, behindScale:0.20, replyCompressionWeight:0, capturedValueWeight:1.05,
-      repetitionWeight:-0.85, aheadRepetitionWeight:-6.20, behindRepetitionWeight:-0.35,
+      baseScale:8, earlyBoost:0.18, lateBoost:7.20, paceTargetPlies:42,
+      aheadThreshold:5, behindThreshold:100, advantageRange:390, minStyleLead:10,
+      aheadScale:5.00, behindScale:0.20, replyCompressionWeight:0, capturedValueWeight:2.35,
+      repetitionWeight:0, aheadRepetitionWeight:-6.80, behindRepetitionWeight:-0.35,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
-      patientOpponentScale:1.20, aggressiveOpponentScale:0.00,
-      patientPressureWeight:3.60, aggressiveDefenseWeight:0,
+      patientOpponentScale:1.60, aggressiveOpponentScale:0.00,
+      patientPressureWeight:5.00, aggressiveDefenseWeight:0,
       opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
-      aheadHostGapBonus:118, aheadDeepGapBonus:82, behindHostGapBonus:0, behindDeepGapBonus:0,
+      aheadHostGapBonus:142, aheadDeepGapBonus:96, behindHostGapBonus:0, behindDeepGapBonus:0,
       maxHostGap:16, maxDeepSacrifice:16,
     }),
   }),
@@ -679,7 +679,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   };
 }
 function armxFullCandidateResponseReport(
-  game,entry,book,previewReport,style='artemis',allowExtendedReplyScan=true
+  game,entry,book,previewReport,style='artemis',allowExtendedReplyScan=true,hostScore=0
 ){
   const contextFeatures=new Set(previewReport&&previewReport.features||[]);
   for(const feature of armxFullPredictiveMoveFeatures(game,entry.raw))contextFeatures.add(feature);
@@ -703,9 +703,17 @@ function armxFullCandidateResponseReport(
       ||styleProfile.opponentKingAttackReplyWeight||styleProfile.behindKingAttackReplyWeight
       ||styleProfile.opponentCaptureReplyWeight||styleProfile.behindCaptureReplyWeight
   );
-  const needsRepetition=style!=='artemis'&&(
-    styleProfile.repetitionWeight||styleProfile.aheadRepetitionWeight||styleProfile.behindRepetitionWeight
+  const styleRange=Math.max(1,Number(styleProfile.advantageRange)||580);
+  const styleAhead=armxFullClamp(
+    (Number(hostScore)-(Number(styleProfile.aheadThreshold)||0))/styleRange,0,1
   );
+  const styleBehind=armxFullClamp(
+    (-Number(hostScore)-(Number(styleProfile.behindThreshold)||0))/styleRange,0,1
+  );
+  const effectiveRepetitionWeight=(Number(styleProfile.repetitionWeight)||0)
+    +styleAhead*(Number(styleProfile.aheadRepetitionWeight)||0)
+    +styleBehind*(Number(styleProfile.behindRepetitionWeight)||0);
+  const needsRepetition=style!=='artemis'&&Math.abs(effectiveRepetitionWeight)>=0.08;
 
   let repetitionPressure=0,replyCount=0;
   let forcingReplyRate=0,kingAttackReplyRate=0,captureReplyRate=0;
@@ -944,7 +952,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const previewReport=armxPreviewCandidateReport(game,entry,previewProfile);
     const allowExtendedReplyScan=index<ARMX_FULL.extendedReplyScanCandidates;
     const response=armxFullCandidateResponseReport(
-      game,entry,book,previewReport,style,allowExtendedReplyScan
+      game,entry,book,previewReport,style,allowExtendedReplyScan,hostBest.score
     );
 
     // Preview is the proven subset. Full ARMX adds only contextual information
