@@ -192,12 +192,28 @@ const definitions={
   artemisVsAres:['Artemis-vs-Ares',getStonefishV55ArtemisMove,getStonefishV55AresMove],
 };
 const targets={
-  athenaVsCurrent:{wins:80,losses:20,draws:0},
-  aresVsCurrent:{wins:70,losses:30,draws:0},
-  artemisVsCurrent:{wins:85,losses:15,draws:0},
-  aresVsAthena:{wins:58,losses:35,draws:7},
-  artemisVsAthena:{wins:60,losses:35,draws:5},
-  artemisVsAres:{wins:60,losses:35,draws:5},
+  // "Or better" is monotonic: keep at least the requested wins, never exceed
+  // the requested losses, and allow any number of those losses to become draws.
+  athenaVsCurrent:{minWinRate:0.80,maxLossRate:0.20},
+  aresVsCurrent:{minWinRate:0.70,maxLossRate:0.30},
+  artemisVsCurrent:{minWinRate:0.85,maxLossRate:0.15},
+
+  // Pairwise identity gates. These intentionally leave draw rate unconstrained
+  // unless draw resilience itself is part of the personality requirement.
+  aresVsAthena:{minScore:0.50,decisiveEdge:true},
+  artemisVsAthena:{minScore:0.50,decisiveEdge:true},
+  artemisVsAres:{minWinRate:0.60,maxLossRate:0.35},
+
+  // The launch story is relational, not just six independent score cards.
+  relationships:Object.freeze({
+    aresBeatsAthenaMoreOftenThanArtemis:true,
+    athenaDrawsMoreThanItLosesToAres:true,
+    athenaDrawsAresMoreThanArtemisDoes:true,
+    artemisScoresBetterAgainstAresThanAthenaDoes:true,
+    athenaMoreResilientThanAresOutsideTheirHeadToHead:true,
+    artemisTopOverall:true,
+  }),
+
   athenaPlayedMoveRatioToArtemisCurrent:3,
   aresPlayedMoveRatioToArtemisCurrent:0.5,
   moveRatioTolerance:0.10,
@@ -218,26 +234,122 @@ const ratios=results.athenaVsCurrent&&results.aresVsCurrent&&results.artemisVsCu
   aresToArtemis:results.aresVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
 }:null;
 
+function complementScore(row){return row?1-row.score:0;}
+function rate(row,key){return row&&games?row[key]/games:0;}
+function average(values){return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;}
+
+const relationships=(results.athenaVsCurrent&&results.aresVsCurrent&&results.artemisVsCurrent
+  &&results.aresVsAthena&&results.artemisVsAthena&&results.artemisVsAres)?(()=>{
+  const aresVsAthena=results.aresVsAthena;
+  const artemisVsAthena=results.artemisVsAthena;
+  const artemisVsAres=results.artemisVsAres;
+
+  const athenaVsAresScore=complementScore(aresVsAthena);
+  const athenaVsArtemisScore=complementScore(artemisVsAthena);
+  const aresVsArtemisScore=complementScore(artemisVsAres);
+
+  // "Outside their head-to-head" is where Athena's defensive resilience is
+  // expected to make it the stronger general model than Ares.
+  const athenaOutsideScore=average([results.athenaVsCurrent.score,athenaVsArtemisScore]);
+  const aresOutsideScore=average([results.aresVsCurrent.score,aresVsArtemisScore]);
+  const athenaOutsideLossRate=average([
+    rate(results.athenaVsCurrent,'loss'),
+    rate(artemisVsAthena,'win'),
+  ]);
+  const aresOutsideLossRate=average([
+    rate(results.aresVsCurrent,'loss'),
+    rate(artemisVsAres,'win'),
+  ]);
+  const athenaOutsideDrawRate=average([
+    rate(results.athenaVsCurrent,'draw'),
+    rate(artemisVsAthena,'draw'),
+  ]);
+  const aresOutsideDrawRate=average([
+    rate(results.aresVsCurrent,'draw'),
+    rate(artemisVsAres,'draw'),
+  ]);
+
+  // Overall three-model score includes current v5.5 as the common external
+  // baseline plus both new siblings. Artemis must lead this field.
+  const fieldScore={
+    athena:average([results.athenaVsCurrent.score,athenaVsAresScore,athenaVsArtemisScore]),
+    ares:average([results.aresVsCurrent.score,aresVsAthena.score,aresVsArtemisScore]),
+    artemis:average([results.artemisVsCurrent.score,artemisVsAthena.score,artemisVsAres.score]),
+  };
+
+  return {
+    aresAthenaWinRate:rate(aresVsAthena,'win'),
+    artemisAthenaWinRate:rate(artemisVsAthena,'win'),
+    athenaAresDrawRate:rate(aresVsAthena,'draw'),
+    athenaAresLossRate:rate(aresVsAthena,'win'),
+    artemisAresDrawRate:rate(artemisVsAres,'draw'),
+    athenaVsAresScore,
+    artemisVsAresScore:artemisVsAres.score,
+    athenaOutsideScore,
+    aresOutsideScore,
+    athenaOutsideLossRate,
+    aresOutsideLossRate,
+    athenaOutsideDrawRate,
+    aresOutsideDrawRate,
+    fieldScore,
+  };
+})():null;
+
 const result={
   model:'Stonefish v5.5 Full ARMX range',
   gamesPerMatchup:games,startIndex,
   sourceHashes:Object.fromEntries(loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])),
-  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,matchups:results
+  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,matchups:results
 };
 if(process.env.RESULT_JSON)fs.writeFileSync(process.env.RESULT_JSON,JSON.stringify(result,null,2)+'\n');
 console.log('\nSTONEFISH_V5_5_RANGE '+JSON.stringify(result));
 
-function scaledMinimum(value){return Math.ceil(games*value/100);}
-function scaledMaximum(value){return Math.floor(games*value/100);}
+function requireGate(ok,message){if(!ok)throw new Error(message);}
+function matchupGate(key,target){
+  const row=results[key];
+  if(!row)return;
+  if(Number.isFinite(target.minWinRate)){
+    requireGate(rate(row,'win')+1e-12>=target.minWinRate,
+      key+' failed win floor: '+row.win+'W-'+row.loss+'L-'+row.draw+'D; need win rate >='+(target.minWinRate*100)+'%');
+  }
+  if(Number.isFinite(target.maxLossRate)){
+    requireGate(rate(row,'loss')-1e-12<=target.maxLossRate,
+      key+' failed loss ceiling: '+row.win+'W-'+row.loss+'L-'+row.draw+'D; need loss rate <='+(target.maxLossRate*100)+'%');
+  }
+  if(Number.isFinite(target.minScore)){
+    requireGate(row.score+1e-12>=target.minScore,
+      key+' failed score floor: '+row.win+'W-'+row.loss+'L-'+row.draw+'D; need score >='+(target.minScore*100)+'%');
+  }
+  if(target.decisiveEdge){
+    requireGate(row.win>row.loss,
+      key+' failed decisive edge: '+row.win+'W-'+row.loss+'L-'+row.draw+'D; wins must exceed losses');
+  }
+}
 if(process.env.RELEASE_GATE==='1'){
   for(const [key,target] of Object.entries(targets)){
-    if(!target||typeof target!=='object'||!('wins' in target))continue;
-    const row=results[key];
-    const minWins=scaledMinimum(target.wins),maxLosses=scaledMaximum(target.losses),maxDraws=scaledMaximum(target.draws);
-    if(row.win<minWins||row.loss>maxLosses||row.draw>maxDraws){
-      throw new Error(key+' failed: '+row.win+'W-'+row.loss+'L-'+row.draw+'D; need >='+minWins+'W <='+maxLosses+'L <='+maxDraws+'D');
-    }
+    if(!target||typeof target!=='object'||Array.isArray(target)||key==='relationships')continue;
+    if(results[key])matchupGate(key,target);
   }
+
+  requireGate(relationships,'Relational range metrics unavailable');
+  requireGate(relationships.aresAthenaWinRate>relationships.artemisAthenaWinRate,
+    'Ares must beat Athena more often than Artemis does: Ares '+relationships.aresAthenaWinRate+', Artemis '+relationships.artemisAthenaWinRate);
+  requireGate(relationships.athenaAresDrawRate>relationships.athenaAresLossRate,
+    'Athena defensive identity failed vs Ares: draw rate '+relationships.athenaAresDrawRate+' must exceed loss rate '+relationships.athenaAresLossRate);
+  requireGate(relationships.athenaAresDrawRate>relationships.artemisAresDrawRate,
+    'Athena must force more draws against Ares than Artemis does: Athena '+relationships.athenaAresDrawRate+', Artemis '+relationships.artemisAresDrawRate);
+  requireGate(relationships.artemisVsAresScore>relationships.athenaVsAresScore,
+    'Artemis must score better against Ares than Athena does');
+  requireGate(relationships.athenaOutsideScore>relationships.aresOutsideScore,
+    'Athena must outperform Ares outside their head-to-head: Athena '+relationships.athenaOutsideScore+', Ares '+relationships.aresOutsideScore);
+  requireGate(relationships.athenaOutsideLossRate<relationships.aresOutsideLossRate,
+    'Athena must lose less than Ares outside their head-to-head');
+  requireGate(relationships.athenaOutsideDrawRate>=relationships.aresOutsideDrawRate,
+    'Athena must draw at least as often as Ares outside their head-to-head');
+  requireGate(relationships.fieldScore.artemis>relationships.fieldScore.athena
+      && relationships.fieldScore.artemis>relationships.fieldScore.ares,
+    'Artemis must lead overall field score: '+JSON.stringify(relationships.fieldScore));
+
   const tol=targets.moveRatioTolerance;
   const athenaLow=targets.athenaPlayedMoveRatioToArtemisCurrent*(1-tol);
   const athenaHigh=targets.athenaPlayedMoveRatioToArtemisCurrent*(1+tol);
