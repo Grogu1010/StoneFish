@@ -168,8 +168,8 @@ const ARMX_FULL = Object.freeze({
       repetitionWeight:0, aheadRepetitionWeight:-8.80, behindRepetitionWeight:-0.30,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
       patientOpponentScale:0.25, aggressiveOpponentScale:0.00,
-      patientPressureThreshold:0.30, patientPressureRange:0.18,
-      patientPressureWeight:28.00, aggressiveDefenseWeight:0,
+      patientPressureThreshold:0.10, patientPressureRange:0.10,
+      patientPressureWeight:30.00, aggressiveDefenseWeight:0,
       opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
@@ -995,28 +995,37 @@ function armxFullCandidateResponseReport(
   };
 }
 function armxFullOpponentTendencies(book){
-  const tendency=feature=>{
-    const row=armxFullChoiceRate(book,feature);
-    if(row.evidence<ARMX_FULL.minChoiceEvidence)return 0;
-    return (row.rate-0.5)*2*armxFullClamp(row.evidence/8,0,1);
+  // Specialist classification uses the opponent's observed voluntary move mix.
+  // The core prediction model remains opportunity-conditioned; this classifier
+  // answers the narrower question "what kind of opponent have they actually
+  // been in this game?" and is much less distorted by rare move categories.
+  const observations=Math.max(0,Number(book&&book.voluntaryOpponentMoves)||0);
+  const observed=feature=>observations
+    ?(Number(book.choices&&book.choices[feature])||0)/observations:0;
+  const confidence=armxFullClamp(observations/8,0,1);
+
+  const quiet=observed('quiet');
+  const retreat=observed('retreat');
+  const capture=observed('capture');
+  const trade=observed('trade');
+  const simplify=observed('simplify');
+  const check=observed('check');
+  const kingAttack=observed('kingAttack');
+
+  // A defensive/patient signature is not merely "quiet": it also avoids
+  // forcing moves and simplification while preserving retreating flexibility.
+  const patientRaw=
+    0.90*quiet+0.45*retreat
+      -0.55*capture-0.35*trade-0.40*simplify
+      -0.70*check-0.55*kingAttack-0.30;
+  const aggressiveRaw=
+    0.55*capture+0.35*trade+0.40*simplify
+      +0.70*check+0.55*kingAttack
+      -0.70*quiet-0.20*retreat+0.10;
+  return {
+    patient:armxFullClamp(patientRaw*confidence,-1,1),
+    aggressive:armxFullClamp(aggressiveRaw*confidence,-1,1),
   };
-  const quiet=tendency('quiet');
-  const retreat=tendency('retreat');
-  const castle=tendency('castle');
-  const capture=tendency('capture');
-  const check=tendency('check');
-  const kingAttack=tendency('kingAttack');
-  const patient=armxFullClamp(
-    0.70*quiet+0.15*retreat+0.15*castle
-      -0.34*capture-0.28*check-0.38*kingAttack,
-    -1,1
-  );
-  const aggressive=armxFullClamp(
-    0.34*capture+0.28*check+0.38*kingAttack
-      -0.55*quiet-0.10*retreat,
-    -1,1
-  );
-  return {patient,aggressive};
 }
 function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   const profile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
