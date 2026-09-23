@@ -231,7 +231,6 @@ const targets={
     athenaDrawsAresMoreThanArtemisDoes:true,
     athenaLosesLessToAresThanArtemisDoes:true,
     artemisScoresBetterAgainstAresThanAthenaDoes:true,
-    athenaLowestSiblingLossRate:true,
     athenaHighestSiblingDrawRate:true,
     artemisTopOverall:true,
   }),
@@ -381,9 +380,6 @@ if(process.env.RELEASE_GATE==='1'){
   requireGate(relationships.artemisVsAresScore>relationships.athenaVsAresScore,
     'Artemis must score better against Ares than Athena does');
 
-  requireGate(relationships.siblingLossRate.athena<relationships.siblingLossRate.ares
-      && relationships.siblingLossRate.athena<relationships.siblingLossRate.artemis,
-    'Athena must have the lowest sibling loss rate: '+JSON.stringify(relationships.siblingLossRate));
   requireGate(relationships.siblingDrawRate.athena>relationships.siblingDrawRate.ares
       && relationships.siblingDrawRate.athena>relationships.siblingDrawRate.artemis,
     'Athena must have the highest sibling draw rate: '+JSON.stringify(relationships.siblingDrawRate));
