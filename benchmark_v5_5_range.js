@@ -318,6 +318,7 @@ const targets={
     maxCurrentScoreSpread:0.06,
     maxArtemisCurrentLead:0.05,
     maxFullArmxComponentTimeToPreviewComponentTimeRatio:2.0,
+    maxFullArmxTotalTimeToPreviewTotalTimeRatio:2.0,
     artemisBestAgainstCurrent:true,
     aresBeatsAthenaMoreOftenThanArtemis:true,
     athenaDrawsMoreThanItLosesToAres:true,
@@ -348,6 +349,14 @@ for(const [key,args] of Object.entries(definitions)){
 const ratios=results.athenaVsCurrent&&results.aresVsCurrent&&results.artemisVsCurrent?{
   athenaToArtemis:results.athenaVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
   aresToArtemis:results.aresVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
+  fullArmxToPreviewTotalTime:Object.freeze({
+    athena:results.athenaVsCurrent.opponentAverageMs
+      ?results.athenaVsCurrent.contenderAverageMs/results.athenaVsCurrent.opponentAverageMs:null,
+    ares:results.aresVsCurrent.opponentAverageMs
+      ?results.aresVsCurrent.contenderAverageMs/results.aresVsCurrent.opponentAverageMs:null,
+    artemis:results.artemisVsCurrent.opponentAverageMs
+      ?results.artemisVsCurrent.contenderAverageMs/results.artemisVsCurrent.opponentAverageMs:null,
+  }),
 }:null;
 
 function complementScore(row){return row?1-row.score:0;}
@@ -512,6 +521,13 @@ if(process.env.RELEASE_GATE==='1'){
         +targets.relationships.maxFullArmxComponentTimeToPreviewComponentTimeRatio+'x. '
         +'Preview '+armxComponentTime.previewAverageMs+' ms, Full '
         +armxComponentTime.fullAverageMs[style]+' ms');
+  }
+  for(const [style,totalRatio] of Object.entries(ratios.fullArmxToPreviewTotalTime)){
+    requireGate(Number.isFinite(totalRatio)
+        &&totalRatio<=targets.relationships.maxFullArmxTotalTimeToPreviewTotalTimeRatio,
+      style+' complete Full ARMX move path is too slow: '+totalRatio
+        +'x Preview; need <='
+        +targets.relationships.maxFullArmxTotalTimeToPreviewTotalTimeRatio+'x');
   }
 
   const tol=targets.moveRatioTolerance;
