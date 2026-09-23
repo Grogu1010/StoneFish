@@ -505,18 +505,22 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
     }
   }
 
-  let repetitionPressure=0;
+  let repetitionPressure=0,replyCount=0;
   const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
+  const needsReplyCount=style!=='artemis'&&Boolean(styleProfile.replyCompressionWeight);
   const needsRepetition=style!=='artemis'&&(
     styleProfile.repetitionWeight||styleProfile.aheadRepetitionWeight||styleProfile.behindRepetitionWeight
   );
-  if(needsRepetition){
+  if(needsReplyCount||needsRepetition){
     const historyDepth=game.historyStack.length;
     try{
       game.fastApply(entry.raw);
-      const key=game.fastPositionKey();
-      const count=game.positionCounts&&game.positionCounts.get(key)||0;
-      repetitionPressure=armxFullClamp(Math.max(0,count-1)/2,0,1);
+      if(needsReplyCount)replyCount=game.fastMoves().length;
+      if(needsRepetition){
+        const key=game.fastPositionKey();
+        const count=game.positionCounts&&game.positionCounts.get(key)||0;
+        repetitionPressure=armxFullClamp(Math.max(0,count-1)/2,0,1);
+      }
     }finally{
       while(game.historyStack.length>historyDepth)game.fastUndo();
     }
@@ -528,7 +532,7 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
     opponentPreferenceSignal:preferenceSignal,
     ownOutcome:0,
     evidence:Math.min(book.opponentMoves,evidence),
-    replyCount:Number(previewReport&&previewReport.replyCount)||0,
+    replyCount,
     repetitionPressure,
   };
 }
