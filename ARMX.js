@@ -190,6 +190,19 @@ function armxFullCheapMoveFeatures(move, side) {
   if((piece===2||piece===3)&&fromRank===0)features.add('development');
   return features;
 }
+function armxFullPredictiveMoveFeatures(game,move){
+  const features=armxFullCheapMoveFeatures(move,game.side);
+  if(!move)return features;
+  const piece=move.piece||Math.abs(game.boardState[move.from]||0);
+  const enemyKing=game.kingSq[-game.side];
+  if(piece!==6&&armxPreviewSquareDistance(move.to,enemyKing)<=2){
+    features.add('kingAttack');
+    features.add('forcing');
+  }
+  if(!move.captured&&!move.promotion&&!(move.flags&(4|8))
+      &&!features.has('kingAttack'))features.add('quiet');
+  return features;
+}
 function armxFullEffectValue(row) {
   if (!row || row.weight < ARMX_FULL.minEffectEvidence) return {value:0,evidence:row?row.weight:0};
   return {value:row.impact/row.weight,evidence:row.weight};
@@ -287,7 +300,7 @@ function armxFullObserveOpponent(book,game,chosenMove,index){
   const legal=game.fastMoves();
   const availableByFeature=new Set();
   for(const move of legal){
-    const features=armxFullMoveFeatures(game,move);
+    const features=armxFullPredictiveMoveFeatures(game,move);
     for(const feature of features)availableByFeature.add(feature);
   }
   const chosen=armxFullMoveFeatures(game,chosenMove);
@@ -510,7 +523,7 @@ function armxFullCandidateResponseReport(game,entry,book){
     const replies=game.fastMoves();
     const rows=[];
     for(const reply of replies){
-      const features=armxFullMoveFeatures(game,reply);
+      const features=armxFullPredictiveMoveFeatures(game,reply);
       let preference=0,preferenceEvidence=0,outcome=0,outcomeEvidence=0;
       for(const feature of features){
         const choice=armxFullChoiceRate(book,feature);
