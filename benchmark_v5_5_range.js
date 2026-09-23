@@ -245,6 +245,7 @@ const targets={
     maxArtemisLead:0.05,
     maxCurrentScoreSpread:0.06,
     maxArtemisCurrentLead:0.05,
+    maxFullArmxToPreviewTimeRatio:2.0,
     artemisBestAgainstCurrent:true,
     aresBeatsAthenaMoreOftenThanArtemis:true,
     athenaDrawsMoreThanItLosesToAres:true,
@@ -274,6 +275,14 @@ for(const [key,args] of Object.entries(definitions)){
 const ratios=results.athenaVsCurrent&&results.aresVsCurrent&&results.artemisVsCurrent?{
   athenaToArtemis:results.athenaVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
   aresToArtemis:results.aresVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
+  fullArmxToPreviewTime:Object.freeze({
+    athena:results.athenaVsCurrent.opponentAverageMs
+      ?results.athenaVsCurrent.contenderAverageMs/results.athenaVsCurrent.opponentAverageMs:null,
+    ares:results.aresVsCurrent.opponentAverageMs
+      ?results.aresVsCurrent.contenderAverageMs/results.aresVsCurrent.opponentAverageMs:null,
+    artemis:results.artemisVsCurrent.opponentAverageMs
+      ?results.artemisVsCurrent.contenderAverageMs/results.artemisVsCurrent.opponentAverageMs:null,
+  }),
 }:null;
 
 function complementScore(row){return row?1-row.score:0;}
@@ -425,6 +434,13 @@ if(process.env.RELEASE_GATE==='1'){
       && results.artemisVsCurrent.score-results.aresVsCurrent.score
       <=targets.relationships.maxArtemisCurrentLead,
     'Artemis current-v5.5 lead must stay modest');
+
+  for(const [style,timeRatio] of Object.entries(ratios.fullArmxToPreviewTime)){
+    requireGate(Number.isFinite(timeRatio)
+        &&timeRatio<=targets.relationships.maxFullArmxToPreviewTimeRatio,
+      style+' Full ARMX is too slow versus ARMX Preview: '+timeRatio+'x; need <='
+        +targets.relationships.maxFullArmxToPreviewTimeRatio+'x');
+  }
 
   const tol=targets.moveRatioTolerance;
   const athenaLow=targets.athenaPlayedMoveRatioToArtemisCurrent*(1-tol);
