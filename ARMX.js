@@ -59,8 +59,8 @@ const ARMX_FULL = Object.freeze({
   maxDeepSacrifice: 32,
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
-  styleScale: Object.freeze({athena: 15, ares: 17, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 320, ares: 220, artemis: 0}),
+  styleScale: Object.freeze({athena: 20, ares: 23, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 380, ares: 280, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -71,18 +71,18 @@ const ARMX_FULL = Object.freeze({
       baseScale:0, earlyBoost:0, lateBoost:0, paceTargetPlies:1,
       aheadScale:0, behindScale:0, replyCompressionWeight:0, capturedValueWeight:0,
       repetitionWeight:0, aheadRepetitionWeight:0, behindRepetitionWeight:0,
-      advantageDelayWeight:0, aheadCandidateFloor:-1000000000,
+      advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:-1000000000,
       patientOpponentScale:0, aggressiveOpponentScale:0,
       aheadHostGapBonus:0, aheadDeepGapBonus:0, behindHostGapBonus:0,
       maxHostGap:40, maxDeepSacrifice:32,
     }),
     athena: Object.freeze({
       weights: Object.freeze({
-        capture:-1.10, trade:-1.65, rookTrade:-1.30, queenTrade:-1.55,
-        minorTrade:-1.15, simplify:-1.55, check:-0.72, kingAttack:-0.82,
-        pawnPush:0.42, castle:1.70, quiet:1.72, advance:-0.36, retreat:1.12,
-        forcing:-0.72, promotion:0.10, center:0.16, kingside:0.12,
-        queenside:0.12, centralize:0.20, development:0.22, pawnMove:0.24,
+        capture:-1.80, trade:-2.60, rookTrade:-2.10, queenTrade:-2.45,
+        minorTrade:-1.90, simplify:-2.50, check:-1.00, kingAttack:-1.20,
+        pawnPush:0.68, castle:1.85, quiet:2.45, advance:-0.46, retreat:1.55,
+        forcing:-1.05, promotion:0.10, center:0.18, kingside:0.12,
+        queenside:0.12, centralize:0.22, development:0.25, pawnMove:0.42,
         knightMove:0.12, bishopMove:0.12, rookMove:0.04, queenMove:-0.08, kingMove:0.24,
       }),
       aheadWeights:Object.freeze({
@@ -95,20 +95,20 @@ const ARMX_FULL = Object.freeze({
         capture:1.05,trade:1.65,rookTrade:1.20,queenTrade:1.85,minorTrade:1.00,
         simplify:1.70,check:0.18,kingAttack:0.10,quiet:-0.48,retreat:0.35,castle:0.48,
       }),
-      baseScale:17, earlyBoost:4.20, lateBoost:-0.72, paceTargetPlies:260,
-      aheadScale:1.35, behindScale:0.70, replyCompressionWeight:-1.55, capturedValueWeight:-0.90,
-      repetitionWeight:0.20, aheadRepetitionWeight:-0.25, behindRepetitionWeight:4.25,
-      advantageDelayWeight:3.20, aheadCandidateFloor:80,
-      patientOpponentScale:0.05, aggressiveOpponentScale:0.55,
-      aheadHostGapBonus:320, aheadDeepGapBonus:230, behindHostGapBonus:12,
-      maxHostGap:45, maxDeepSacrifice:35,
+      baseScale:20, earlyBoost:5.00, lateBoost:-0.76, paceTargetPlies:260,
+      aheadScale:1.55, behindScale:0.78, replyCompressionWeight:-2.20, capturedValueWeight:-1.55,
+      repetitionWeight:0.10, aheadRepetitionWeight:-1.00, behindRepetitionWeight:5.00,
+      advantageDelayWeight:5.00, pawnClockResetWeight:3.20, aheadCandidateFloor:70,
+      patientOpponentScale:0.04, aggressiveOpponentScale:0.65,
+      aheadHostGapBonus:400, aheadDeepGapBonus:280, behindHostGapBonus:16,
+      maxHostGap:60, maxDeepSacrifice:45,
     }),
     ares: Object.freeze({
       weights: Object.freeze({
-        capture:2.35, trade:1.25, rookTrade:1.35, queenTrade:1.22,
-        minorTrade:1.10, simplify:1.48, check:0.82, kingAttack:1.05,
-        pawnPush:0.46, castle:-0.10, quiet:-1.35, advance:0.62, retreat:-1.48,
-        forcing:1.05, promotion:2.20, center:0.22, kingside:0.34,
+        capture:3.00, trade:2.00, rookTrade:2.05, queenTrade:1.90,
+        minorTrade:1.70, simplify:2.45, check:0.55, kingAttack:0.88,
+        pawnPush:0.52, castle:-0.14, quiet:-1.85, advance:0.72, retreat:-1.95,
+        forcing:1.30, promotion:2.50, center:0.24, kingside:0.38,
         queenside:0.18, centralize:0.26, development:0.18, pawnMove:0.18,
         knightMove:0.12, bishopMove:0.14, rookMove:0.20, queenMove:0.22, kingMove:-0.20,
       }),
@@ -120,13 +120,13 @@ const ARMX_FULL = Object.freeze({
         capture:0.20,trade:-0.45,simplify:-0.55,check:1.15,kingAttack:1.25,
         forcing:0.90,advance:0.50,quiet:-0.55,retreat:-0.75,
       }),
-      baseScale:21, earlyBoost:0.45, lateBoost:3.50, paceTargetPlies:42,
-      aheadScale:1.65, behindScale:0.28, replyCompressionWeight:2.20, capturedValueWeight:2.10,
-      repetitionWeight:-4.20, aheadRepetitionWeight:-2.30, behindRepetitionWeight:-0.80,
-      advantageDelayWeight:0, aheadCandidateFloor:40,
-      patientOpponentScale:0.65, aggressiveOpponentScale:0.03,
-      aheadHostGapBonus:165, aheadDeepGapBonus:120, behindHostGapBonus:0,
-      maxHostGap:50, maxDeepSacrifice:40,
+      baseScale:23, earlyBoost:0.60, lateBoost:3.90, paceTargetPlies:42,
+      aheadScale:1.85, behindScale:0.30, replyCompressionWeight:3.10, capturedValueWeight:3.00,
+      repetitionWeight:-5.00, aheadRepetitionWeight:-3.00, behindRepetitionWeight:-1.20,
+      advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:35,
+      patientOpponentScale:1.05, aggressiveOpponentScale:0.02,
+      aheadHostGapBonus:220, aheadDeepGapBonus:155, behindHostGapBonus:0,
+      maxHostGap:60, maxDeepSacrifice:46,
     }),
   }),
 });
@@ -648,6 +648,10 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   const repetitionPressure=Number(response.repetitionPressure)||0;
   signal+=repetitionPressure*(profile.repetitionWeight
     +ahead*profile.aheadRepetitionWeight+behind*profile.behindRepetitionWeight);
+  const halfmovePressure=armxFullClamp(((Number(game.halfmove)||0)-18)/62,0,1);
+  if(features.includes('pawnMove')){
+    signal+=halfmovePressure*(profile.pawnClockResetWeight||0);
+  }
   const entryScore=entry&&Number.isFinite(entry.score)?entry.score:hostScore;
   const candidateHostGap=Math.max(0,hostScore-entryScore);
   signal+=ahead*(profile.advantageDelayWeight||0)*armxFullClamp(candidateHostGap/180,0,1);
