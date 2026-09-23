@@ -452,6 +452,24 @@ for(const [key,args] of Object.entries(definitions)){
   if(only&&key!==only)continue;
   results[key]=matchup(games,...args,startIndex);
 }
+
+// Developer-only Artemis decomposition. It runs only in the Artemis/current
+// diagnostic job and never participates in release gates.
+let artemisDecomposition=null;
+if(only==='artemisVsCurrent'&&games>0){
+  const diagnosticGames=Math.max(2,Math.min(6,games-(games%2)));
+  artemisDecomposition={
+    games:diagnosticGames,
+    fullPolicyPreviewReview:matchup(
+      diagnosticGames,'diag-FullPolicy-PreviewReview',
+      getStonefishV55DiagFullPolicyPreviewReviewMove,getStonefishV55Move,startIndex
+    ),
+    previewPolicyFullReview:matchup(
+      diagnosticGames,'diag-PreviewPolicy-FullReview',
+      getStonefishV55DiagPreviewPolicyFullReviewMove,getStonefishV55Move,startIndex
+    ),
+  };
+}
 const ratios=results.athenaVsCurrent&&results.aresVsCurrent&&results.artemisVsCurrent?{
   athenaToArtemis:results.athenaVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
   aresToArtemis:results.aresVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
@@ -535,7 +553,8 @@ const result={
   model:'Stonefish v5.5 Full ARMX range',
   gamesPerMatchup:games,startIndex,
   sourceHashes,
-  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,armxAttributedOverhead,preferredWLDDeviation,matchups:results
+  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,
+  armxAttributedOverhead,artemisDecomposition,preferredWLDDeviation,matchups:results
 };
 if(process.env.RESULT_JSON)fs.writeFileSync(process.env.RESULT_JSON,JSON.stringify(result,null,2)+'\n');
 console.log('\nSTONEFISH_V5_5_RANGE '+JSON.stringify(result));
