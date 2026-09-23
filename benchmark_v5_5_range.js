@@ -199,11 +199,20 @@ const targets={
   aresVsCurrent:{minScore:0.75,maxLossRate:0.20},
   artemisVsCurrent:{minScore:0.75,maxLossRate:0.20},
 
-  // Sibling matchups should remain competitive. Ares is the Athena specialist;
-  // Artemis has small balanced edges, but none of the trio should be a stomp.
-  aresVsAthena:{minScore:0.53,maxScore:0.62,decisiveEdge:true},
-  artemisVsAthena:{minScore:0.50,maxScore:0.60},
-  artemisVsAres:{minScore:0.53,maxScore:0.62},
+  // Sibling matchups are intentionally close. These are hard relationship
+  // bounds, not quotas: each intended winner must clear 50%, but a large edge
+  // is a failure because the three models are meant to be peers.
+  aresVsAthena:{minScore:0.505,maxScore:0.58,decisiveEdge:true},
+  artemisVsAthena:{minScore:0.505,maxScore:0.58,decisiveEdge:true},
+  artemisVsAres:{minScore:0.505,maxScore:0.58,decisiveEdge:true},
+
+  // Preferred 100-game tuning centres. These are reported for guidance only;
+  // release depends on the relational gates below, not exact W/L/D quotas.
+  preferredSiblingWLD:Object.freeze({
+    aresVsAthena:Object.freeze({win:27,loss:22,draw:51}),
+    artemisVsAthena:Object.freeze({win:25,loss:23,draw:52}),
+    artemisVsAres:Object.freeze({win:33,loss:29,draw:38}),
+  }),
 
   relationships:Object.freeze({
     maxFieldScoreSpread:0.06,
@@ -243,6 +252,13 @@ const ratios=results.athenaVsCurrent&&results.aresVsCurrent&&results.artemisVsCu
 function complementScore(row){return row?1-row.score:0;}
 function rate(row,key){return row&&games?row[key]/games:0;}
 function average(values){return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;}
+function preferredDistance(row,target){
+  if(!row||!target||!games)return null;
+  const scale=100/games;
+  return Math.abs(row.win*scale-target.win)
+    +Math.abs(row.loss*scale-target.loss)
+    +Math.abs(row.draw*scale-target.draw);
+}
 
 const relationships=(results.athenaVsCurrent&&results.aresVsCurrent&&results.artemisVsCurrent
   &&results.aresVsAthena&&results.artemisVsAthena&&results.artemisVsAres)?(()=>{
@@ -298,11 +314,18 @@ const relationships=(results.athenaVsCurrent&&results.aresVsCurrent&&results.art
   };
 })():null;
 
+const preferredWLDDeviation=Object.fromEntries(
+  Object.entries(targets.preferredSiblingWLD).map(([key,target])=>[
+    key,
+    results[key]?preferredDistance(results[key],target):null,
+  ])
+);
+
 const result={
   model:'Stonefish v5.5 Full ARMX range',
   gamesPerMatchup:games,startIndex,
   sourceHashes:Object.fromEntries(loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])),
-  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,matchups:results
+  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,preferredWLDDeviation,matchups:results
 };
 if(process.env.RESULT_JSON)fs.writeFileSync(process.env.RESULT_JSON,JSON.stringify(result,null,2)+'\n');
 console.log('\nSTONEFISH_V5_5_RANGE '+JSON.stringify(result));
@@ -334,7 +357,7 @@ function matchupGate(key,target){
 }
 if(process.env.RELEASE_GATE==='1'){
   for(const [key,target] of Object.entries(targets)){
-    if(!target||typeof target!=='object'||Array.isArray(target)||key==='relationships')continue;
+    if(!target||typeof target!=='object'||Array.isArray(target)||key==='relationships'||key==='preferredSiblingWLD')continue;
     if(results[key])matchupGate(key,target);
   }
 
