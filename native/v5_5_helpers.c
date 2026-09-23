@@ -380,9 +380,11 @@ int search_nodes(void){return search_nodes_count;}
 int search_depth(void){return search_depth_done;}
 
 typedef struct {
-  int side,castling,ep,wk,bk,halfmove,material;
   u32 hash;
-  int eval_mg,eval_eg,eval_phase,white_bishops,black_bishops;
+  int eval_mg,eval_eg,eval_phase,halfmove;
+  u16 material;
+  u8 castling,wk,bk,white_bishops,black_bishops;
+  i8 side,ep;
 } SearchState;
 typedef struct {
   i8 moving,captured;
