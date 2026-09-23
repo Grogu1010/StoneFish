@@ -18,8 +18,12 @@ const ARMX_FULL_STATE_CONTEXTS = Object.freeze([
   'queensOn','queenless','materialHigh','materialMid','materialLow',
   'opponentAhead','opponentBehind','roughlyEqual'
 ]);
+const ARMX_FULL_RICH_CONTEXTS = Object.freeze([
+  'forcing','center','centralize','development','kingside','queenside'
+]);
 const ARMX_FULL_CONTEXT_FEATURES = Object.freeze([
   'capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat',
+  ...ARMX_FULL_RICH_CONTEXTS,
   ...ARMX_FULL_STATE_CONTEXTS
 ]);
 // Preview already reasons about capture/trade reply opportunities. Full ARMX
@@ -57,8 +61,11 @@ const ARMX_FULL = Object.freeze({
   rootBreadthEvidenceThreshold: 0.80,
   stateContextMinEvidence: 5,
   stateContextScale: 0.55,
+  richContextMinEvidence: 3,
+  richContextScale: 0.75,
   responseEffectMinEvidence: 4.5,
-  responseEffectScale: 0.12,
+  responseEffectMinConsistency: 0.35,
+  responseEffectScale: 0.16,
   pieceBaselinePrior: 0.22,
   pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.82,
@@ -386,11 +393,19 @@ function armxFullConditionalRate(book,contextFeature,replyFeature){
 function armxFullResponseEffect(book,contextFeature,replyFeature){
   const row=book.responseEffects[armxFullResponseKey(contextFeature,replyFeature)];
   if(!row||row.weight<ARMX_FULL.minEffectEvidence){
-    return {value:0,evidence:row?row.weight:0,observations:row?row.observations:new Set()};
+    return {
+      value:0,evidence:row?row.weight:0,consistency:0,
+      observations:row?row.observations:new Set()
+    };
   }
+  const directionalWeight=(row.positiveWeight||0)+(row.negativeWeight||0);
+  const consistency=directionalWeight
+    ?Math.abs((row.positiveWeight||0)-(row.negativeWeight||0))/directionalWeight
+    :0;
   return {
     value:row.impact/row.weight,
     evidence:row.weight,
+    consistency,
     observations:row.observations,
   };
 }
@@ -401,10 +416,16 @@ function armxFullRecordResponseEffects(book,pairKeys,impact,weight,observationId
   for(const key of pairKeys){
     let row=book.responseEffects[key];
     if(!row){
-      row=book.responseEffects[key]={weight:0,impact:0,observations:new Set()};
+      row=book.responseEffects[key]={
+        weight:0,impact:0,impactSq:0,positiveWeight:0,negativeWeight:0,
+        observations:new Set()
+      };
     }
     row.weight+=weight;
     row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
+    if(normalized>0.015)row.positiveWeight+=weight;
+    else if(normalized<-0.015)row.negativeWeight+=weight;
     row.observations.add(observationId);
   }
 }
@@ -1007,24 +1028,28 @@ function armxFullCandidateResponseReport(
     for(const replyFeature of usefulReplyFeatures){
       const conditional=armxFullConditionalRate(book,contextFeature,replyFeature);
       const stateContext=ARMX_FULL_STATE_CONTEXTS.includes(contextFeature);
+      const richContext=ARMX_FULL_RICH_CONTEXTS.includes(contextFeature);
       const minimumEvidence=stateContext
-        ?ARMX_FULL.stateContextMinEvidence:ARMX_FULL.minChoiceEvidence;
+        ?ARMX_FULL.stateContextMinEvidence
+        :(richContext?ARMX_FULL.richContextMinEvidence:ARMX_FULL.minChoiceEvidence);
       if(conditional.evidence<minimumEvidence)continue;
       const baseline=armxFullChoiceRate(book,replyFeature);
       const delta=conditional.rate-baseline.rate;
       const confidence=armxFullClamp(conditional.evidence/8,0,1);
-      const contextScale=stateContext?ARMX_FULL.stateContextScale:1;
+      const contextScale=stateContext
+        ?ARMX_FULL.stateContextScale:(richContext?ARMX_FULL.richContextScale:1);
       if(Math.abs(delta)<0.025)continue;
 
       preferenceSignal+=delta*confidence*contextScale;
       evidence+=confidence*contextScale;
 
       const contextEffect=armxFullResponseEffect(book,contextFeature,replyFeature);
-      if(contextEffect.evidence>=ARMX_FULL.responseEffectMinEvidence){
+      if(contextEffect.evidence>=ARMX_FULL.responseEffectMinEvidence
+          &&contextEffect.consistency>=ARMX_FULL.responseEffectMinConsistency){
         const globalEffect=armxFullOutcomeEffect(book,replyFeature);
         const effectConfidence=armxFullClamp(
           (contextEffect.evidence-ARMX_FULL.responseEffectMinEvidence+1)/6,0,1
-        );
+        )*armxFullClamp(contextEffect.consistency,0,1);
         const baselineExpected=globalEffect.evidence>=ARMX_FULL.minEffectEvidence
           ?baseline.rate*baseline.rate*globalEffect.value:0;
         const contextExpected=conditional.rate*conditional.rate*contextEffect.value;
