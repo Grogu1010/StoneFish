@@ -78,7 +78,7 @@ function stonefishTimedRenderRoundRobin(stats, selectedKeys, completed, total, d
   const overallRows = selectedKeys.map(key => {
     const s = stats.overall[key];
     const performance = stonefishPerformanceSummary(s, s.games);
-    const backend = key === 'v55test1'
+    const backend = key === 'v55'
       ? `<span>ARMX backend: ${s.nativeKernelNo ? 'JS fallback detected' : 'compiled WASM available'} · compiled-search moves ${s.compiledMoves} · fallback/base moves ${s.fallbackMoves}</span>`
       : '';
     return `<div class="result-row"><strong>${models[key].name}</strong><span>${s.wins}W · ${s.losses}L · ${s.draws}D · ${s.games} played</span><span>W ${percent(s.wins, s.games)} · L ${percent(s.losses, s.games)} · D ${percent(s.draws, s.games)}</span><span>${performance.text}</span>${backend}</div>`;
