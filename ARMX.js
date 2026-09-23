@@ -64,7 +64,7 @@ const ARMX_FULL = Object.freeze({
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
   styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 260, ares: 170, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 155, ares: 130, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -79,15 +79,15 @@ const ARMX_FULL = Object.freeze({
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:-1000000000,
       patientOpponentScale:0, aggressiveOpponentScale:0,
       patientPressureWeight:0, aggressiveDefenseWeight:0,
-      aheadHostGapBonus:0, aheadDeepGapBonus:0, behindHostGapBonus:0,
+      aheadHostGapBonus:0, aheadDeepGapBonus:0, behindHostGapBonus:0, behindDeepGapBonus:0,
       maxHostGap:40, maxDeepSacrifice:32,
     }),
     athena: Object.freeze({
       weights: Object.freeze({
-        capture:-0.85, trade:-1.25, rookTrade:-1.05, queenTrade:-1.15,
-        minorTrade:-0.95, simplify:-1.20, check:-0.58, kingAttack:-0.68,
-        pawnPush:0.46, castle:1.55, quiet:1.45, advance:-0.25, retreat:0.92,
-        forcing:-0.55, promotion:0.10, center:0.18, kingside:0.12,
+        capture:-0.38, trade:-0.55, rookTrade:-0.48, queenTrade:-0.52,
+        minorTrade:-0.44, simplify:-0.52, check:-0.28, kingAttack:-0.34,
+        pawnPush:0.24, castle:0.78, quiet:0.72, advance:-0.12, retreat:0.46,
+        forcing:-0.26, promotion:0.08, center:0.12, kingside:0.08,
         queenside:0.12, centralize:0.22, development:0.25, pawnMove:0.42,
         knightMove:0.12, bishopMove:0.12, rookMove:0.04, queenMove:-0.08, kingMove:0.24,
       }),
@@ -98,25 +98,25 @@ const ARMX_FULL = Object.freeze({
       // When the host says Athena is worse, defensive play means converting
       // danger into a drawable ending rather than blindly preserving material.
       behindWeights:Object.freeze({
-        capture:1.85,trade:3.10,rookTrade:2.25,queenTrade:3.45,minorTrade:1.85,
-        simplify:3.25,check:0.35,kingAttack:0.22,quiet:-1.10,retreat:0.85,castle:1.10,
+        capture:2.20,trade:3.80,rookTrade:2.75,queenTrade:4.25,minorTrade:2.20,
+        simplify:4.00,check:0.42,kingAttack:0.28,quiet:-1.35,retreat:1.15,castle:1.45,
       }),
-      baseScale:16, earlyBoost:4.20, lateBoost:-0.65, paceTargetPlies:260,
-      aheadThreshold:90, behindThreshold:25, advantageRange:400,
-      aheadScale:0.55, behindScale:2.45, replyCompressionWeight:-2.55, capturedValueWeight:-0.90,
-      repetitionWeight:0.25, aheadRepetitionWeight:-0.55, behindRepetitionWeight:7.20,
-      advantageDelayWeight:1.40, pawnClockResetWeight:2.80, aheadCandidateFloor:150,
-      patientOpponentScale:0.02, aggressiveOpponentScale:1.20,
-      patientPressureWeight:0, aggressiveDefenseWeight:2.60,
-      aheadHostGapBonus:65, aheadDeepGapBonus:45, behindHostGapBonus:58,
-      maxHostGap:28, maxDeepSacrifice:26,
+      baseScale:10, earlyBoost:2.40, lateBoost:-0.35, paceTargetPlies:260,
+      aheadThreshold:120, behindThreshold:15, advantageRange:360,
+      aheadScale:0.25, behindScale:4.20, replyCompressionWeight:-1.25, capturedValueWeight:-0.38,
+      repetitionWeight:0.10, aheadRepetitionWeight:-0.25, behindRepetitionWeight:8.60,
+      advantageDelayWeight:0.45, pawnClockResetWeight:1.40, aheadCandidateFloor:170,
+      patientOpponentScale:0.00, aggressiveOpponentScale:1.55,
+      patientPressureWeight:0, aggressiveDefenseWeight:3.30,
+      aheadHostGapBonus:28, aheadDeepGapBonus:18, behindHostGapBonus:72, behindDeepGapBonus:38,
+      maxHostGap:18, maxDeepSacrifice:18,
     }),
     ares: Object.freeze({
       weights: Object.freeze({
-        capture:1.15, trade:0.55, rookTrade:0.62, queenTrade:0.58,
-        minorTrade:0.50, simplify:0.72, check:0.70, kingAttack:0.95,
-        pawnPush:0.24, castle:-0.08, quiet:-0.70, advance:0.42, retreat:-0.78,
-        forcing:0.82, promotion:1.35, center:0.18, kingside:0.30,
+        capture:0.42, trade:0.18, rookTrade:0.22, queenTrade:0.20,
+        minorTrade:0.18, simplify:0.26, check:0.32, kingAttack:0.42,
+        pawnPush:0.12, castle:-0.03, quiet:-0.26, advance:0.18, retreat:-0.30,
+        forcing:0.34, promotion:0.62, center:0.10, kingside:0.16,
         queenside:0.18, centralize:0.26, development:0.18, pawnMove:0.18,
         knightMove:0.12, bishopMove:0.14, rookMove:0.20, queenMove:0.22, kingMove:-0.20,
       }),
@@ -128,15 +128,15 @@ const ARMX_FULL = Object.freeze({
         capture:0.15,trade:-0.55,simplify:-0.65,check:1.55,kingAttack:1.70,
         forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
       }),
-      baseScale:14, earlyBoost:0.30, lateBoost:5.20, paceTargetPlies:42,
-      aheadThreshold:20, behindThreshold:100, advantageRange:460,
-      aheadScale:2.65, behindScale:0.28, replyCompressionWeight:2.55, capturedValueWeight:2.35,
-      repetitionWeight:-2.40, aheadRepetitionWeight:-4.80, behindRepetitionWeight:-0.80,
-      advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:90,
-      patientOpponentScale:1.55, aggressiveOpponentScale:0.00,
-      patientPressureWeight:2.80, aggressiveDefenseWeight:0,
-      aheadHostGapBonus:125, aheadDeepGapBonus:88, behindHostGapBonus:0,
-      maxHostGap:27, maxDeepSacrifice:22,
+      baseScale:8, earlyBoost:0.10, lateBoost:6.20, paceTargetPlies:42,
+      aheadThreshold:10, behindThreshold:100, advantageRange:420,
+      aheadScale:4.10, behindScale:0.20, replyCompressionWeight:1.10, capturedValueWeight:1.05,
+      repetitionWeight:-0.85, aheadRepetitionWeight:-6.20, behindRepetitionWeight:-0.35,
+      advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
+      patientOpponentScale:1.20, aggressiveOpponentScale:0.00,
+      patientPressureWeight:3.60, aggressiveDefenseWeight:0,
+      aheadHostGapBonus:118, aheadDeepGapBonus:82, behindHostGapBonus:0, behindDeepGapBonus:0,
+      maxHostGap:18, maxDeepSacrifice:18,
     }),
   }),
 });
@@ -772,7 +772,8 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       +ahead*(styleProfile.aheadHostGapBonus||0)
       +behind*(styleProfile.behindHostGapBonus||0);
     const allowedDeepSacrifice=styleProfile.maxDeepSacrifice
-      +ahead*(styleProfile.aheadDeepGapBonus||0);
+      +ahead*(styleProfile.aheadDeepGapBonus||0)
+      +behind*(styleProfile.behindDeepGapBonus||0);
     const protectedTruth=armxFullMateScale(hostBest)||armxFullMateScale(entry);
     const aheadSafetyFloor=Number.isFinite(styleProfile.aheadCandidateFloor)
       ?styleProfile.aheadCandidateFloor:-Infinity;
