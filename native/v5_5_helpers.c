@@ -729,6 +729,9 @@ int search_evaluate_fast(int side,int white_king,int black_king){
 }
 
 
+/* Pawn structure changes far less often than piece placement in deeper ARMX
+   branches. Cache only king-independent integer terms; king-distance bonuses
+   remain position-local below so evaluation scores stay bit-for-bit identical. */
 static SearchPawnEvalEntry *search_pawn_eval_entry(void){
   u64 white=search_white_pawns,black=search_black_pawns;
   u64 mixed=white^(black+0x9e3779b97f4a7c15ULL+(white<<6)+(white>>2));
