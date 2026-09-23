@@ -50,7 +50,7 @@ const ARMX_FULL = Object.freeze({
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
   styleScale: Object.freeze({athena: 15, ares: 17, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 110, ares: 110, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 240, ares: 190, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -60,7 +60,9 @@ const ARMX_FULL = Object.freeze({
       aheadWeights: Object.freeze({}), behindWeights: Object.freeze({}),
       baseScale:0, earlyBoost:0, lateBoost:0, paceTargetPlies:1,
       aheadScale:0, behindScale:0, replyCompressionWeight:0, capturedValueWeight:0,
+      repetitionWeight:0, aheadRepetitionWeight:0, behindRepetitionWeight:0,
       patientOpponentScale:0, aggressiveOpponentScale:0,
+      aheadHostGapBonus:0, aheadDeepGapBonus:0, behindHostGapBonus:0,
       maxHostGap:40, maxDeepSacrifice:32,
     }),
     athena: Object.freeze({
@@ -82,9 +84,11 @@ const ARMX_FULL = Object.freeze({
         capture:1.05,trade:1.65,rookTrade:1.20,queenTrade:1.85,minorTrade:1.00,
         simplify:1.70,check:0.18,kingAttack:0.10,quiet:-0.48,retreat:0.35,castle:0.48,
       }),
-      baseScale:15, earlyBoost:3.20, lateBoost:-0.65, paceTargetPlies:260,
-      aheadScale:0.28, behindScale:0.55, replyCompressionWeight:-1.10, capturedValueWeight:-0.70,
-      patientOpponentScale:0.05, aggressiveOpponentScale:0.45,
+      baseScale:17, earlyBoost:4.20, lateBoost:-0.72, paceTargetPlies:260,
+      aheadScale:1.35, behindScale:0.70, replyCompressionWeight:-1.55, capturedValueWeight:-0.90,
+      repetitionWeight:0.20, aheadRepetitionWeight:-0.25, behindRepetitionWeight:4.25,
+      patientOpponentScale:0.05, aggressiveOpponentScale:0.55,
+      aheadHostGapBonus:230, aheadDeepGapBonus:170, behindHostGapBonus:12,
       maxHostGap:45, maxDeepSacrifice:35,
     }),
     ares: Object.freeze({
@@ -104,9 +108,11 @@ const ARMX_FULL = Object.freeze({
         capture:0.20,trade:-0.45,simplify:-0.55,check:1.15,kingAttack:1.25,
         forcing:0.90,advance:0.50,quiet:-0.55,retreat:-0.75,
       }),
-      baseScale:17, earlyBoost:0.35, lateBoost:2.60, paceTargetPlies:42,
-      aheadScale:0.62, behindScale:0.28, replyCompressionWeight:1.20, capturedValueWeight:0.80,
-      patientOpponentScale:0.45, aggressiveOpponentScale:0.04,
+      baseScale:19, earlyBoost:0.55, lateBoost:3.80, paceTargetPlies:42,
+      aheadScale:1.45, behindScale:0.32, replyCompressionWeight:1.85, capturedValueWeight:1.20,
+      repetitionWeight:-1.50, aheadRepetitionWeight:-1.20, behindRepetitionWeight:-0.35,
+      patientOpponentScale:0.75, aggressiveOpponentScale:0.04,
+      aheadHostGapBonus:120, aheadDeepGapBonus:90, behindHostGapBonus:0,
       maxHostGap:50, maxDeepSacrifice:40,
     }),
   }),
@@ -492,9 +498,12 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
 function armxFullCandidateResponseReport(game,entry,book){
   const historyDepth=game.historyStack.length;
   const contextFeatures=armxFullMoveFeatures(game,entry.raw);
-  let expectedOutcome=0,preferenceSignal=0,evidence=0,replyCount=0;
+  let expectedOutcome=0,preferenceSignal=0,evidence=0,replyCount=0,repetitionPressure=0;
   try{
     game.fastApply(entry.raw);
+    const resultingKey=game.fastPositionKey();
+    const resultingCount=game.positionCounts&&game.positionCounts.get(resultingKey)||0;
+    repetitionPressure=armxFullClamp(Math.max(0,resultingCount-1)/2,0,1);
     const replies=game.fastMoves();
     const rows=[];
     for(const reply of replies){
@@ -572,6 +581,7 @@ function armxFullCandidateResponseReport(game,entry,book){
     ownOutcome,
     evidence:evidence+ownEvidence,
     replyCount,
+    repetitionPressure,
   };
 }
 function armxFullOpponentTendencies(book){
@@ -609,6 +619,9 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   signal+=profile.replyCompressionWeight*compression;
   const captured=entry&&entry.raw?(ARMX_PREVIEW_PIECE_VALUES[entry.raw.captured||0]||0)/500:0;
   signal+=profile.capturedValueWeight*captured;
+  const repetitionPressure=Number(response.repetitionPressure)||0;
+  signal+=repetitionPressure*(profile.repetitionWeight
+    +ahead*profile.aheadRepetitionWeight+behind*profile.behindRepetitionWeight);
 
   const observedPlies=Math.max(0,(game.historyStack?game.historyStack.length:0)
     -Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)));
@@ -625,7 +638,7 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   const positionMultiplier=1+profile.aheadScale*ahead+profile.behindScale*behind;
   const scale=profile.baseScale*Math.max(0.15,paceMultiplier)*positionMultiplier*opponentMultiplier;
   const max=ARMX_FULL.maxStyleAdjustment[style]||0;
-  return {signal,scale,adjustment:armxFullClamp(signal*scale,-max,max),tendencies,compression};
+  return {signal,scale,adjustment:armxFullClamp(signal*scale,-max,max),tendencies,compression,repetitionPressure};
 }
 function armxFullMateScale(entry){
   if(!entry)return false;
@@ -666,8 +679,14 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const deepSacrifice=Number.isFinite(hostBest.deep)&&Number.isFinite(entry.deep)
       ?hostBest.deep-entry.deep:hostGap;
     const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
-    const allowedHostGap=styleProfile.maxHostGap;
-    const allowedDeepSacrifice=styleProfile.maxDeepSacrifice;
+    const hostScore=Number(hostBest&&hostBest.score)||0;
+    const ahead=armxFullClamp((hostScore-120)/580,0,1);
+    const behind=armxFullClamp((-hostScore-120)/580,0,1);
+    const allowedHostGap=styleProfile.maxHostGap
+      +ahead*(styleProfile.aheadHostGapBonus||0)
+      +behind*(styleProfile.behindHostGapBonus||0);
+    const allowedDeepSacrifice=styleProfile.maxDeepSacrifice
+      +ahead*(styleProfile.aheadDeepGapBonus||0);
     const protectedTruth=armxFullMateScale(hostBest)||armxFullMateScale(entry);
     const eligible=entry===hostBest||(!protectedTruth
       &&hostGap<=allowedHostGap&&deepSacrifice<=allowedDeepSacrifice);
@@ -687,6 +706,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       styleAdjustment:styleResult.adjustment,
       styleTendencies:styleResult.tendencies||null,
       styleCompression:styleResult.compression||0,
+      styleRepetitionPressure:styleResult.repetitionPressure||0,
       hostGap,deepSacrifice,allowedHostGap,allowedDeepSacrifice,eligible,fullScore,
     };
   });
