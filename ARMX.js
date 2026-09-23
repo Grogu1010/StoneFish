@@ -40,8 +40,18 @@ const ARMX_FULL = Object.freeze({
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 14,
+  fullNoteMinEvidence: 7,
+  fullNoteMinConfidence: 0.72,
+  fullNoteMinDecisionLead: 2,
+  fullNoteMinPositiveSignal: 0.05,
+  fullNoteStrongAvoidSignal: -0.18,
+  fullNoteEarlyPlies: 20,
+  fullNoteEarlyEvidence: 10,
+  fullNoteEarlyConfidence: 0.90,
 
-  previewDecisionGain: 1.35,
+  // Full ARMX starts from the exact voting weight used by Preview. Its extra
+  // notebook gets additional influence only after the gates above are met.
+  previewDecisionGain: 1.25,
   fullDecisionGain: 2.30,
   fullNoteScale: 135,
   maxNoteAdjustment: 120,
@@ -710,9 +720,9 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const aheadSafetyFloor=Number.isFinite(styleProfile.aheadCandidateFloor)
       ?styleProfile.aheadCandidateFloor:-Infinity;
     const keepsWinningMargin=!ahead||Number(entry.score)>=aheadSafetyFloor;
-    const eligible=entry===hostBest||(!protectedTruth&&keepsWinningMargin
+    const objectiveEligible=entry===hostBest||(!protectedTruth&&keepsWinningMargin
       &&hostGap<=allowedHostGap&&deepSacrifice<=allowedDeepSacrifice);
-    const fullScore=eligible
+    const fullScore=objectiveEligible
       ?entry.score+adaptiveAdjustment+styleResult.adjustment
       :-Infinity;
     return {
@@ -722,6 +732,8 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       maturity,
       previewAdjustment,
       noteAdjustment,
+      noteConfidence,
+      learnedSignal,
       adaptiveAdjustment,
       styleSignal:styleResult.signal,
       styleScale:styleResult.scale,
@@ -729,9 +741,70 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       styleTendencies:styleResult.tendencies||null,
       styleCompression:styleResult.compression||0,
       styleRepetitionPressure:styleResult.repetitionPressure||0,
-      hostGap,deepSacrifice,allowedHostGap,allowedDeepSacrifice,eligible,fullScore,
+      hostGap,deepSacrifice,allowedHostGap,allowedDeepSacrifice,
+      objectiveEligible,eligible:objectiveEligible,fullScore,
     };
   });
+
+  // Preview remains the conservative baseline. Full ARMX may overrule a Preview
+  // rejection only when the richer notebook has strong independent evidence and
+  // its learned outcome signal actually overcomes the native host gap.
+  const provisionalReport=reports.find(report=>report.entry===hostBest)||reports[0];
+  const observedPlies=Math.max(0,(game.historyStack?game.historyStack.length:0)
+    -Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)));
+  const gateHost=Object.assign({},hostBest,{armxOriginalScore:hostBest.score});
+  for(const report of reports){
+    if(report===provisionalReport){
+      report.eligible=true;
+      report.previewGate={allowed:true,reason:'provisional'};
+      report.fullNoteGate={allowed:true,reason:'provisional'};
+      continue;
+    }
+
+    let previewGate={allowed:false,reason:'preview-gate-unavailable'};
+    if(typeof stonefishV55ARMXChangeDecision==='function'){
+      const gateEntry=Object.assign({},report.entry,{armxOriginalScore:report.entry.score});
+      previewGate=stonefishV55ARMXChangeDecision(
+        gateHost,gateEntry,provisionalReport,report,observedPlies
+      );
+    }
+
+    const responseEvidence=Number(report.notebookResponse&&report.notebookResponse.evidence)||0;
+    const noteConfidence=Number(report.noteConfidence)||0;
+    const notebookDecisionLead=(Number(report.entry.score)||0)+(Number(report.noteAdjustment)||0)
+      -((Number(provisionalReport.entry.score)||0)+(Number(provisionalReport.noteAdjustment)||0));
+    const signalQuality=(Number(report.learnedSignal)||0)>=ARMX_FULL.fullNoteMinPositiveSignal
+      ||(Number(provisionalReport.learnedSignal)||0)<=ARMX_FULL.fullNoteStrongAvoidSignal;
+    const matureEvidence=responseEvidence>=ARMX_FULL.fullNoteMinEvidence
+      &&noteConfidence>=ARMX_FULL.fullNoteMinConfidence;
+    const earlyEvidence=observedPlies>=ARMX_FULL.fullNoteEarlyPlies
+      ||(responseEvidence>=ARMX_FULL.fullNoteEarlyEvidence
+        &&noteConfidence>=ARMX_FULL.fullNoteEarlyConfidence);
+    const fullNoteAllowed=matureEvidence&&earlyEvidence&&signalQuality
+      &&notebookDecisionLead>=ARMX_FULL.fullNoteMinDecisionLead;
+
+    const styleLead=(Number(report.styleAdjustment)||0)
+      -(Number(provisionalReport.styleAdjustment)||0);
+    const styleAllowed=style!=='artemis'&&styleLead>0;
+    report.previewGate=previewGate;
+    report.fullNoteGate={
+      allowed:fullNoteAllowed,
+      responseEvidence,noteConfidence,notebookDecisionLead,signalQuality,earlyEvidence,
+    };
+    report.styleGate={allowed:styleAllowed,styleLead};
+    report.eligible=Boolean(report.objectiveEligible
+      &&(previewGate.allowed||fullNoteAllowed||styleAllowed));
+
+    // If Preview itself rejected this challenger, its rejected Preview vote is
+    // not smuggled back in through Full ARMX. The notebook/style must win on
+    // their own evidence.
+    const previewVote=previewGate.allowed?(Number(report.previewAdjustment)||0):0;
+    report.fullScore=report.eligible
+      ?report.entry.score+previewVote+(Number(report.noteAdjustment)||0)
+        +(Number(report.styleAdjustment)||0)
+      :-Infinity;
+  }
+
   reports.sort((a,b)=>b.fullScore-a.fullScore
     ||b.hostScore-a.hostScore
     ||String(a.entry.uci).localeCompare(String(b.entry.uci)));
