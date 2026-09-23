@@ -84,6 +84,9 @@ const ARMX_FULL = Object.freeze({
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:-1000000000,
       patientOpponentScale:0, aggressiveOpponentScale:0,
       patientPressureWeight:0, aggressiveDefenseWeight:0,
+      opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
+      opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
+      opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
       aheadHostGapBonus:0, aheadDeepGapBonus:0, behindHostGapBonus:0, behindDeepGapBonus:0,
       maxHostGap:40, maxDeepSacrifice:32,
     }),
@@ -113,6 +116,9 @@ const ARMX_FULL = Object.freeze({
       advantageDelayWeight:0.45, pawnClockResetWeight:1.40, aheadCandidateFloor:170,
       patientOpponentScale:0.00, aggressiveOpponentScale:1.55,
       patientPressureWeight:0, aggressiveDefenseWeight:3.30,
+      opponentForcingReplyWeight:-0.15, behindForcingReplyWeight:-3.10,
+      opponentKingAttackReplyWeight:-0.10, behindKingAttackReplyWeight:-2.45,
+      opponentCaptureReplyWeight:-0.05, behindCaptureReplyWeight:-1.10,
       aheadHostGapBonus:28, aheadDeepGapBonus:18, behindHostGapBonus:72, behindDeepGapBonus:38,
       maxHostGap:18, maxDeepSacrifice:18,
     }),
@@ -140,6 +146,9 @@ const ARMX_FULL = Object.freeze({
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
       patientOpponentScale:1.20, aggressiveOpponentScale:0.00,
       patientPressureWeight:3.60, aggressiveDefenseWeight:0,
+      opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
+      opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
+      opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
       aheadHostGapBonus:118, aheadDeepGapBonus:82, behindHostGapBonus:0, behindDeepGapBonus:0,
       maxHostGap:18, maxDeepSacrifice:18,
     }),
@@ -674,16 +683,38 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
   }
 
   let repetitionPressure=0,replyCount=0;
+  let forcingReplyRate=0,kingAttackReplyRate=0,captureReplyRate=0;
   const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
   const needsReplyCount=style!=='artemis'&&Boolean(styleProfile.replyCompressionWeight);
+  const needsReplySafety=style!=='artemis'&&Boolean(
+    styleProfile.opponentForcingReplyWeight||styleProfile.behindForcingReplyWeight
+      ||styleProfile.opponentKingAttackReplyWeight||styleProfile.behindKingAttackReplyWeight
+      ||styleProfile.opponentCaptureReplyWeight||styleProfile.behindCaptureReplyWeight
+  );
   const needsRepetition=style!=='artemis'&&(
     styleProfile.repetitionWeight||styleProfile.aheadRepetitionWeight||styleProfile.behindRepetitionWeight
   );
-  if(needsReplyCount||needsRepetition){
+  if(needsReplyCount||needsReplySafety||needsRepetition){
     const historyDepth=game.historyStack.length;
     try{
       game.fastApply(entry.raw);
-      if(needsReplyCount)replyCount=game.fastMoves().length;
+      let replies=null;
+      if(needsReplyCount||needsReplySafety){
+        replies=game.fastMoves();
+        replyCount=replies.length;
+      }
+      if(needsReplySafety&&replyCount){
+        let forcing=0,kingAttack=0,captures=0;
+        for(const reply of replies){
+          const replyFeatures=armxFullPredictiveMoveFeatures(game,reply);
+          if(replyFeatures.has('forcing'))forcing++;
+          if(replyFeatures.has('kingAttack'))kingAttack++;
+          if(replyFeatures.has('capture'))captures++;
+        }
+        forcingReplyRate=forcing/replyCount;
+        kingAttackReplyRate=kingAttack/replyCount;
+        captureReplyRate=captures/replyCount;
+      }
       if(needsRepetition){
         const key=game.fastPositionKey();
         const count=game.positionCounts&&game.positionCounts.get(key)||0;
@@ -701,6 +732,9 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
     ownOutcome:0,
     evidence:Math.min(book.opponentMoves,evidence),
     replyCount,
+    forcingReplyRate,
+    kingAttackReplyRate,
+    captureReplyRate,
     repetitionPressure,
   };
 }
@@ -741,6 +775,15 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   const replyCount=Number(response.replyCount)||0;
   const compression=replyCount?armxFullClamp((24-replyCount)/18,-1,1):0;
   signal+=profile.replyCompressionWeight*compression;
+  signal+=((profile.opponentForcingReplyWeight||0)
+      +behind*(profile.behindForcingReplyWeight||0))
+    *(Number(response.forcingReplyRate)||0);
+  signal+=((profile.opponentKingAttackReplyWeight||0)
+      +behind*(profile.behindKingAttackReplyWeight||0))
+    *(Number(response.kingAttackReplyRate)||0);
+  signal+=((profile.opponentCaptureReplyWeight||0)
+      +behind*(profile.behindCaptureReplyWeight||0))
+    *(Number(response.captureReplyRate)||0);
   const captured=entry&&entry.raw?(ARMX_PREVIEW_PIECE_VALUES[entry.raw.captured||0]||0)/500:0;
   signal+=profile.capturedValueWeight*captured;
   const repetitionPressure=Number(response.repetitionPressure)||0;
@@ -781,7 +824,13 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   const positionMultiplier=1+profile.aheadScale*ahead+profile.behindScale*behind;
   const scale=profile.baseScale*Math.max(0.15,paceMultiplier)*positionMultiplier*opponentMultiplier;
   const max=ARMX_FULL.maxStyleAdjustment[style]||0;
-  return {signal,scale,adjustment:armxFullClamp(signal*scale,-max,max),tendencies,compression,repetitionPressure};
+  return {
+    signal,scale,adjustment:armxFullClamp(signal*scale,-max,max),
+    tendencies,compression,repetitionPressure,
+    forcingReplyRate:Number(response.forcingReplyRate)||0,
+    kingAttackReplyRate:Number(response.kingAttackReplyRate)||0,
+    captureReplyRate:Number(response.captureReplyRate)||0,
+  };
 }
 function armxFullMateScale(entry){
   if(!entry)return false;
