@@ -67,8 +67,8 @@ for(const row of fixtures){
  g.armxObservationStartPly=row.observationStartPly;
  for(const kernel of [compiled,null]){
   SF55C_KERNEL=kernel;
-  assert.deepStrictEqual(summarize(stonefishV55Testunit1NoARMXScoreAllMoves(g)),row.native);
-  const armx=summarize(stonefishV55Testunit1ScoreAllMoves(g));
+  assert.deepStrictEqual(summarize(stonefishV55NoARMXScoreAllMoves(g)),row.native);
+  const armx=summarize(stonefishV55ScoreAllMoves(g));
   if(kernel){
    // The compiled path may account a couple of terminal probes differently or
    // reorder roots with already-known equivalent scores. Preserve the actual
