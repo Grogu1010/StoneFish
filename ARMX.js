@@ -56,6 +56,8 @@ const ARMX_FULL = Object.freeze({
   pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.62,
   extendedReplyScanCandidates: 2,
+  policyWeightDeltaScale: 0.22,
+  policyPriorityScale: 45,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -554,7 +556,10 @@ function armxFullLearnedWeightDelta(book,feature,scale=1){
 }
 function armxFullCompiledPolicyWeights(previewWeights,book){
   const weights=new Float64Array(previewWeights||13);
-  const add=(index,value)=>{weights[index]=armxFullClamp((weights[index]||0)+value,-6,6);};
+  const add=(index,value)=>{
+    const delta=value*ARMX_FULL.policyWeightDeltaScale;
+    weights[index]=armxFullClamp((weights[index]||0)+delta,-6,6);
+  };
   add(0,armxFullLearnedWeightDelta(book,'pawnMove',1.35));
   add(1,armxFullLearnedWeightDelta(book,'knightMove',1.35));
   add(2,armxFullLearnedWeightDelta(book,'bishopMove',1.35));
@@ -645,7 +650,10 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const notePriority=move=>{
     const key=move.from|(move.to<<6)|((move.piece||0)<<12)|((move.promotion||0)<<15)|((move.flags||0)<<18);
     if(cache.has(key))return cache.get(key);
-    const value=Math.round(180*armxFullPolicyFeatureScore(book,armxFullCheapMoveFeatures(move,side)));
+    const value=Math.round(
+      ARMX_FULL.policyPriorityScale
+        *armxFullPolicyFeatureScore(book,armxFullCheapMoveFeatures(move,side))
+    );
     cache.set(key,value);
     return value;
   };
@@ -674,7 +682,9 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     priority:move=>previewPriority(move)+notePriority(move),
     isLowPriority:move=>{
       const previewLow=preview&&typeof preview.isLowPriority==='function'&&preview.isLowPriority(move);
-      return previewLow||notePriority(move)<-90;
+      // Preview owns hard low-priority pruning. Full notes only nudge ordering;
+      // they do not independently suppress replies at this small correction scale.
+      return previewLow;
     },
   };
 }
