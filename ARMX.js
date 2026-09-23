@@ -58,8 +58,8 @@ const ARMX_FULL = Object.freeze({
   pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.62,
   extendedReplyScanCandidates: 2,
-  policyWeightDeltaScale: 0.32,
-  policyPriorityScale: 120,
+  policyWeightDeltaScale: 0,
+  policyPriorityScale: 0,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -622,11 +622,8 @@ function armxFullLearnedWeightDelta(book,feature,scale=1){
 }
 function armxFullCompiledPolicyWeights(previewWeights,book){
   const weights=new Float64Array(previewWeights||13);
-  const policyMaturity=armxFullClamp(
-    (armxFullNotebookMaturity(book)-0.35)/0.55,0,1
-  );
   const add=(index,value)=>{
-    const delta=value*ARMX_FULL.policyWeightDeltaScale*policyMaturity;
+    const delta=value*ARMX_FULL.policyWeightDeltaScale;
     weights[index]=armxFullClamp((weights[index]||0)+delta,-6,6);
   };
   add(0,armxFullLearnedWeightDelta(book,'pawnMove',1.35));
@@ -705,8 +702,8 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const maxDepth=previewDepth;
 
   const previewWeights=preview&&preview.weights?preview.weights:new Float64Array(13);
-  const policyEvidenceScale=armxFullClamp((learnedStrength-0.35)/0.55,0,1);
-  const compiledWeights=armxFullCompiledPolicyWeights(previewWeights,book);
+  const compiledWeights=new Float64Array(previewWeights);
+  const policyEvidenceScale=0;
   const cache=new Map();
   const side=-perspective;
   const notePriority=move=>{
