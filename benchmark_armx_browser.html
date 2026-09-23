@@ -32,8 +32,8 @@
       pending.set(jobId, { resolve, reject });
       worker.postMessage({
         jobId,
-        whiteModelKey: armxIsWhite ? 'v55test1' : 'v55test1noarmx',
-        blackModelKey: armxIsWhite ? 'v55test1noarmx' : 'v55test1',
+        whiteModelKey: armxIsWhite ? 'v55' : 'v55noarmx',
+        blackModelKey: armxIsWhite ? 'v55noarmx' : 'v55',
         maxPlies,
         openingIndex: Math.floor(index / 2),
         profileARMX
@@ -64,8 +64,8 @@
       else if (lost) loss++;
       else draw++;
 
-      const fast = result.metrics.v55test1;
-      const current = result.metrics.v55test1noarmx;
+      const fast = result.metrics.v55;
+      const current = result.metrics.v55noarmx;
       armx.moves += fast.moves;
       armx.thinkMs += fast.thinkMs;
       armx.nodes += fast.nodes || 0;
