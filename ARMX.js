@@ -26,7 +26,7 @@ const ARMX_FULL = Object.freeze({
 
   // No evidence means no free strength bump: Full ARMX begins from the current
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
-  candidateLimit: 3,
+  candidateLimit: 4,
   baseSearchNodes: 1200,
   maxEvidenceSearchNodes: 7000,
   maxSurpriseSearchNodes: 1400,
@@ -39,15 +39,15 @@ const ARMX_FULL = Object.freeze({
   matureOpponentMoves: 10,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
-  fullConfidenceEvidence: 14,
+  fullConfidenceEvidence: 12,
   predictedReplyLimit: 10,
-  fullNoteMinEvidence: 7,
-  fullNoteMinConfidence: 0.72,
-  fullNoteMinDecisionLead: 2,
-  fullNoteMinPositiveSignal: 0.05,
-  fullNoteStrongAvoidSignal: -0.18,
+  fullNoteMinEvidence: 5.5,
+  fullNoteMinConfidence: 0.65,
+  fullNoteMinDecisionLead: 1.5,
+  fullNoteMinPositiveSignal: 0.035,
+  fullNoteStrongAvoidSignal: -0.15,
   fullNoteEarlyPlies: 20,
-  fullNoteEarlyEvidence: 10,
+  fullNoteEarlyEvidence: 8.5,
   fullNoteEarlyConfidence: 0.90,
 
   // Preview's proven opponent model is the strict subset of Full ARMX. Full
@@ -55,8 +55,8 @@ const ARMX_FULL = Object.freeze({
   // pay to relearn the same history a second time.
   previewDecisionGain: 1.25,
   fullDecisionGain: 1.00,
-  fullNoteScale: 135,
-  maxNoteAdjustment: 120,
+  fullNoteScale: 155,
+  maxNoteAdjustment: 140,
   maxHostGap: 40,
   maxDeepSacrifice: 32,
 
