@@ -39,9 +39,9 @@ const ARMX_FULL = Object.freeze({
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
   candidateLimit: 4,
   baseSearchNodes: 1200,
-  maxEvidenceSearchNodes: 2200,
-  maxSurpriseSearchNodes: 500,
-  maxExtraNodes: 3600,
+  maxEvidenceSearchNodes: 0,
+  maxSurpriseSearchNodes: 0,
+  maxExtraNodes: 0,
   baseDepth: 4,
   maxEvidenceDepth: 6,
   maxExtraDepth: 2,
@@ -56,8 +56,8 @@ const ARMX_FULL = Object.freeze({
   pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.62,
   extendedReplyScanCandidates: 2,
-  policyWeightDeltaScale: 0.06,
-  policyPriorityScale: 12,
+  policyWeightDeltaScale: 0,
+  policyPriorityScale: 0,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -622,41 +622,22 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const surprise=book.surpriseWeight
     ?armxFullClamp((book.surpriseSum/book.surpriseWeight-0.45)/1.4,0,1):0;
 
-  const fullEvidenceActivation=armxFullClamp(
-    (learnedStrength-0.82)/0.18,0,1
-  );
-  const fullEvidenceBudget=Math.round(
-    ARMX_FULL.baseSearchNodes
-    +ARMX_FULL.maxEvidenceSearchNodes*fullEvidenceActivation
-    +ARMX_FULL.maxSurpriseSearchNodes*surprise*fullEvidenceActivation
-  );
   const previewSearchBudget=preview&&Number.isFinite(preview.searchBudget)
     ?preview.searchBudget:ARMX_FULL.baseSearchNodes;
-  const searchBudget=Math.max(previewSearchBudget,fullEvidenceBudget);
+  const searchBudget=previewSearchBudget;
   // Extra root breadth is expensive and can dilute depth. Unlock the fourth
   // finalist only when the opponent notebook is genuinely mature/useful.
   const breadthEvidence=learnedStrength*(0.85+0.15*surprise);
   const rootWidth=ARMX_FULL.baseRootWidth
     +(breadthEvidence>=ARMX_FULL.rootBreadthEvidenceThreshold
       ?Math.min(1,ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth):0);
-  const fullEvidenceDepth=Math.round(
-    ARMX_FULL.baseDepth+(ARMX_FULL.maxEvidenceDepth-ARMX_FULL.baseDepth)*learnedStrength
-  );
   const previewDepth=preview&&Number.isFinite(preview.maxDepth)
     ?preview.maxDepth:ARMX_FULL.baseDepth;
-  const maxDepth=Math.max(previewDepth,fullEvidenceDepth);
+  const maxDepth=previewDepth;
 
   const previewWeights=preview&&preview.weights?preview.weights:new Float64Array(13);
-  const policyEvidenceScale=armxFullClamp((learnedStrength-0.72)/0.28,0,1);
-  const compiledWeights=policyEvidenceScale>0
-    ?armxFullCompiledPolicyWeights(previewWeights,book)
-    :new Float64Array(previewWeights);
-  if(policyEvidenceScale>0&&policyEvidenceScale<1){
-    for(let i=0;i<compiledWeights.length;i++){
-      compiledWeights[i]=previewWeights[i]
-        +(compiledWeights[i]-previewWeights[i])*policyEvidenceScale;
-    }
-  }
+  const compiledWeights=new Float64Array(previewWeights);
+  const policyEvidenceScale=0;
   const cache=new Map();
   const side=-perspective;
   const notePriority=move=>{
