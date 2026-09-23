@@ -146,8 +146,8 @@ function armxPreviewObserveQuietChoice(profile, game, chosen, legalMoves = null)
   model.count++;
 }
 
-function armxPreviewOpponentPolicy(game, perspective = game.side) {
-  const profile = armxPreviewSyncProfile(game, perspective), model = profile.quietPolicy;
+function armxPreviewOpponentPolicy(game, perspective = game.side, syncedProfile = null) {
+  const profile = syncedProfile || armxPreviewSyncProfile(game, perspective), model = profile.quietPolicy;
   if (!model || model.count < ARMX_PREVIEW.quietChoiceMinObservations) return null;
   // Freeze the learned preferences for this search. Cache only geometry-based
   // scores, including piece type and flags in the identity; nothing crosses turns.
