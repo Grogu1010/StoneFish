@@ -625,7 +625,8 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   const repetitionPressure=Number(response.repetitionPressure)||0;
   signal+=repetitionPressure*(profile.repetitionWeight
     +ahead*profile.aheadRepetitionWeight+behind*profile.behindRepetitionWeight);
-  const candidateHostGap=Math.max(0,hostScore-(Number(entry&&entry.score)||hostScore));
+  const entryScore=entry&&Number.isFinite(entry.score)?entry.score:hostScore;
+  const candidateHostGap=Math.max(0,hostScore-entryScore);
   signal+=ahead*(profile.advantageDelayWeight||0)*armxFullClamp(candidateHostGap/180,0,1);
 
   const observedPlies=Math.max(0,(game.historyStack?game.historyStack.length:0)
