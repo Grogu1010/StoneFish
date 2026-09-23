@@ -944,8 +944,13 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       report.previewGate={allowed:true,reason:'provisional'};
       report.fullNoteGate={allowed:true,reason:'provisional'};
       report.styleGate={allowed:true,reason:'provisional'};
-      report.fullScore=report.entry.score+report.previewAdjustment+report.noteAdjustment
-        +(Number(report.styleAdjustment)||0);
+      report.previewLead=0;
+      report.noteLead=0;
+      report.styleLead=0;
+      report.decisionLead=0;
+      // Anchor the ranking on the native provisional score. Every adaptive
+      // contribution below is a pairwise lead relative to this same move.
+      report.fullScore=report.entry.score;
       continue;
     }
 
@@ -977,18 +982,40 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const styleAllowed=style!=='artemis'
       &&styleLead>=(Number.isFinite(minStyleLead)?minStyleLead:Infinity);
 
+    // Preserve frozen Preview's exact pairwise vote. Preview itself chooses the
+    // gain (normally 1.25x, 1.60x only for mature contrastive evidence).
+    const previewGain=previewGate.allowed&&Number.isFinite(previewGate.decisionGain)
+      ?previewGate.decisionGain:STONEFISH_V5_5_ARMX_DECISION_GAIN;
+    const previewLead=previewGate.allowed
+      ?stonefishV55ARMXDecisionScore(report.previewReport,previewGain)
+        -stonefishV55ARMXDecisionScore(provisionalReport.previewReport,previewGain)
+      :0;
+    const noteLead=fullNoteAllowed
+      ?(Number(report.noteAdjustment)||0)-(Number(provisionalReport.noteAdjustment)||0)
+      :0;
+    const appliedStyleLead=styleAllowed?styleLead:0;
+    const hostLead=(Number(report.entry.score)||0)-(Number(provisionalReport.entry.score)||0);
+    // previewLead already contains the native host-score difference. If Preview
+    // is not voting, Full notes/style must carry the native gap themselves.
+    const effectiveLead=previewGate.allowed
+      ?previewLead+noteLead+appliedStyleLead
+      :hostLead+noteLead+appliedStyleLead;
+
     report.previewGate=previewGate;
     report.fullNoteGate={
       allowed:fullNoteAllowed,
       responseEvidence,noteConfidence,notebookDecisionLead,signalQuality,earlyEvidence,
     };
     report.styleGate={allowed:styleAllowed,styleLead};
+    report.previewLead=previewLead;
+    report.noteLead=noteLead;
+    report.styleLead=appliedStyleLead;
+    report.decisionLead=effectiveLead;
     report.eligible=Boolean(report.objectiveEligible
-      &&(previewGate.allowed||fullNoteAllowed||styleAllowed));
-
-    const previewVote=previewGate.allowed?report.previewAdjustment:0;
+      &&(previewGate.allowed||fullNoteAllowed||styleAllowed)
+      &&effectiveLead>0);
     report.fullScore=report.eligible
-      ?report.entry.score+previewVote+report.noteAdjustment+(Number(report.styleAdjustment)||0)
+      ?provisionalReport.entry.score+effectiveLead
       :-Infinity;
   }
 
