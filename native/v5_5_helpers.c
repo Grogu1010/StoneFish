@@ -998,11 +998,12 @@ static void root_insert(u32 *moves,int *scores,int *exact,int *count,u32 move,in
 }
 
 int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
-               int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
+               int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count,int root_width){
   SearchState s={0};
   s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;
   search_initial_state(&s);search_init_eval_masks();search_init_attack_tables();
   search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
+  if(root_width<3)root_width=3;if(root_width>12)root_width=12;
   search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
   search_policy_side=-side;
   search_generation++;if(!search_generation)search_generation=1;
@@ -1034,7 +1035,7 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
       if(search_abort)break;
       int is_exact=threshold==-SEARCH_MATE||score>threshold;
       root_insert(next_moves,next_scores,next_exact,&next_count,m,score,is_exact);
-      if(next_count>=3)threshold=next_scores[2];
+      if(next_count>=root_width)threshold=next_scores[root_width-1];
     }
     if(search_abort)break;
     current_count=next_count;
