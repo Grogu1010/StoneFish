@@ -23,6 +23,9 @@ on:
       - 'benchmark_v5_5.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_compiled_parity.js'
+      - 'benchmark_armx_compiled_vs_current.js'
+      - 'benchmark_armx_compiled_vs_noarmx.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5.yml'
   pull_request:
@@ -45,6 +48,9 @@ on:
       - 'benchmark_v5_5.js'
       - 'benchmark_v5_5_teacher.js'
       - 'benchmark_armx_preview.js'
+      - 'benchmark_armx_compiled_parity.js'
+      - 'benchmark_armx_compiled_vs_current.js'
+      - 'benchmark_armx_compiled_vs_noarmx.js'
       - 'DEV_V5_5_TESTUNIT1.md'
       - '.github/workflows/v5-5.yml'
   workflow_dispatch:
