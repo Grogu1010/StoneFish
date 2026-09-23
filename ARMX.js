@@ -26,31 +26,31 @@ const ARMX_FULL = Object.freeze({
 
   // No evidence means no free strength bump: Full ARMX begins from the current
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
-  candidateLimit: 8,
+  candidateLimit: 5,
   baseSearchNodes: 1200,
-  maxEvidenceSearchNodes: 30000,
+  maxEvidenceSearchNodes: 36000,
   maxSurpriseSearchNodes: 9000,
-  maxExtraNodes: 42000,
+  maxExtraNodes: 48000,
   baseDepth: 4,
   maxEvidenceDepth: 8,
   maxExtraDepth: 4,
   baseRootWidth: 3,
-  maxRootWidth: 8,
+  maxRootWidth: 5,
   matureOpponentMoves: 10,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
-  fullConfidenceEvidence: 8,
+  fullConfidenceEvidence: 12,
 
   previewDecisionGain: 1.35,
   fullDecisionGain: 2.30,
-  fullNoteScale: 190,
-  maxNoteAdjustment: 240,
-  maxHostGap: 92,
-  maxDeepSacrifice: 72,
+  fullNoteScale: 150,
+  maxNoteAdjustment: 160,
+  maxHostGap: 55,
+  maxDeepSacrifice: 45,
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
-  styleScale: Object.freeze({athena: 20, ares: 22, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 155, ares: 155, artemis: 0}),
+  styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 125, ares: 125, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -58,7 +58,7 @@ const ARMX_FULL = Object.freeze({
     artemis: Object.freeze({
       weights: Object.freeze({}),
       baseScale: 0, earlyBoost: 0, lateBoost: 0, paceTargetPlies: 1,
-      aheadScale: 0, behindScale: 0, maxHostGap: 92, maxDeepSacrifice: 72,
+      aheadScale: 0, behindScale: 0, maxHostGap: 55, maxDeepSacrifice: 45,
     }),
     athena: Object.freeze({
       weights: Object.freeze({
@@ -69,8 +69,8 @@ const ARMX_FULL = Object.freeze({
         queenside:0.12, centralize:0.20, development:0.22, pawnMove:0.18,
         knightMove:0.12, bishopMove:0.12, rookMove:0.04, queenMove:-0.08, kingMove:0.18,
       }),
-      baseScale:20, earlyBoost:2.35, lateBoost:-0.55, paceTargetPlies:260,
-      aheadScale:0.30, behindScale:0.65, maxHostGap:78, maxDeepSacrifice:58,
+      baseScale:18, earlyBoost:2.35, lateBoost:-0.55, paceTargetPlies:260,
+      aheadScale:0.30, behindScale:0.65, maxHostGap:62, maxDeepSacrifice:48,
     }),
     ares: Object.freeze({
       weights: Object.freeze({
@@ -81,8 +81,8 @@ const ARMX_FULL = Object.freeze({
         queenside:0.18, centralize:0.24, development:0.16, pawnMove:0.18,
         knightMove:0.10, bishopMove:0.12, rookMove:0.18, queenMove:0.20, kingMove:-0.18,
       }),
-      baseScale:22, earlyBoost:0.10, lateBoost:2.10, paceTargetPlies:42,
-      aheadScale:0.72, behindScale:0.30, maxHostGap:86, maxDeepSacrifice:66,
+      baseScale:20, earlyBoost:0.10, lateBoost:2.10, paceTargetPlies:42,
+      aheadScale:0.72, behindScale:0.30, maxHostGap:68, maxDeepSacrifice:52,
     }),
   }),
 });
@@ -421,8 +421,9 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     +ARMX_FULL.maxEvidenceSearchNodes*learnedStrength
     +ARMX_FULL.maxSurpriseSearchNodes*surprise*learnedStrength
   );
+  const breadthStrength=learnedStrength*learnedStrength;
   const rootWidth=ARMX_FULL.baseRootWidth
-    +Math.round((ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth)*learnedStrength);
+    +Math.round((ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth)*breadthStrength);
   const maxDepth=Math.round(
     ARMX_FULL.baseDepth+(ARMX_FULL.maxEvidenceDepth-ARMX_FULL.baseDepth)*learnedStrength
   );
