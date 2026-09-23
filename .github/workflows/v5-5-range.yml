@@ -40,6 +40,6 @@ jobs:
           node --check benchmark_v5_5_range.js
       - name: Run matchup
         env:
-          GAMES: '20'
+          GAMES: '10'
           MATCHUP: ${{ matrix.matchup }}
         run: node benchmark_v5_5_range.js
