@@ -367,7 +367,12 @@ if (process.env.COMPARE_BASELINE === '1' || process.env.MATCHUP === 'armxVsBasel
   }
   const baselineContext = vm.createContext({ console, performance, Math });
   vm.runInContext(strengthBaseline.sources.map(entry => entry.source).join('\n\n'), baselineContext);
-  const baselineMove = vm.runInContext('getStonefishV55Move', baselineContext);
+  const baselineMove = vm.runInContext(
+    "typeof getStonefishV55Move === 'function' ? getStonefishV55Move : "
+      + "(typeof getStonefishV55Testunit1Move === 'function' ? getStonefishV55Testunit1Move : null)",
+    baselineContext
+  );
+  if (typeof baselineMove !== 'function') throw new Error('Frozen ARMX baseline getter is unavailable');
   // A shared game object is safe only while its rules and runtime methods are
   // identical to the frozen baseline. Fail if a future change invalidates this.
   for (const file of ['StonefishChess.js', 'Stonefish_runtime_speed_patch.js', 'Stonefish_fast_moves_experiment.js']) {
@@ -381,7 +386,12 @@ if (process.env.COMPARE_BASELINE === '1' || process.env.MATCHUP === 'armxVsBasel
     // Use only for reviewed lossless optimizations. Fixtures supply positions,
     // not expected answers: both implementations are executed independently.
     const fixtures = JSON.parse(require('node:zlib').gunzipSync(fs.readFileSync('benchmarks/v5_5/evidence-effort-golden.json.gz'))).positions;
-    const baselineScore = vm.runInContext('stonefishV55ScoreAllMoves', baselineContext);
+    const baselineScore = vm.runInContext(
+      "typeof stonefishV55ScoreAllMoves === 'function' ? stonefishV55ScoreAllMoves : "
+        + "(typeof stonefishV55Testunit1ScoreAllMoves === 'function' ? stonefishV55Testunit1ScoreAllMoves : null)",
+      baselineContext
+    );
+    if (typeof baselineScore !== 'function') throw new Error('Frozen ARMX baseline scorer is unavailable');
     const summarize = (entries, result) => JSON.stringify({ depth: result.depth, nodes: result.nodes,
       entries: entries.map(row => ({uci: row.uci, score: row.score, deep: row.deep, exact: !!row.exact})) });
     for (const row of fixtures) {
