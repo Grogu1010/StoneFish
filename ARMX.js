@@ -44,6 +44,8 @@ const ARMX_FULL = Object.freeze({
   matureOpponentMoves: 6,
   opportunityScanStride: 2,
   rootBreadthEvidenceThreshold: 0.96,
+  stateContextMinEvidence: 5,
+  stateContextScale: 0.55,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -669,20 +671,24 @@ function armxFullCandidateResponseReport(game,entry,book,previewReport,style='ar
     if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
     for(const replyFeature of usefulReplyFeatures){
       const conditional=armxFullConditionalRate(book,contextFeature,replyFeature);
-      if(conditional.evidence<ARMX_FULL.minChoiceEvidence)continue;
+      const stateContext=ARMX_FULL_STATE_CONTEXTS.includes(contextFeature);
+      const minimumEvidence=stateContext
+        ?ARMX_FULL.stateContextMinEvidence:ARMX_FULL.minChoiceEvidence;
+      if(conditional.evidence<minimumEvidence)continue;
       const baseline=armxFullChoiceRate(book,replyFeature);
       const delta=conditional.rate-baseline.rate;
       const confidence=armxFullClamp(conditional.evidence/8,0,1);
+      const contextScale=stateContext?ARMX_FULL.stateContextScale:1;
       if(Math.abs(delta)<0.025)continue;
 
-      preferenceSignal+=delta*confidence;
-      evidence+=confidence;
+      preferenceSignal+=delta*confidence*contextScale;
+      evidence+=confidence*contextScale;
 
       const effect=armxFullPreviewEffect(book,'opponentEffects',replyFeature);
       if(effect.evidence>=ARMX_FULL.minEffectEvidence){
         const effectConfidence=armxFullClamp(effect.evidence/6,0,1);
-        contextualOutcome+=delta*effect.value*confidence*effectConfidence;
-        evidence+=0.5*effectConfidence;
+        contextualOutcome+=delta*effect.value*confidence*effectConfidence*contextScale;
+        evidence+=0.5*effectConfidence*contextScale;
       }
     }
   }
