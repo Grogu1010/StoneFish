@@ -10,15 +10,15 @@
 
 const ARMX_FULL = Object.freeze({
   name: 'ARMX',
-  version: '1.1-full',
+  version: '1.2-full',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 8,
-  rootWidth: 8,
+  maxRootWidth: 8,
   baseSearchNodes: 9600,
   evidenceSearchNodes: 18400,
   surpriseSearchNodes: 7200,
-  maxExtraNodes: 36000,
+  maxExtraNodes: 60000,
   baseDepth: 6,
   matureDepth: 8,
   maxExtraDepth: 4,
@@ -32,14 +32,24 @@ const ARMX_FULL = Object.freeze({
   maxHostGap: 135,
   maxDeepSacrifice: 95,
   styleScale: Object.freeze({
-    athena: 38,
-    ares: 50,
+    athena: 14,
+    ares: 34,
     artemis: 0,
   }),
   winningStyleScale: Object.freeze({
-    athena: 112,
-    ares: 92,
+    athena: 120,
+    ares: 88,
     artemis: 0,
+  }),
+  maxHostGapByStyle: Object.freeze({
+    athena: 92,
+    ares: 112,
+    artemis: 135,
+  }),
+  maxDeepSacrificeByStyle: Object.freeze({
+    athena: 72,
+    ares: 88,
+    artemis: 95,
   }),
   maxStyleAdjustment: Object.freeze({
     athena: 280,
@@ -82,7 +92,7 @@ function armxFullOpponentShape(profile) {
   return { aggression, simplification, patience, capture, check, kingAttack, advance, quiet, retreat };
 }
 
-function armxFullOpponentPolicy(game, perspective = game.side) {
+function armxFullOpponentPolicy(game, perspective = game.side, style = 'artemis') {
   const profile = armxPreviewSyncProfile(game, perspective);
   const preview = armxPreviewOpponentPolicy(game, perspective);
   const opponentMoves = Number(profile.opponentMoves) || 0;
@@ -95,10 +105,24 @@ function armxFullOpponentPolicy(game, perspective = game.side) {
   // Full ARMX owns a larger adaptive reserve than Preview. The reserve is part
   // of ARMX, not a change to native evaluation/search rules: the same host
   // simply receives a larger verified node/depth allowance as evidence grows.
+  const shape = armxFullOpponentShape(profile);
+  // Preview stays at three exact roots. Full ARMX widens only after the current
+  // game supplies enough evidence that this opponent has a distinctive style.
+  // This is adaptive compute, not a permanent strength tax.
+  let rootWidth = 3;
+  if (opponentMoves >= 4) {
+    if (style === 'ares' && shape.patience >= 0.18) rootWidth = ARMX_FULL.maxRootWidth;
+    else if (style === 'athena' && shape.aggression >= 0.55) rootWidth = 6;
+    else if (style === 'artemis' && (shape.patience >= 0.22 || shape.aggression >= 0.72)) {
+      rootWidth = ARMX_FULL.maxRootWidth;
+    }
+  }
+  const rootWidthReserve = Math.max(0, rootWidth - 3) * 5600;
   const searchBudget = Math.round(
     ARMX_FULL.baseSearchNodes
       + ARMX_FULL.evidenceSearchNodes * maturity
       + ARMX_FULL.surpriseSearchNodes * predictionSurprise
+      + rootWidthReserve
   );
   const maxDepth = opponentMoves >= ARMX_FULL.matureOpponentMoves
     ? ARMX_FULL.matureDepth
@@ -123,7 +147,8 @@ function armxFullOpponentPolicy(game, perspective = game.side) {
     maxDepth,
     maxExtraNodes: ARMX_FULL.maxExtraNodes,
     maxExtraDepth: ARMX_FULL.maxExtraDepth,
-    rootWidth: ARMX_FULL.rootWidth,
+    rootWidth,
+    opponentShape: shape,
     weights,
     priority,
     isLowPriority,
@@ -271,7 +296,7 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
       ARMX_FULL.maxConversionAdjustment
     );
     const winningFactor = Number.isFinite(hostBest.score)
-      ? armxFullClamp((hostBest.score - 80) / 520, 0, 1) : 0;
+      ? armxFullClamp((hostBest.score - 160) / 520, 0, 1) : 0;
     const baseStyleScale = ARMX_FULL.styleScale[style] || 0;
     const winningStyleScale = ARMX_FULL.winningStyleScale[style] || baseStyleScale;
     const styleScale = baseStyleScale + (winningStyleScale - baseStyleScale) * winningFactor;
@@ -286,9 +311,11 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
       ? hostBest.deep - entry.deep
       : hostGap;
     const protectedTruth = armxFullMateScale(hostBest) || armxFullMateScale(entry);
+    const allowedHostGap = ARMX_FULL.maxHostGapByStyle[style] || ARMX_FULL.maxHostGap;
+    const allowedDeepSacrifice = ARMX_FULL.maxDeepSacrificeByStyle[style] || ARMX_FULL.maxDeepSacrifice;
     const eligible = entry === hostBest || (!protectedTruth
-      && hostGap <= ARMX_FULL.maxHostGap
-      && deepSacrifice <= ARMX_FULL.maxDeepSacrifice);
+      && hostGap <= allowedHostGap
+      && deepSacrifice <= allowedDeepSacrifice);
     const fullScore = eligible
       ? entry.score + adaptiveAdjustment + conversionAdjustment + styleAdjustment
       : -Infinity;
@@ -308,6 +335,8 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
       styleAdjustment,
       hostGap,
       deepSacrifice,
+      allowedHostGap,
+      allowedDeepSacrifice,
       eligible,
       fullScore,
     };
