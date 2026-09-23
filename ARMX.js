@@ -214,154 +214,83 @@ function armxFullPredictiveMoveFeatures(game,move){
       &&!features.has('kingAttack'))features.add('quiet');
   return features;
 }
-function armxFullEffectValue(row) {
-  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
-    return {value:0,evidence:row?row.weight:0,consistency:0};
+function armxFullHistoricalMoveFeatures(state,move){
+  const side=state&&state.side||1;
+  const features=armxFullCheapMoveFeatures(move,side);
+  if(!move)return features;
+  const piece=move.piece||0;
+  const enemyKing=side===1?(state&&state.kingB):state&&state.kingW;
+  if(Number.isFinite(enemyKing)&&piece!==6&&armxPreviewSquareDistance(move.to,enemyKing)<=2){
+    features.add('kingAttack');
+    features.add('forcing');
   }
-  const mean=row.impact/row.weight;
-  const rms=Math.sqrt(Math.max(0,(row.impactSq||0)/row.weight));
-  const consistency=rms>1e-9?armxFullClamp(Math.abs(mean)/(rms+0.04),0,1):0;
-  // Keep the direction learned from this opponent, but shrink noisy effects.
-  const reliableValue=mean*(0.30+0.70*consistency);
-  return {value:reliableValue,evidence:row.weight,consistency};
-}
-function armxFullRecordEffect(bucket, features, impact, weight, observationId) {
-  const normalized=armxFullClamp(impact/360,-1,1);
-  for(const feature of features){
-    const row=bucket[feature];
-    if(!row)continue;
-    row.weight+=weight;
-    row.impact+=normalized*weight;
-    row.impactSq+=normalized*normalized*weight;
-    row.observations.add(observationId);
+  if(!move.captured&&!move.promotion&&!(move.flags&(4|8))&&!features.has('kingAttack')){
+    features.add('quiet');
   }
+  return features;
 }
-function armxFullResponseKey(contextFeature, replyFeature) {
-  return contextFeature+'>'+replyFeature;
-}
-function armxFullResponseRow(book,key) {
-  let row=book.responseEffects[key];
-  if(!row)row=book.responseEffects[key]={weight:0,impact:0,impactSq:0,observations:new Set()};
-  return row;
-}
-function armxFullRecordResponseEffect(book, pairKeys, impact, weight, observationId) {
-  const normalized=armxFullClamp(impact/360,-1,1);
-  for(const key of pairKeys){
-    const row=armxFullResponseRow(book,key);
-    row.weight+=weight;
-    row.impact+=normalized*weight;
-    row.impactSq+=normalized*normalized*weight;
-    row.observations.add(observationId);
-  }
-}
-function armxFullNewNotebook(perspective, game, observationStartPly) {
-  const seed=armxPreviewNewProfile(perspective, game, observationStartPly);
+function armxFullNewNotebook(perspective,game,observationStartPly,previewProfile){
   return {
     perspective,
     observationStartPly,
     processedPlies:0,
     lastHistoryState:null,
-    initialPositionKey:seed.initialPositionKey,
-    replay:seed.replay,
-    currentSnapshot:seed.currentSnapshot,
+    initialPositionKey:game.fastPositionKey(),
     opponentMoves:0,
-    opportunities:armxFullFreshCounts(),
     choices:armxFullFreshCounts(),
-    opportunityPlies:Object.fromEntries(ARMX_FULL_NOTE_FEATURES.map(feature=>[feature,new Set()])),
-    ourEffects:armxFullFreshEffects(),
-    opponentEffects:armxFullFreshEffects(),
-    responseOpportunities:Object.create(null),
+    responseContexts:Object.create(null),
     responseChoices:Object.create(null),
-    responseEffects:Object.create(null),
-    pending:[],
     lastOurFeatures:new Set(),
     surpriseSum:0,
     surpriseWeight:0,
+    previewProfile:previewProfile||null,
   };
-}
-function armxFullResolvePending(book,currentPly,currentSnapshot=book.currentSnapshot){
-  if(!book.pending.length)return;
-  const now=(currentSnapshot||book.currentSnapshot).score;
-  const keep=[];
-  for(const event of book.pending){
-    if(currentPly<event.resolveAt){keep.push(event);continue;}
-    const impact=now-event.before;
-    armxFullRecordEffect(
-      event.actor===book.perspective?book.ourEffects:book.opponentEffects,
-      event.features,impact,event.weight,event.observationId
-    );
-    if(event.pairKeys&&event.pairKeys.length){
-      armxFullRecordResponseEffect(book,event.pairKeys,impact,event.weight,event.observationId);
-    }
-  }
-  book.pending=keep;
 }
 function armxFullChoiceRate(book,feature){
-  const opportunities=book.opportunities[feature]||0;
-  if(!opportunities)return {rate:0.5,evidence:0};
-  return {
-    rate:((book.choices[feature]||0)+1)/(opportunities+2),
-    evidence:opportunities,
-  };
+  const evidence=book.opponentMoves||0;
+  if(!evidence)return {rate:0.5,evidence:0};
+  return {rate:((book.choices[feature]||0)+1)/(evidence+2),evidence};
 }
 function armxFullConditionalRate(book,contextFeature,replyFeature){
+  const evidence=book.responseContexts[contextFeature]||0;
+  if(!evidence)return {rate:0.5,evidence:0};
   const key=armxFullResponseKey(contextFeature,replyFeature);
-  const opportunities=book.responseOpportunities[key]||0;
-  if(!opportunities)return {rate:0.5,evidence:0};
-  return {
-    rate:((book.responseChoices[key]||0)+1)/(opportunities+2),
-    evidence:opportunities,
-  };
+  return {rate:((book.responseChoices[key]||0)+1)/(evidence+2),evidence};
 }
-function armxFullResponseEffect(book,contextFeature,replyFeature){
-  return armxFullEffectValue(book.responseEffects[armxFullResponseKey(contextFeature,replyFeature)]);
+function armxFullPreviewEffect(book,bucketName,feature){
+  const profile=book&&book.previewProfile;
+  const bucket=profile&&profile[bucketName];
+  if(!bucket||!bucket[feature])return {value:0,evidence:0,consistency:0};
+  const effect=armxPreviewEffect(bucket,feature);
+  return {value:Number(effect.value)||0,evidence:Number(effect.evidence)||0,consistency:1};
 }
-function armxFullObserveOpponent(book,game,chosenMove,index){
-  const legal=game.fastMoves();
-  const availableByFeature=new Set();
-  for(const move of legal){
-    const features=armxFullPredictiveMoveFeatures(game,move);
-    for(const feature of features)availableByFeature.add(feature);
-  }
-  const chosen=armxFullMoveFeatures(game,chosenMove);
-
-  // Surprise is measured before learning this move. It is used only to decide
-  // how much extra verification the notes deserve, never as a chess heuristic.
+function armxFullObserveHistoricalOpponent(book,features,index){
   if(book.opponentMoves>=2){
     const probabilities=[];
-    for(const feature of chosen){
+    for(const feature of features){
       const row=armxFullChoiceRate(book,feature);
       if(row.evidence>=ARMX_FULL.minChoiceEvidence)probabilities.push(row.rate);
     }
     if(probabilities.length){
       const p=armxFullClamp(armxFullAverage(probabilities),0.05,0.95);
       book.surpriseSum+=-Math.log(p);
-      book.surpriseWeight+=1;
+      book.surpriseWeight++;
     }
   }
 
   book.opponentMoves++;
-  for(const feature of availableByFeature){
-    book.opportunities[feature]=(book.opportunities[feature]||0)+1;
-    book.opportunityPlies[feature].add(index);
-    if(chosen.has(feature))book.choices[feature]=(book.choices[feature]||0)+1;
-  }
+  for(const feature of features)book.choices[feature]=(book.choices[feature]||0)+1;
 
-  const pairKeys=[];
   for(const contextFeature of book.lastOurFeatures){
     if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
-    for(const replyFeature of availableByFeature){
+    book.responseContexts[contextFeature]=(book.responseContexts[contextFeature]||0)+1;
+    for(const replyFeature of features){
       const key=armxFullResponseKey(contextFeature,replyFeature);
-      book.responseOpportunities[key]=(book.responseOpportunities[key]||0)+1;
-      if(chosen.has(replyFeature))book.responseChoices[key]=(book.responseChoices[key]||0)+1;
-    }
-    for(const replyFeature of chosen){
-      pairKeys.push(armxFullResponseKey(contextFeature,replyFeature));
+      book.responseChoices[key]=(book.responseChoices[key]||0)+1;
     }
   }
-  return {chosen,pairKeys};
 }
-function armxFullSyncNotebook(game,perspective=game.side){
+function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
   let books=ARMX_FULL_GAME_NOTES.get(game);
   if(!books){books=new Map();ARMX_FULL_GAME_NOTES.set(game,books);}
   const history=game.historyStack||[];
@@ -369,69 +298,53 @@ function armxFullSyncNotebook(game,perspective=game.side){
   let book=books.get(perspective);
   const changedHistory=book&&book.processedPlies>0
     &&history[book.processedPlies-1]!==book.lastHistoryState;
-  const changedEmptyPosition=book&&!history.length
-    &&game.fastPositionKey()!==book.initialPositionKey;
+  const changedEmptyPosition=book&&!history.length&&game.fastPositionKey()!==book.initialPositionKey;
   if(!book||history.length<book.processedPlies||changedHistory||changedEmptyPosition
     ||book.observationStartPly!==observationStartPly){
-    book=armxFullNewNotebook(perspective,game,observationStartPly);
+    book=armxFullNewNotebook(perspective,game,observationStartPly,previewProfile);
     books.set(perspective,book);
   }
+  book.previewProfile=previewProfile||book.previewProfile;
 
   while(book.processedPlies<history.length){
     const index=book.processedPlies;
-    const state=history[index], move=state&&state.move;
+    const state=history[index],move=state&&state.move;
     if(!move)break;
-    if(index<observationStartPly){
-      book.replay.fastApply(move);
-      book.currentSnapshot=armxPreviewStateSnapshot(book.replay,perspective);
-      book.processedPlies++;
-      book.lastHistoryState=state;
-      continue;
+    if(index>=observationStartPly){
+      const actor=state.side;
+      const features=armxFullHistoricalMoveFeatures(state,move);
+      if(actor===-perspective)armxFullObserveHistoricalOpponent(book,features,index);
+      else if(actor===perspective)book.lastOurFeatures=new Set(features);
     }
-
-    const actor=book.replay.side;
-    const before=book.currentSnapshot.score;
-    const features=armxFullMoveFeatures(book.replay,move);
-    let pairKeys=[];
-    if(actor===-perspective){
-      const observed=armxFullObserveOpponent(book,book.replay,move,index);
-      pairKeys=observed.pairKeys;
-    }
-
-    book.pending.push({actor,features,before,observationId:index,resolveAt:index+2,weight:0.65,pairKeys});
-    book.pending.push({actor,features,before,observationId:index,resolveAt:index+4,weight:0.35,pairKeys});
-
-    book.replay.fastApply(move);
-    book.currentSnapshot=armxPreviewStateSnapshot(book.replay,perspective);
     book.processedPlies++;
     book.lastHistoryState=state;
-    armxFullResolvePending(book,book.processedPlies,book.currentSnapshot);
-
-    if(actor===perspective)book.lastOurFeatures=new Set(features);
   }
-  armxFullResolvePending(book,book.processedPlies,book.currentSnapshot);
   return book;
 }
 function armxFullNotebookMaturity(book){
   const moveMaturity=armxFullClamp(book.opponentMoves/ARMX_FULL.matureOpponentMoves,0,1);
-  let informed=0;
+  let broadFeatures=0;
   for(const feature of ARMX_FULL_NOTE_FEATURES){
-    if((book.opportunities[feature]||0)>=ARMX_FULL.minChoiceEvidence)informed++;
-    const effect=book.opponentEffects[feature];
-    if(effect&&effect.weight>=ARMX_FULL.minEffectEvidence)informed+=0.5;
+    if((book.choices[feature]||0)>=2)broadFeatures++;
   }
-  const breadth=armxFullClamp(informed/12,0,1);
-  return armxFullClamp(moveMaturity*0.65+breadth*0.35,0,1);
+  const breadth=armxFullClamp(broadFeatures/10,0,1);
+  return armxFullClamp(moveMaturity*0.72+breadth*0.28,0,1);
 }
 function armxFullNotebookSummary(book){
   const rows=[];
   for(const feature of ARMX_FULL_NOTE_FEATURES){
     const choice=armxFullChoiceRate(book,feature);
-    const effect=armxFullEffectValue(book.opponentEffects[feature]);
-    const importance=Math.abs(choice.rate-0.5)*Math.min(1,choice.evidence/6)
+    const effect=armxFullPreviewEffect(book,'opponentEffects',feature);
+    const frequencyEvidence=Math.min(1,choice.evidence/8);
+    const importance=frequencyEvidence*Math.min(0.75,choice.rate)
       +Math.abs(effect.value)*Math.min(1,effect.evidence/4);
-    if(importance>0.10)rows.push({feature,choiceRate:choice.rate,choiceEvidence:choice.evidence,
-      effect:effect.value,effectEvidence:effect.evidence,effectConsistency:effect.consistency||0,importance});
+    if((book.choices[feature]||0)>=2||Math.abs(effect.value)>=0.10){
+      rows.push({
+        feature,choiceRate:choice.rate,choiceEvidence:choice.evidence,
+        effect:effect.value,effectEvidence:effect.evidence,
+        effectConsistency:effect.consistency||0,importance,
+      });
+    }
   }
   rows.sort((a,b)=>b.importance-a.importance);
   return rows.slice(0,10);
