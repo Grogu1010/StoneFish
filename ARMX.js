@@ -106,18 +106,19 @@ function armxFullOpponentPolicy(game, perspective = game.side, style = 'artemis'
   // of ARMX, not a change to native evaluation/search rules: the same host
   // simply receives a larger verified node/depth allowance as evidence grows.
   const shape = armxFullOpponentShape(profile);
-  // Preview stays at three exact roots. Full ARMX widens only after the current
-  // game supplies enough evidence that this opponent has a distinctive style.
-  // This is adaptive compute, not a permanent strength tax.
-  let rootWidth = 3;
-  if (opponentMoves >= 4) {
-    if (style === 'ares' && shape.patience >= 0.18) rootWidth = ARMX_FULL.maxRootWidth;
-    else if (style === 'athena' && shape.aggression >= 0.55) rootWidth = 6;
-    else if (style === 'artemis' && (shape.patience >= 0.22 || shape.aggression >= 0.72)) {
-      rootWidth = ARMX_FULL.maxRootWidth;
-    }
+  const positionScore = profile.currentSnapshot && Number.isFinite(profile.currentSnapshot.score)
+    ? profile.currentSnapshot.score : 0;
+  // Preview stays at three exact roots. Full ARMX only buys extra exact root
+  // alternatives when they have a concrete use: Athena is already ahead and
+  // can choose a slower safe continuation, Ares is ahead and can seek a forcing
+  // conversion, or prediction surprise says the opponent model needs breadth.
+  let rootWidth = style === 'ares' ? 4 : 3;
+  if (style === 'athena' && positionScore >= 220) rootWidth = ARMX_FULL.maxRootWidth;
+  else if (style === 'ares' && positionScore >= 160) rootWidth = 6;
+  if (opponentMoves >= 6 && predictionSurprise >= 0.68) {
+    rootWidth = Math.max(rootWidth, style === 'artemis' ? 6 : 5);
   }
-  const rootWidthReserve = Math.max(0, rootWidth - 3) * 5600;
+  const rootWidthReserve = Math.max(0, rootWidth - 3) * 6200;
   const searchBudget = Math.round(
     ARMX_FULL.baseSearchNodes
       + ARMX_FULL.evidenceSearchNodes * maturity
@@ -149,6 +150,8 @@ function armxFullOpponentPolicy(game, perspective = game.side, style = 'artemis'
     maxExtraDepth: ARMX_FULL.maxExtraDepth,
     rootWidth,
     opponentShape: shape,
+    predictionSurprise,
+    positionScore,
     weights,
     priority,
     isLowPriority,
@@ -382,6 +385,7 @@ function armxFullRankHost(game, host, style = 'artemis') {
     searchBudget: host.searchBudget,
     searchDepth: host.depth,
     depthLimit: host.depthLimit,
+    rootWidth: host.rootWidth || 3,
     changedMove: Boolean(original && winner && !stonefishV5SameMove(original.raw, winner.raw)),
     provisionalRaw: original && original.raw,
     recommendedRaw: winner && winner.raw,
