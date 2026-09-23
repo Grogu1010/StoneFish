@@ -5,7 +5,7 @@ const files=['StonefishChess.js','Stonefish_v3.js','Stonefish_v4.js','Stonefish_
 'Stonefish_v4_5_opening_overrides.js','Stonefish_v4_5_safety_patch.js','Stonefish_v4_5_balance_patch.js',
 'Stonefish_v5.js','Stonefish_v5_pro.js','Stonefish_v5_pro_speed_patch.js','Stonefish_v5_pro_geometry_patch.js',
 'Stonefish_runtime_speed_patch.js','Stonefish_fast_moves_experiment.js','Stonefish_v5_5_search.js',
-'Stonefish_v5_5_refutation_guard.js','Stonefish_v5_5_native.js','ARMX-preview.js','Stonefish_v5_5_testunit1.js'];
+'Stonefish_v5_5_refutation_guard.js','Stonefish_v5_5_native.js','ARMX-preview.js','Stonefish_v5_5.js'];
 vm.runInThisContext(files.map(f=>fs.readFileSync(f,'utf8')).join('\n'));
 function play(game,moves){for(const uci of moves)assert.ok(game.move({from:uci.slice(0,2),to:uci.slice(2,4),promotion:uci[4]||'q'}),uci);return game;}
 function snap(game){return JSON.stringify({fen:game.fen(),history:game.historyStack,counts:[...game.positionCounts]});}
