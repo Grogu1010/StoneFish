@@ -215,6 +215,9 @@ function armxFullPredictiveMoveFeatures(game,move){
       &&!features.has('kingAttack'))features.add('quiet');
   return features;
 }
+function armxFullResponseKey(contextFeature,replyFeature){
+  return contextFeature+'>'+replyFeature;
+}
 function armxFullHistoricalMoveFeatures(state,move){
   const side=state&&state.side||1;
   const features=armxFullCheapMoveFeatures(move,side);
