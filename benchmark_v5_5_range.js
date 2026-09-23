@@ -331,7 +331,39 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
   throw new Error('Full ARMX may not receive a free base-engine strength bump');
 }
 
-const definitions={
+// The opponent-adaptation policy itself is shared. Styles are allowed only in
+// the common finalist-style layer after this policy/search has run.
+{
+  const probe=positionAfter(generateOpening(0x55AA,14));
+  probe.armxObservationStartPly=0;
+  const policies={};
+  for(const style of ['athena','ares','artemis']){
+    const game=cloneGame(probe,0);
+    policies[style]=armxFullOpponentPolicy(game,game.side,style);
+  }
+  const project=policy=>({
+    observations:policy.observations,
+    voluntaryObservations:policy.voluntaryObservations,
+    maturity:policy.maturity,
+    noteUsefulness:policy.noteUsefulness,
+    learnedStrength:policy.learnedStrength,
+    searchBudget:policy.searchBudget,
+    maxDepth:policy.maxDepth,
+    maxExtraNodes:policy.maxExtraNodes,
+    maxExtraDepth:policy.maxExtraDepth,
+    rootWidth:policy.rootWidth,
+    predictionSurprise:policy.predictionSurprise,
+    weights:Array.from(policy.weights||[]),
+  });
+  const baseline=JSON.stringify(project(policies.artemis));
+  for(const style of ['athena','ares']){
+    if(JSON.stringify(project(policies[style]))!==baseline){
+      throw new Error('Full ARMX policy must be style-independent: '+style+' differs from Artemis');
+    }
+  }
+}
+
+const definitions=
   athenaVsCurrent:['Athena-vs-current-v5.5',getStonefishV55AthenaMove,getStonefishV55Move],
   aresVsCurrent:['Ares-vs-current-v5.5',getStonefishV55AresMove,getStonefishV55Move],
   artemisVsCurrent:['Artemis-vs-current-v5.5',getStonefishV55ArtemisMove,getStonefishV55Move],
