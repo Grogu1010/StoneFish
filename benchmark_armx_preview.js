@@ -26,7 +26,7 @@ engineFiles.push(
   'Stonefish_v5_5_refutation_guard.js',
   'Stonefish_v5_5_native.js',
   'ARMX-preview.js',
-  'Stonefish_v5_5_testunit1.js'
+  'Stonefish_v5_5.js'
 );
 
 vm.runInThisContext(engineFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n\n'), {
@@ -321,9 +321,9 @@ function simulate(label, games, opponentFn) {
     withSeed((0xD550000 + pair * 1103 + i) >>> 0, () => {
       while (!game.game_over() && plies < 360) {
         const armxTurn = (game.side === 1) === armxIsWhite;
-        const move = armxTurn ? getStonefishV55Testunit1Move(game) : opponentFn(game);
+        const move = armxTurn ? getStonefishV55Move(game) : opponentFn(game);
         if (armxTurn) {
-          const review = stonefishV55Testunit1LastARMX();
+          const review = stonefishV55LastARMX();
           const context = { gameIndex: i, pair, armxIsWhite, plies };
           observeReview(stats, review, context);
           const nearMiss = closestNearMiss(review, context);
@@ -366,6 +366,6 @@ const games = Math.max(4, Number.parseInt(process.env.ARMX_DIAG_GAMES || '8', 10
 const output = {
   model: ARMX_PREVIEW,
   vsPro: simulate('ARMX-vs-Pro', games, getStonefishV5ProMove),
-  vsNoARMX: simulate('ARMX-vs-NoARMX', games, getStonefishV55Testunit1NoARMXMove),
+  vsNoARMX: simulate('ARMX-vs-NoARMX', games, getStonefishV55NoARMXMove),
 };
 console.log('ARMX_PREVIEW_DIAGNOSTICS ' + JSON.stringify(output));
