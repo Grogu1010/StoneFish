@@ -96,54 +96,89 @@ function timeComponent(fn){
   const value=fn();
   return {value,ms:performance.now()-started};
 }
-function armxComponentBenchmark(sampleCount){
+function median(values){
+  if(!values.length)return 0;
+  const sorted=values.slice().sort((a,b)=>a-b);
+  const mid=sorted.length>>1;
+  return sorted.length&1?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;
+}
+function armxAttributedOverheadBenchmark(sampleCount){
   const positions=buildOverheadPositions(sampleCount);
-  let previewMs=0;
-  const fullMs={athena:0,ares:0,artemis:0};
   const styles=['athena','ares','artemis'];
+  const rows={preview:[],athena:[],ares:[],artemis:[]};
 
-  // Warm all paths once outside the measured loop.
+  // Warm all paths once outside timing.
   if(positions.length){
-    const warm=cloneGame(positions[0],0);
-    const previewPolicy=armxPreviewOpponentPolicy(warm,warm.side);
-    const warmHost=stonefishV55HostSearch(warm,previewPolicy);
-    armxPreviewReview(warm,warmHost.finished.slice(0,Math.max(1,ARMX_PREVIEW.candidateLimit)),warm.side);
+    const source=positions[0];
+    {
+      const game=cloneGame(source,0);
+      const policy=armxPreviewOpponentPolicy(game,game.side);
+      const host=stonefishV55HostSearch(game,policy);
+      armxPreviewReview(game,host.finished.slice(0,Math.max(1,ARMX_PREVIEW.candidateLimit)),game.side);
+    }
     for(const style of styles){
-      const game=cloneGame(positions[0],0);
+      const game=cloneGame(source,0);
       const policy=armxFullOpponentPolicy(game,game.side,style);
       const host=stonefishV55HostSearch(game,policy);
       armxFullReview(game,host.finished,style,game.side);
     }
+    stonefishV55HostSearch(cloneGame(source,0));
   }
 
   for(let i=0;i<positions.length;i++){
-    // Host searches are deliberately outside the timers. This benchmark measures
-    // ARMX itself: notebook/profile work, policy construction and finalist review.
+    const source=positions[i];
+
+    // Base host is timed separately and never counted as ARMX work.
+    const baseGame=cloneGame(source,0);
+    clearSharedEngineCaches();
+    const baseStart=performance.now();
+    stonefishV55HostSearch(baseGame);
+    const baseHostMs=performance.now()-baseStart;
+
     {
-      const game=cloneGame(positions[i],0);
+      const game=cloneGame(source,0);
+      clearSharedEngineCaches();
       const policyTimed=timeComponent(()=>armxPreviewOpponentPolicy(game,game.side));
+      const hostStart=performance.now();
       const host=stonefishV55HostSearch(game,policyTimed.value);
+      const hostMs=performance.now()-hostStart;
       const reviewTimed=timeComponent(()=>armxPreviewReview(
         game,host.finished.slice(0,Math.max(1,ARMX_PREVIEW.candidateLimit)),game.side
       ));
-      previewMs+=policyTimed.ms+reviewTimed.ms;
+      const directMs=policyTimed.ms+reviewTimed.ms;
+      const extraHostMs=Math.max(0,hostMs-baseHostMs);
+      rows.preview.push({directMs,extraHostMs,attributedMs:directMs+extraHostMs});
     }
+
     for(const style of styles){
-      const game=cloneGame(positions[i],0);
+      const game=cloneGame(source,0);
+      clearSharedEngineCaches();
       const policyTimed=timeComponent(()=>armxFullOpponentPolicy(game,game.side,style));
+      const hostStart=performance.now();
       const host=stonefishV55HostSearch(game,policyTimed.value);
+      const hostMs=performance.now()-hostStart;
       const reviewTimed=timeComponent(()=>armxFullReview(game,host.finished,style,game.side));
-      fullMs[style]+=policyTimed.ms+reviewTimed.ms;
+      const directMs=policyTimed.ms+reviewTimed.ms;
+      const extraHostMs=Math.max(0,hostMs-baseHostMs);
+      rows[style].push({directMs,extraHostMs,attributedMs:directMs+extraHostMs});
     }
   }
 
-  const previewAverageMs=previewMs/sampleCount;
-  const fullAverageMs=Object.fromEntries(styles.map(style=>[style,fullMs[style]/sampleCount]));
+  const summarize=list=>({
+    directAverageMs:average(list.map(row=>row.directMs)),
+    extraHostAverageMs:average(list.map(row=>row.extraHostMs)),
+    attributedAverageMs:average(list.map(row=>row.attributedMs)),
+    attributedMedianMs:median(list.map(row=>row.attributedMs)),
+  });
+  const preview=summarize(rows.preview);
+  const full=Object.fromEntries(styles.map(style=>[style,summarize(rows[style])]));
   const ratio=Object.fromEntries(styles.map(style=>[
     style,
-    previewAverageMs>0?fullAverageMs[style]/previewAverageMs:Infinity,
+    preview.attributedAverageMs>0
+      ?full[style].attributedAverageMs/preview.attributedAverageMs
+      :Infinity,
   ]));
-  return {samples:sampleCount,previewAverageMs,fullAverageMs,ratio};
+  return {samples:sampleCount,preview,full,ratio};
 }
 const STYLE_FEATURES=['capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat'];
 function emptyStyleCounts(){return Object.fromEntries(STYLE_FEATURES.map(feature=>[feature,0]));}
@@ -317,7 +352,7 @@ const targets={
     maxArtemisLead:0.05,
     maxCurrentScoreSpread:0.06,
     maxArtemisCurrentLead:0.05,
-    maxFullArmxComponentTimeToPreviewComponentTimeRatio:2.0,
+    maxFullArmxAttributedOverheadToPreviewOverheadRatio:2.0,
     artemisBestAgainstCurrent:true,
     aresBeatsAthenaMoreOftenThanArtemis:true,
     athenaDrawsMoreThanItLosesToAres:true,
@@ -422,13 +457,13 @@ const preferredWLDDeviation=Object.fromEntries(
   ])
 );
 
-const armxComponentTime=armxComponentBenchmark(armxTimingSamples);
+const armxAttributedOverhead=armxAttributedOverheadBenchmark(armxTimingSamples);
 
 const result={
   model:'Stonefish v5.5 Full ARMX range',
   gamesPerMatchup:games,startIndex,
   sourceHashes:Object.fromEntries(loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])),
-  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,armxComponentTime,preferredWLDDeviation,matchups:results
+  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,armxAttributedOverhead,preferredWLDDeviation,matchups:results
 };
 if(process.env.RESULT_JSON)fs.writeFileSync(process.env.RESULT_JSON,JSON.stringify(result,null,2)+'\n');
 console.log('\nSTONEFISH_V5_5_RANGE '+JSON.stringify(result));
@@ -502,16 +537,16 @@ if(process.env.RELEASE_GATE==='1'){
       <=targets.relationships.maxArtemisCurrentLead,
     'Artemis current-v5.5 lead must stay modest');
 
-  requireGate(armxComponentTime.previewAverageMs>0,
-    'ARMX Preview component timing must be positive');
-  for(const [style,componentRatio] of Object.entries(armxComponentTime.ratio)){
-    requireGate(Number.isFinite(componentRatio)
-        &&componentRatio<=targets.relationships.maxFullArmxComponentTimeToPreviewComponentTimeRatio,
-      style+' Full ARMX component is too slow: '+componentRatio
-        +'x ARMX Preview; need <='
-        +targets.relationships.maxFullArmxComponentTimeToPreviewComponentTimeRatio+'x. '
-        +'Preview '+armxComponentTime.previewAverageMs+' ms, Full '
-        +armxComponentTime.fullAverageMs[style]+' ms');
+  requireGate(armxAttributedOverhead.preview.attributedAverageMs>0,
+    'ARMX Preview attributed overhead timing must be positive');
+  for(const [style,overheadRatio] of Object.entries(armxAttributedOverhead.ratio)){
+    requireGate(Number.isFinite(overheadRatio)
+        &&overheadRatio<=targets.relationships.maxFullArmxAttributedOverheadToPreviewOverheadRatio,
+      style+' Full ARMX overhead is too slow: '+overheadRatio
+        +'x ARMX Preview overhead; need <='
+        +targets.relationships.maxFullArmxAttributedOverheadToPreviewOverheadRatio+'x. '
+        +'Preview attributed '+armxAttributedOverhead.preview.attributedAverageMs+' ms, Full '
+        +armxAttributedOverhead.full[style].attributedAverageMs+' ms');
   }
 
   const tol=targets.moveRatioTolerance;
