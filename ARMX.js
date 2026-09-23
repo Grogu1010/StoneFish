@@ -353,22 +353,45 @@ function armxFullNotebookSummary(book){
   rows.sort((a,b)=>b.importance-a.importance);
   return rows.slice(0,10);
 }
+function armxFullRawFrequency(book,feature){
+  return book&&book.opponentMoves?(book.choices[feature]||0)/book.opponentMoves:0;
+}
+function armxFullFeaturePreference(book,feature){
+  const evidence=book&&book.opponentMoves||0;
+  if(evidence<ARMX_FULL.minChoiceEvidence)return 0;
+  const confidence=armxFullClamp(evidence/10,0,1);
+  const frequency=armxFullRawFrequency(book,feature);
+  const pieceFeatures=['pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove'];
+  if(pieceFeatures.includes(feature)){
+    // One piece type is selected each turn. Learn the opponent's distribution
+    // around its natural six-way centre instead of treating 50% as neutral.
+    return armxFullClamp((frequency-1/6)*3,-1,1)*confidence;
+  }
+  if(feature==='advance'||feature==='retreat'){
+    const other=armxFullRawFrequency(book,feature==='advance'?'retreat':'advance');
+    return armxFullClamp((frequency-other)*1.6,-1,1)*confidence;
+  }
+  if(feature==='kingside'||feature==='queenside'){
+    const other=armxFullRawFrequency(book,feature==='kingside'?'queenside':'kingside');
+    return armxFullClamp((frequency-other)*1.3,-1,1)*confidence;
+  }
+  // Rare traits are not "disliked" merely because they occur below 50%.
+  // Their observed frequency is positive predictive evidence when present.
+  return armxFullClamp(frequency,0,1)*confidence;
+}
 function armxFullPolicyFeatureScore(book,features){
   let score=0,evidence=0;
   for(const feature of features){
-    const row=armxFullChoiceRate(book,feature);
-    if(row.evidence<ARMX_FULL.minChoiceEvidence)continue;
-    const confidence=armxFullClamp(row.evidence/8,0,1);
-    score+=(row.rate-0.5)*confidence;
-    evidence+=confidence;
+    if(!ARMX_FULL_NOTE_FEATURES.includes(feature))continue;
+    const preference=armxFullFeaturePreference(book,feature);
+    if(!preference)continue;
+    score+=preference;
+    evidence+=Math.min(1,(book.opponentMoves||0)/8);
   }
   return evidence?score/Math.sqrt(evidence):0;
 }
 function armxFullLearnedWeightDelta(book,feature,scale=1){
-  const row=armxFullChoiceRate(book,feature);
-  if(row.evidence<ARMX_FULL.minChoiceEvidence)return 0;
-  const confidence=armxFullClamp(row.evidence/8,0,1);
-  return (row.rate-0.5)*2*confidence*scale;
+  return armxFullFeaturePreference(book,feature)*scale;
 }
 function armxFullCompiledPolicyWeights(previewWeights,book){
   const weights=new Float64Array(previewWeights||13);
