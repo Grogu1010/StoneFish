@@ -28,9 +28,9 @@ const ARMX_FULL = Object.freeze({
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
   candidateLimit: 4,
   baseSearchNodes: 1200,
-  maxEvidenceSearchNodes: 9500,
-  maxSurpriseSearchNodes: 1800,
-  maxExtraNodes: 12000,
+  maxEvidenceSearchNodes: 8000,
+  maxSurpriseSearchNodes: 1500,
+  maxExtraNodes: 10000,
   baseDepth: 4,
   maxEvidenceDepth: 7,
   maxExtraDepth: 3,
@@ -435,9 +435,11 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     +ARMX_FULL.maxEvidenceSearchNodes*learnedStrength
     +ARMX_FULL.maxSurpriseSearchNodes*surprise*learnedStrength
   );
-  const breadthStrength=learnedStrength*learnedStrength;
+  // Extra root breadth is expensive and can dilute depth. Unlock the fourth
+  // finalist only when the opponent notebook is genuinely mature/useful.
+  const breadthEvidence=learnedStrength*(0.85+0.15*surprise);
   const rootWidth=ARMX_FULL.baseRootWidth
-    +Math.round((ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth)*breadthStrength);
+    +(breadthEvidence>=0.92?Math.min(1,ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth):0);
   const maxDepth=Math.round(
     ARMX_FULL.baseDepth+(ARMX_FULL.maxEvidenceDepth-ARMX_FULL.baseDepth)*learnedStrength
   );
