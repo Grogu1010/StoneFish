@@ -205,6 +205,35 @@ static int search_attacked_synced(int square,int by_side,u64 occupied){
   }
   return 0;
 }
+static int search_ray_check_through(int king,int square,int by_side,u64 occupied){
+  u64 bit=(u64)1<<square;
+  static const u8 increasing[8]={1,0,1,0,1,0,1,0};
+  for(int d=0;d<8;d++){
+    u64 ray=search_attack_ray_mask[king][d];
+    if(!(ray&bit))continue;
+    u64 blockers=occupied&ray;
+    if(!blockers)return 0;
+    int sq=increasing[d]?__builtin_ctzll(blockers):63-__builtin_clzll(blockers);
+    int p=board[sq];
+    return p==by_side*5||p==by_side*(d<4?3:4);
+  }
+  return 0;
+}
+static int search_quiet_move_gives_check(const SearchState *child,u32 m){
+  int by_side=-child->side,king=child->side>0?child->wk:child->bk;
+  int piece=move_piece(m),from=move_from(m),to=move_to(m),flags=move_flags(m);
+  u64 occupied=search_white_occ|search_black_occ,toBit=(u64)1<<to;
+  if(flags&12)return search_attacked_synced(king,by_side,occupied);
+  if(piece==1){
+    u64 mask=by_side>0?search_attack_white_pawn_mask[king]:search_attack_black_pawn_mask[king];
+    if(mask&toBit)return 1;
+  }else if(piece==2){
+    if(search_attack_knight_mask[king]&toBit)return 1;
+  }else if(piece==6){
+    if(search_attack_king_mask[king]&toBit)return 1;
+  }else if(search_ray_check_through(king,to,by_side,occupied))return 1;
+  return search_ray_check_through(king,from,by_side,occupied);
+}
 int in_check(int side,int king){return attacked(king,-side);}
 static int gen_side,gen_king,gen_mode,gen_count,gen_search_fast;
 static u64 gen_search_occ;
@@ -1038,8 +1067,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
     else{
       int reduce=0;
       if(depth>=3&&index>=4&&!check&&quiet){
-        int childking=child.side>0?child.wk:child.bk;
-        reduce=!search_attacked_synced(childking,-child.side,search_white_occ|search_black_occ);
+        reduce=!search_quiet_move_gives_check(&child,m);
       }
       score=-search_ab(&child,depth-1-reduce,-alpha-1,-alpha,ply+1,m);
       if(!search_abort&&score>alpha&&(reduce||score<beta))
