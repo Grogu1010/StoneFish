@@ -25,8 +25,13 @@ const ARMX_FULL_CONTEXT_FEATURES = Object.freeze([
 // Preview already reasons about capture/trade reply opportunities. Full ARMX
 // extends candidate-time prediction only to broader behaviors its notebook has
 // actually observed with opportunity evidence.
+const ARMX_FULL_OWN_OUTCOME_FEATURES = Object.freeze([
+  'forcing','promotion','center','kingside','queenside','centralize','development',
+  'pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove'
+]);
 const ARMX_FULL_EXTENDED_REPLY_FEATURES = Object.freeze([
-  'minorTrade','kingAttack','pawnPush','castle','quiet','advance','retreat'
+  'minorTrade','kingAttack','pawnPush','castle','quiet','advance','retreat',
+  ...ARMX_FULL_OWN_OUTCOME_FEATURES
 ]);
 
 const ARMX_FULL = Object.freeze({
@@ -360,6 +365,8 @@ function armxFullNewNotebook(perspective,game,observationStartPly,previewProfile
     responseChoices:Object.create(null),
     responseEffects:Object.create(null),
     pendingResponseEffects:[],
+    extendedEffects:armxFullFreshEffects(),
+    pendingExtendedEffects:[],
     currentScore:armxPreviewStateSnapshot(replay,perspective).score,
     lastOurFeatures:new Set(),
     surpriseSum:0,
@@ -413,6 +420,46 @@ function armxFullResolveResponseEffects(book,currentPly,currentScore){
     );
   }
   book.pendingResponseEffects=keep;
+}
+function armxFullExtendedEffect(book,feature){
+  const row=book&&book.extendedEffects&&book.extendedEffects[feature];
+  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
+    return {value:0,evidence:row?row.weight:0,consistency:0,observations:row?row.observations:new Set()};
+  }
+  const value=row.impact/row.weight;
+  const variance=Math.max(0,row.impactSq/row.weight-value*value);
+  const consistency=1-armxFullClamp(Math.sqrt(variance),0,1);
+  return {value,evidence:row.weight,consistency,observations:row.observations};
+}
+function armxFullRecordExtendedEffects(book,features,impact,weight,observationId){
+  if(!features||!features.length)return;
+  const effectScale=Number(ARMX_PREVIEW.effectScale)||360;
+  const normalized=armxFullClamp(impact/effectScale,-1,1);
+  for(const feature of features){
+    if(!ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature))continue;
+    const row=book.extendedEffects[feature];
+    if(!row)continue;
+    row.weight+=weight;
+    row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
+    row.observations.add(observationId);
+  }
+}
+function armxFullResolveExtendedEffects(book,currentPly,currentScore){
+  if(!book.pendingExtendedEffects.length)return;
+  const keep=[];
+  for(const event of book.pendingExtendedEffects){
+    if(currentPly<event.resolveAt){keep.push(event);continue;}
+    armxFullRecordExtendedEffects(
+      book,event.features,currentScore-event.before,event.weight,event.observationId
+    );
+  }
+  book.pendingExtendedEffects=keep;
+}
+function armxFullOutcomeEffect(book,feature){
+  const preview=armxFullPreviewEffect(book,'opponentEffects',feature);
+  if(preview.evidence>=ARMX_FULL.minEffectEvidence)return preview;
+  return armxFullExtendedEffect(book,feature);
 }
 function armxFullPreviewEffect(book,bucketName,feature){
   const profile=book&&book.previewProfile;
@@ -494,6 +541,19 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
     if(index>=observationStartPly){
       const features=armxFullMoveFeatures(book.replay,move);
       if(actor===-perspective){
+        const extendedChosen=Array.from(features).filter(
+          feature=>ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature)
+        );
+        if(extendedChosen.length){
+          book.pendingExtendedEffects.push({
+            features:extendedChosen,before:book.currentScore,observationId:index,
+            resolveAt:index+2,weight:0.65,
+          });
+          book.pendingExtendedEffects.push({
+            features:extendedChosen,before:book.currentScore,observationId:index,
+            resolveAt:index+4,weight:0.35,
+          });
+        }
         const stride=Math.max(1,ARMX_FULL.opportunityScanStride||1);
         const sampleOpportunity=(book.opponentMoves%stride)===0;
         if(sampleOpportunity){
@@ -534,8 +594,10 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
     book.processedPlies++;
     book.lastHistoryState=state;
     armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);
+    armxFullResolveExtendedEffects(book,book.processedPlies,book.currentScore);
   }
   armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);
+  armxFullResolveExtendedEffects(book,book.processedPlies,book.currentScore);
   return book;
 }
 function armxFullNotebookMaturity(book){
@@ -551,7 +613,7 @@ function armxFullNotebookSummary(book){
   const rows=[];
   for(const feature of ARMX_FULL_NOTE_FEATURES){
     const choice=armxFullChoiceRate(book,feature);
-    const effect=armxFullPreviewEffect(book,'opponentEffects',feature);
+    const effect=armxFullOutcomeEffect(book,feature);
     const frequencyEvidence=Math.min(1,choice.evidence/8);
     const importance=frequencyEvidence*Math.min(0.75,choice.rate)
       +Math.abs(effect.value)*Math.min(1,effect.evidence/4);
