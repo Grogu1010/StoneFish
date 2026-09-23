@@ -496,9 +496,15 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   }
   const rootWidth=replyPolicy&&Number.isFinite(replyPolicy.rootWidth)
     ?Math.max(SF55C.multiPV,Math.min(12,Math.round(replyPolicy.rootWidth))):SF55C.multiPV;
-  const count=k.api.search_all(
-    g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-    depthLimit,limit,SF55C.qDepth,1,publicHistoryCount,rootWidth);
+  const searchAll = rootWidth > SF55C.multiPV && k.api.search_all_width
+    ? k.api.search_all_width : k.api.search_all;
+  const count = rootWidth > SF55C.multiPV && k.api.search_all_width
+    ? searchAll(
+      g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
+      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount,rootWidth)
+    : searchAll(
+      g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
+      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
   const finished=new Array(count);
   for(let i=0;i<count;i++){
     const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
