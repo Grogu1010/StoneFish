@@ -7,6 +7,7 @@ on:
       - 'Stonefish_v5_5_range.js'
       - 'Stonefish_v5_5_native.js'
       - 'benchmark_v5_5_range.js'
+      - 'benchmark_v5_5_armx_decomposition.js'
       - '.github/workflows/v5-5-range.yml'
   workflow_dispatch:
 
@@ -47,3 +48,22 @@ jobs:
           GAMES: '8'
           MATCHUP: ${{ matrix.matchup }}
         run: node benchmark_v5_5_range.js
+
+  armx-decomposition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build compiled ARMX search
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Syntax check decomposition
+        run: node --check benchmark_v5_5_armx_decomposition.js
+      - name: Run Artemis decomposition
+        env:
+          GAMES: '8'
+        run: node benchmark_v5_5_armx_decomposition.js
