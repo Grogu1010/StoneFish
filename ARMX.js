@@ -26,16 +26,16 @@ const ARMX_FULL = Object.freeze({
 
   // No evidence means no free strength bump: Full ARMX begins from the current
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
-  candidateLimit: 5,
+  candidateLimit: 8,
   baseSearchNodes: 1200,
-  maxEvidenceSearchNodes: 52000,
-  maxSurpriseSearchNodes: 8000,
-  maxExtraNodes: 60000,
+  maxEvidenceSearchNodes: 104000,
+  maxSurpriseSearchNodes: 14000,
+  maxExtraNodes: 120000,
   baseDepth: 4,
   maxEvidenceDepth: 10,
   maxExtraDepth: 6,
   baseRootWidth: 3,
-  maxRootWidth: 5,
+  maxRootWidth: 8,
   matureOpponentMoves: 10,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
