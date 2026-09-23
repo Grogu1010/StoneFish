@@ -97,7 +97,7 @@ const ARMX_FULL = Object.freeze({
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
   styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 100, ares: 105, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 72, ares: 85, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -133,9 +133,9 @@ const ARMX_FULL = Object.freeze({
         simplify:1.35,check:-0.15,kingAttack:-0.35,quiet:0.85,retreat:1.45,castle:1.70,
       }),
       baseScale:3, earlyBoost:0.00, lateBoost:-0.05, paceTargetPlies:260,
-      aheadThreshold:50, behindThreshold:55, advantageRange:260, minStyleLead:5,
-      aheadScale:6.00, behindScale:5.50, replyCompressionWeight:0,
-      aheadReplyCompressionWeight:-12.00, behindReplyCompressionWeight:-6.50, capturedValueWeight:-0.20,
+      aheadThreshold:120, behindThreshold:100, advantageRange:260, minStyleLead:11,
+      aheadScale:4.20, behindScale:4.60, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:-10.00, behindReplyCompressionWeight:-5.80, capturedValueWeight:-0.15,
       repetitionWeight:0, aheadRepetitionWeight:-2.60, behindRepetitionWeight:10.50,
       advantageDelayWeight:5.80, pawnClockResetWeight:5.00, aheadCandidateFloor:180,
       patientOpponentScale:0.00, aggressiveOpponentScale:1.15,
@@ -144,8 +144,8 @@ const ARMX_FULL = Object.freeze({
       opponentForcingReplyWeight:-0.35, behindForcingReplyWeight:-4.20,
       opponentKingAttackReplyWeight:-0.30, behindKingAttackReplyWeight:-3.20,
       opponentCaptureReplyWeight:-0.10, behindCaptureReplyWeight:-1.40,
-      aheadHostGapBonus:28, aheadDeepGapBonus:20, behindHostGapBonus:40, behindDeepGapBonus:28,
-      maxHostGap:2, maxDeepSacrifice:2,
+      aheadHostGapBonus:18, aheadDeepGapBonus:13, behindHostGapBonus:28, behindDeepGapBonus:20,
+      maxHostGap:1, maxDeepSacrifice:1,
     }),
     ares: Object.freeze({
       weights: Object.freeze({}),
@@ -157,20 +157,20 @@ const ARMX_FULL = Object.freeze({
         capture:0.15,trade:-0.55,simplify:-0.65,check:1.55,kingAttack:1.70,
         forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
       }),
-      baseScale:3, earlyBoost:0.00, lateBoost:9.50, paceTargetPlies:42,
-      aheadThreshold:20, behindThreshold:140, advantageRange:260, minStyleLead:5,
-      aheadScale:2.60, behindScale:0.10, replyCompressionWeight:0,
-      aheadReplyCompressionWeight:4.80, behindReplyCompressionWeight:0, capturedValueWeight:1.70,
+      baseScale:3, earlyBoost:0.00, lateBoost:8.50, paceTargetPlies:42,
+      aheadThreshold:45, behindThreshold:160, advantageRange:260, minStyleLead:8,
+      aheadScale:2.10, behindScale:0.08, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:4.00, behindReplyCompressionWeight:0, capturedValueWeight:1.35,
       repetitionWeight:0, aheadRepetitionWeight:-8.80, behindRepetitionWeight:-0.30,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
       patientOpponentScale:0.25, aggressiveOpponentScale:0.00,
-      patientPressureThreshold:0.10, patientPressureRange:0.10,
-      patientPressureWeight:30.00, aggressiveDefenseWeight:0,
+      patientPressureThreshold:0.12, patientPressureRange:0.14,
+      patientPressureWeight:22.00, aggressiveDefenseWeight:0,
       opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
-      aheadHostGapBonus:20, aheadDeepGapBonus:15, behindHostGapBonus:0, behindDeepGapBonus:0,
-      maxHostGap:2, maxDeepSacrifice:2,
+      aheadHostGapBonus:14, aheadDeepGapBonus:10, behindHostGapBonus:0, behindDeepGapBonus:0,
+      maxHostGap:1, maxDeepSacrifice:1,
     }),
   }),
 });
@@ -498,10 +498,9 @@ function armxFullResolveOwnExtendedEffects(book,currentPly,currentScore){
   book.pendingOurExtendedEffects=keep;
 }
 function armxFullOwnOutcomeEffect(book,feature){
-  const preview=armxFullPreviewEffect(book,'ourEffects',feature);
-  if(preview.evidence>=ARMX_FULL.minEffectEvidence){
-    return {...preview,source:'preview'};
-  }
+  // Preview already owns its proven ourEffects subset. Full ARMX's additional
+  // signal is intentionally limited to the broader move categories Preview
+  // does not use for this candidate-level opponent-handling note.
   return armxFullOwnExtendedEffect(book,feature);
 }
 function armxFullOutcomeEffect(book,feature){
@@ -1043,13 +1042,10 @@ function armxFullCandidateResponseReport(
   for(const feature of contextFeatures){
     if(!ARMX_FULL_NOTE_FEATURES.includes(feature))continue;
     const effect=armxFullOwnOutcomeEffect(book,feature);
-    const enough=effect.source==='full'
-      ?effect.evidence>=ARMX_FULL.ownOutcomeMinEvidence
-        &&effect.consistency>=ARMX_FULL.ownOutcomeMinConsistency
-      :effect.evidence>=ARMX_FULL.minEffectEvidence;
+    const enough=effect.evidence>=ARMX_FULL.ownOutcomeMinEvidence
+      &&effect.consistency>=ARMX_FULL.ownOutcomeMinConsistency;
     if(!enough)continue;
-    const sourceScale=effect.source==='full'
-      ?ARMX_FULL.fullOnlyOutcomeScale*Math.max(0,effect.consistency||0):1;
+    const sourceScale=ARMX_FULL.fullOnlyOutcomeScale*Math.max(0,effect.consistency||0);
     const confidence=armxFullClamp(effect.evidence/6,0,1)*sourceScale;
     if(confidence<=0)continue;
     ownOutcome+=effect.value*confidence;
