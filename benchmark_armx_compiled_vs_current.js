@@ -14,7 +14,7 @@ if (fs.existsSync('Stonefish_v5_pro_geometry_patch.js')) engineFiles.push('Stone
 if (fs.existsSync('Stonefish_runtime_speed_patch.js')) engineFiles.push('Stonefish_runtime_speed_patch.js');
 if (fs.existsSync('Stonefish_fast_moves_experiment.js')) engineFiles.push('Stonefish_fast_moves_experiment.js');
 engineFiles.push('Stonefish_v5_5_search.js','Stonefish_v5_5_refutation_guard.js',
-  'Stonefish_v5_5_native.js','ARMX-preview.js','Stonefish_v5_5_testunit1.js');
+  'Stonefish_v5_5_native.js','ARMX-preview.js','Stonefish_v5_5.js');
 vm.runInThisContext(engineFiles.map(file => fs.readFileSync(file,'utf8')).join('\n\n'), {filename:'armx-fast-vs-current.js'});
 
 function seededRandom(seed){let x=seed>>>0;return()=>{x+=0x6D2B79F5;let t=x;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};}
@@ -47,8 +47,8 @@ function withFastMode(enabled,fn){
 const selectiveStats={cheapCalls:0,fullVerifications:0,gapTriggers:0,rejectionTriggers:0};
 function fastMove(game){
   selectiveStats.cheapCalls++;
-  const cheap=withFastMode(true,()=>getStonefishV55Testunit1Move(game));
-  const review=stonefishV55Testunit1LastARMX();
+  const cheap=withFastMode(true,()=>getStonefishV55Move(game));
+  const review=stonefishV55LastARMX();
   const gapLimit=Number.parseInt(process.env.ARMX_SELECTIVE_GAP||'-1',10);
   const gapTrigger=Boolean(review&&review.searchGuidanceActive&&Number.isFinite(review.hostScoreGap)&&gapLimit>=0&&review.hostScoreGap<=gapLimit);
   const rejectionTrigger=Boolean(process.env.ARMX_SELECTIVE_REJECT==='1'&&review&&review.searchGuidanceActive&&review.adaptationRejected);
@@ -56,9 +56,9 @@ function fastMove(game){
   if(gapTrigger)selectiveStats.gapTriggers++;
   if(rejectionTrigger)selectiveStats.rejectionTriggers++;
   selectiveStats.fullVerifications++;
-  return withFastMode(false,()=>getStonefishV55Testunit1Move(game));
+  return withFastMode(false,()=>getStonefishV55Move(game));
 }
-function currentMove(game){return withFastMode(false,()=>getStonefishV55Testunit1Move(game));}
+function currentMove(game){return withFastMode(false,()=>getStonefishV55Move(game));}
 function perfSummary(moves,ms){return{moves,thinkMs:ms,averageTimePerMoveMs:moves?ms/moves:0};}
 function simulate(index){
   const pair=Math.floor(index/2),fastIsWhite=index%2===0,game=positionAfter(generateOpening(pair,10));
