@@ -43,7 +43,7 @@ const ARMX_FULL = Object.freeze({
   maxRootWidth: 4,
   matureOpponentMoves: 6,
   opportunityScanStride: 2,
-  rootBreadthEvidenceThreshold: 0.80,
+  rootBreadthEvidenceThreshold: 0.96,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -78,7 +78,7 @@ const ARMX_FULL = Object.freeze({
       weights: Object.freeze({}),
       aheadWeights: Object.freeze({}), behindWeights: Object.freeze({}),
       baseScale:0, earlyBoost:0, lateBoost:0, paceTargetPlies:1,
-      aheadThreshold:120, behindThreshold:120, advantageRange:580,
+      aheadThreshold:120, behindThreshold:120, advantageRange:580, minStyleLead:Infinity,
       aheadScale:0, behindScale:0, replyCompressionWeight:0, capturedValueWeight:0,
       repetitionWeight:0, aheadRepetitionWeight:0, behindRepetitionWeight:0,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:-1000000000,
@@ -110,7 +110,7 @@ const ARMX_FULL = Object.freeze({
         simplify:4.00,check:0.42,kingAttack:0.28,quiet:-1.35,retreat:1.15,castle:1.45,
       }),
       baseScale:10, earlyBoost:2.40, lateBoost:-0.35, paceTargetPlies:260,
-      aheadThreshold:120, behindThreshold:15, advantageRange:360,
+      aheadThreshold:120, behindThreshold:15, advantageRange:360, minStyleLead:10,
       aheadScale:0.25, behindScale:4.20, replyCompressionWeight:-1.25, capturedValueWeight:-0.38,
       repetitionWeight:0.10, aheadRepetitionWeight:-0.25, behindRepetitionWeight:8.60,
       advantageDelayWeight:0.45, pawnClockResetWeight:1.40, aheadCandidateFloor:170,
@@ -140,7 +140,7 @@ const ARMX_FULL = Object.freeze({
         forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
       }),
       baseScale:8, earlyBoost:0.10, lateBoost:6.20, paceTargetPlies:42,
-      aheadThreshold:10, behindThreshold:100, advantageRange:420,
+      aheadThreshold:10, behindThreshold:100, advantageRange:420, minStyleLead:8,
       aheadScale:4.10, behindScale:0.20, replyCompressionWeight:1.10, capturedValueWeight:1.05,
       repetitionWeight:-0.85, aheadRepetitionWeight:-6.20, behindRepetitionWeight:-0.35,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
@@ -966,7 +966,9 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
     const styleLead=(Number(report.styleAdjustment)||0)
       -(Number(provisionalReport.styleAdjustment)||0);
-    const styleAllowed=style!=='artemis'&&styleLead>0;
+    const minStyleLead=Number(styleProfile.minStyleLead);
+    const styleAllowed=style!=='artemis'
+      &&styleLead>=(Number.isFinite(minStyleLead)?minStyleLead:Infinity);
 
     report.previewGate=previewGate;
     report.fullNoteGate={
