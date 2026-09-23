@@ -209,6 +209,7 @@ const targets={
     aresBeatsAthenaMoreOftenThanArtemis:true,
     athenaDrawsMoreThanItLosesToAres:true,
     athenaDrawsAresMoreThanArtemisDoes:true,
+    athenaLosesLessToAresThanArtemisDoes:true,
     artemisScoresBetterAgainstAresThanAthenaDoes:true,
     athenaMoreResilientThanAresOutsideTheirHeadToHead:true,
     artemisTopOverall:true,
@@ -283,6 +284,7 @@ const relationships=(results.athenaVsCurrent&&results.aresVsCurrent&&results.art
     athenaAresDrawRate:rate(aresVsAthena,'draw'),
     athenaAresLossRate:rate(aresVsAthena,'win'),
     artemisAresDrawRate:rate(artemisVsAres,'draw'),
+    artemisAresLossRate:rate(artemisVsAres,'loss'),
     athenaVsAresScore,
     artemisVsAresScore:artemisVsAres.score,
     athenaOutsideScore,
@@ -338,6 +340,8 @@ if(process.env.RELEASE_GATE==='1'){
     'Athena defensive identity failed vs Ares: draw rate '+relationships.athenaAresDrawRate+' must exceed loss rate '+relationships.athenaAresLossRate);
   requireGate(relationships.athenaAresDrawRate>relationships.artemisAresDrawRate,
     'Athena must force more draws against Ares than Artemis does: Athena '+relationships.athenaAresDrawRate+', Artemis '+relationships.artemisAresDrawRate);
+  requireGate(relationships.athenaAresLossRate<relationships.artemisAresLossRate,
+    'Athena must lose less often to Ares than Artemis does: Athena '+relationships.athenaAresLossRate+', Artemis '+relationships.artemisAresLossRate);
   requireGate(relationships.artemisVsAresScore>relationships.athenaVsAresScore,
     'Artemis must score better against Ares than Athena does');
   requireGate(relationships.athenaOutsideScore>relationships.aresOutsideScore,
