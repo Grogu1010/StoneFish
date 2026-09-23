@@ -462,10 +462,44 @@ function armxFullCompiledPolicyWeights(previewWeights,book){
   add(12,armxFullLearnedWeightDelta(book,'pawnPush',1.10)+armxFullLearnedWeightDelta(book,'advance',0.55));
   return weights;
 }
+function armxFullPreviewPolicyFromSyncedProfile(profile,perspective){
+  const model=profile&&profile.quietPolicy;
+  if(!model||model.count<ARMX_PREVIEW.quietChoiceMinObservations)return null;
+  const weights=new Float64Array(model.weights);
+  let cache=null;
+  const score=move=>{
+    if(!cache)cache=new Map();
+    const key=move.from|(move.to<<6)|(move.piece<<12)
+      |((move.promotion||0)<<15)|((move.flags||0)<<18);
+    let value=cache.get(key);
+    if(value===undefined){
+      value=armxPreviewQuietLogit(armxPreviewQuietFeatures(move,-perspective),weights);
+      cache.set(key,value);
+    }
+    return value;
+  };
+  const uncertainty=armxPreviewClamp(
+    -(model.qualityWeight?model.qualitySum/model.qualityWeight:0)
+      /ARMX_PREVIEW.predictionSurpriseScale,0,1
+  );
+  const searchBudget=SF55C.nodes+Math.round(ARMX_PREVIEW.maxExtraSearchNodes*uncertainty)
+    +Math.round(ARMX_PREVIEW.evidenceSearchNodes
+      *Math.min(1,model.count/ARMX_PREVIEW.fullSearchEvidence));
+  return {
+    observations:model.count,
+    searchBudget,
+    maxDepth:SF55C.maxDepth+ARMX_PREVIEW.maxExtraSearchDepth,
+    weights,
+    priority:move=>Math.round(300*score(move)),
+    isLowPriority:move=>score(move)<0,
+  };
+}
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   // Style is deliberately ignored: all three models receive the same Full ARMX.
   const previewProfile=armxPreviewSyncProfile(game,perspective);
-  const preview=armxPreviewOpponentPolicy(game,perspective);
+  // Reuse the already-synced frozen Preview profile inside Full ARMX. This
+  // reproduces Preview's policy math without a second profile sync.
+  const preview=armxFullPreviewPolicyFromSyncedProfile(previewProfile,perspective);
   const book=armxFullSyncNotebook(game,perspective,previewProfile);
   const maturity=armxFullNotebookMaturity(book);
   const noteSummary=armxFullNotebookSummary(book);
