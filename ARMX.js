@@ -380,27 +380,56 @@ function armxFullPolicyFeatureScore(book,features){
   }
   return evidence?score/Math.sqrt(evidence):0;
 }
+function armxFullLearnedWeightDelta(book,feature,scale=1){
+  const row=armxFullChoiceRate(book,feature);
+  if(row.evidence<ARMX_FULL.minChoiceEvidence)return 0;
+  const confidence=armxFullClamp(row.evidence/8,0,1);
+  return (row.rate-0.5)*2*confidence*scale;
+}
+function armxFullCompiledPolicyWeights(previewWeights,book){
+  const weights=new Float64Array(previewWeights||13);
+  const add=(index,value)=>{weights[index]=armxFullClamp((weights[index]||0)+value,-6,6);};
+  add(0,armxFullLearnedWeightDelta(book,'pawnMove',1.35));
+  add(1,armxFullLearnedWeightDelta(book,'knightMove',1.35));
+  add(2,armxFullLearnedWeightDelta(book,'bishopMove',1.35));
+  add(3,armxFullLearnedWeightDelta(book,'rookMove',1.20));
+  add(4,armxFullLearnedWeightDelta(book,'queenMove',1.20));
+  add(5,armxFullLearnedWeightDelta(book,'kingMove',1.10));
+  add(6,armxFullLearnedWeightDelta(book,'centralize',1.15));
+  add(8,armxFullLearnedWeightDelta(book,'advance',1.45)-armxFullLearnedWeightDelta(book,'retreat',0.85));
+  add(9,armxFullLearnedWeightDelta(book,'castle',1.55));
+  add(10,armxFullLearnedWeightDelta(book,'development',1.45));
+  add(11,armxFullLearnedWeightDelta(book,'center',1.35));
+  add(12,armxFullLearnedWeightDelta(book,'pawnPush',1.10)+armxFullLearnedWeightDelta(book,'advance',0.55));
+  return weights;
+}
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   // style is deliberately ignored: all three models receive the same Full ARMX.
   const previewProfile=armxPreviewSyncProfile(game,perspective);
   const book=armxFullSyncNotebook(game,perspective);
   const maturity=armxFullNotebookMaturity(book);
+  const noteSummary=armxFullNotebookSummary(book);
+  const noteUsefulness=armxFullClamp(
+    noteSummary.reduce((sum,row)=>sum+row.importance,0)/2.5,0,1
+  );
+  const learnedStrength=maturity*noteUsefulness;
   const surprise=book.surpriseWeight
     ?armxFullClamp((book.surpriseSum/book.surpriseWeight-0.35)/1.2,0,1):0;
 
   const searchBudget=Math.round(
     ARMX_FULL.baseSearchNodes
-    +ARMX_FULL.maxEvidenceSearchNodes*maturity
-    +ARMX_FULL.maxSurpriseSearchNodes*surprise*maturity
+    +ARMX_FULL.maxEvidenceSearchNodes*learnedStrength
+    +ARMX_FULL.maxSurpriseSearchNodes*surprise*learnedStrength
   );
   const rootWidth=ARMX_FULL.baseRootWidth
-    +Math.round((ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth)*maturity);
+    +Math.round((ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth)*learnedStrength);
   const maxDepth=Math.round(
-    ARMX_FULL.baseDepth+(ARMX_FULL.maxEvidenceDepth-ARMX_FULL.baseDepth)*maturity
+    ARMX_FULL.baseDepth+(ARMX_FULL.maxEvidenceDepth-ARMX_FULL.baseDepth)*learnedStrength
   );
 
   const preview=armxPreviewOpponentPolicy(game,perspective);
   const previewWeights=preview&&preview.weights?new Float64Array(preview.weights):new Float64Array(13);
+  const compiledWeights=armxFullCompiledPolicyWeights(previewWeights,book);
   const cache=new Map();
   const side=-perspective;
   const notePriority=move=>{
@@ -417,14 +446,16 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     version:ARMX_FULL.version,
     observations:book.opponentMoves,
     maturity,
-    noteBreadth:armxFullNotebookSummary(book).length,
+    noteUsefulness,
+    learnedStrength,
+    noteBreadth:noteSummary.length,
     searchBudget,
     maxDepth,
     maxExtraNodes:ARMX_FULL.maxExtraNodes,
     maxExtraDepth:ARMX_FULL.maxExtraDepth,
     rootWidth,
     predictionSurprise:surprise,
-    weights:previewWeights,
+    weights:compiledWeights,
     priority:move=>previewPriority(move)+notePriority(move),
     isLowPriority:move=>{
       const previewLow=preview&&typeof preview.isLowPriority==='function'&&preview.isLowPriority(move);
@@ -564,8 +595,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const previewAdjustment=(Number(previewReport.adjustment)||0)
       *ARMX_FULL.previewDecisionGain*maturity;
     const noteConfidence=armxFullClamp(response.evidence/ARMX_FULL.fullConfidenceEvidence,0,1);
-    const learnedSignal=response.ownOutcome+response.expectedOpponentOutcome
-      +0.22*response.opponentPreferenceSignal;
+    const learnedSignal=response.ownOutcome+response.expectedOpponentOutcome;
     const noteAdjustment=armxFullClamp(
       learnedSignal*ARMX_FULL.fullNoteScale*noteConfidence*maturity,
       -ARMX_FULL.maxNoteAdjustment,ARMX_FULL.maxNoteAdjustment
@@ -579,12 +609,8 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const deepSacrifice=Number.isFinite(hostBest.deep)&&Number.isFinite(entry.deep)
       ?hostBest.deep-entry.deep:hostGap;
     const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
-    const allowedHostGap=style==='artemis'
-      ?ARMX_FULL.maxHostGap
-      :styleProfile.maxHostGap;
-    const allowedDeepSacrifice=style==='artemis'
-      ?ARMX_FULL.maxDeepSacrifice
-      :styleProfile.maxDeepSacrifice;
+    const allowedHostGap=styleProfile.maxHostGap;
+    const allowedDeepSacrifice=styleProfile.maxDeepSacrifice;
     const protectedTruth=armxFullMateScale(hostBest)||armxFullMateScale(entry);
     const eligible=entry===hostBest||(!protectedTruth
       &&hostGap<=allowedHostGap&&deepSacrifice<=allowedDeepSacrifice);
