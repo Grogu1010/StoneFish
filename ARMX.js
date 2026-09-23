@@ -14,8 +14,13 @@ const ARMX_FULL_NOTE_FEATURES = Object.freeze([
   'forcing','promotion','center','kingside','queenside','centralize',
   'development','pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove'
 ]);
+const ARMX_FULL_STATE_CONTEXTS = Object.freeze([
+  'queensOn','queenless','materialHigh','materialMid','materialLow',
+  'opponentAhead','opponentBehind','roughlyEqual'
+]);
 const ARMX_FULL_CONTEXT_FEATURES = Object.freeze([
-  'capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat'
+  'capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat',
+  ...ARMX_FULL_STATE_CONTEXTS
 ]);
 
 const ARMX_FULL = Object.freeze({
@@ -223,6 +228,57 @@ function armxFullPredictiveMoveFeatures(game,move){
       &&!features.has('kingAttack'))features.add('quiet');
   return features;
 }
+function armxFullStateContextFromTotals(totalMaterial,perspectiveScore,queenCount){
+  const contexts=new Set();
+  contexts.add(queenCount>0?'queensOn':'queenless');
+  contexts.add(totalMaterial>=5200?'materialHigh':totalMaterial<=2800?'materialLow':'materialMid');
+  if(perspectiveScore>=150)contexts.add('opponentBehind');
+  else if(perspectiveScore<=-150)contexts.add('opponentAhead');
+  else contexts.add('roughlyEqual');
+  return contexts;
+}
+function armxFullStateContexts(game,perspective){
+  let totalMaterial=0,perspectiveScore=0,queenCount=0;
+  for(const piece of game.boardState){
+    if(!piece)continue;
+    const type=Math.abs(piece);
+    if(type===6)continue;
+    const value=ARMX_PREVIEW_PIECE_VALUES[type]||0;
+    totalMaterial+=value;
+    perspectiveScore+=(piece>0?1:-1)===perspective?value:-value;
+    if(type===5)queenCount++;
+  }
+  return armxFullStateContextFromTotals(totalMaterial,perspectiveScore,queenCount);
+}
+function armxFullStateContextsAfterMove(game,move,perspective){
+  let totalMaterial=0,perspectiveScore=0,queenCount=0;
+  for(const piece of game.boardState){
+    if(!piece)continue;
+    const type=Math.abs(piece);
+    if(type===6)continue;
+    const value=ARMX_PREVIEW_PIECE_VALUES[type]||0;
+    totalMaterial+=value;
+    perspectiveScore+=(piece>0?1:-1)===perspective?value:-value;
+    if(type===5)queenCount++;
+  }
+  const mover=game.side;
+  const captured=move&&move.captured||0;
+  if(captured){
+    const value=ARMX_PREVIEW_PIECE_VALUES[captured]||0;
+    totalMaterial-=value;
+    // Captured material belonged to the other side.
+    perspectiveScore+=(mover===perspective?1:-1)*value;
+    if(captured===5)queenCount=Math.max(0,queenCount-1);
+  }
+  if(move&&move.promotion){
+    const delta=(ARMX_PREVIEW_PIECE_VALUES[move.promotion]||0)
+      -(ARMX_PREVIEW_PIECE_VALUES[1]||0);
+    totalMaterial+=delta;
+    perspectiveScore+=(mover===perspective?1:-1)*delta;
+    if(move.promotion===5)queenCount++;
+  }
+  return armxFullStateContextFromTotals(totalMaterial,perspectiveScore,queenCount);
+}
 function armxFullResponseKey(contextFeature,replyFeature){
   return contextFeature+'>'+replyFeature;
 }
@@ -295,7 +351,7 @@ function armxFullPreviewEffect(book,bucketName,feature){
   const effect=armxPreviewEffect(bucket,feature);
   return {value:Number(effect.value)||0,evidence:Number(effect.evidence)||0,consistency:1};
 }
-function armxFullObserveHistoricalOpponent(book,features,available,legalCount,index){
+function armxFullObserveHistoricalOpponent(book,features,available,legalCount,index,stateContexts=new Set()){
   book.opponentMoves++;
   // A forced move says nothing about preference. Keep it out of the tendency
   // notebook while still counting it as an observed opponent move.
@@ -321,7 +377,8 @@ function armxFullObserveHistoricalOpponent(book,features,available,legalCount,in
     if(features.has(feature))book.choices[feature]=(book.choices[feature]||0)+1;
   }
 
-  for(const contextFeature of book.lastOurFeatures){
+  const responseContexts=new Set([...book.lastOurFeatures,...stateContexts]);
+  for(const contextFeature of responseContexts){
     if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
     for(const replyFeature of available){
       if(!ARMX_FULL_NOTE_FEATURES.includes(replyFeature))continue;
@@ -368,7 +425,10 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
               available.add(feature);
             }
           }
-          armxFullObserveHistoricalOpponent(book,features,available,legal.length,index);
+          const stateContexts=armxFullStateContexts(book.replay,perspective);
+          armxFullObserveHistoricalOpponent(
+            book,features,available,legal.length,index,stateContexts
+          );
         }else{
           // Preview still observes its proven subset every move. Full ARMX samples
           // the broader legal-option set to stay lightweight without inventing
@@ -579,6 +639,9 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
 function armxFullCandidateResponseReport(game,entry,book,previewReport,style='artemis'){
   const contextFeatures=new Set(previewReport&&previewReport.features||[]);
   for(const feature of armxFullPredictiveMoveFeatures(game,entry.raw))contextFeatures.add(feature);
+  for(const context of armxFullStateContextsAfterMove(game,entry.raw,book.perspective)){
+    contextFeatures.add(context);
+  }
 
   let contextualOutcome=0,preferenceSignal=0,evidence=0;
   const knownAvailable=new Set(previewReport&&previewReport.replyFeaturesAvailable||[]);
