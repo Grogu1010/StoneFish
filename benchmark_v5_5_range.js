@@ -182,6 +182,14 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
 if(ARMX_FULL.kind!=='opponent-adaptation'||ARMX_FULL.reset!=='per-game')throw new Error('Full ARMX contract broken');
 if(STONEFISH_V5_5_RANGE.models.artemis.style!=='artemis')throw new Error('Artemis must be neutral Full ARMX');
 if(ARMX_FULL.styleScale.artemis!==0||ARMX_FULL.maxStyleAdjustment.artemis!==0)throw new Error('Artemis may not have a style prior');
+if(ARMX_FULL.styleProfiles.artemis.baseScale!==0
+  ||Object.values(ARMX_FULL.styleProfiles.artemis.weights).some(value=>Number(value)!==0)){
+  throw new Error('Artemis numeric style profile must be exactly neutral');
+}
+if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
+  ||ARMX_FULL.baseRootWidth!==SF55C.multiPV){
+  throw new Error('Full ARMX may not receive a free base-engine strength bump');
+}
 
 const definitions={
   athenaVsCurrent:['Athena-vs-current-v5.5',getStonefishV55AthenaMove,getStonefishV55Move],
