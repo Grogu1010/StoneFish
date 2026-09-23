@@ -713,6 +713,9 @@ function armxPreviewCandidateReport(game, entry, profile) {
     independentObservations: independentObservations.size,
     features: Array.from(features),
     reasons,
+    replyFeaturesAvailable: Array.from(replyOptions.available),
+    replyFeaturesOffered: Array.from(replyOptions.offered),
+    replyCount: Number(replyOptions.count) || 0,
   };
 }
 
