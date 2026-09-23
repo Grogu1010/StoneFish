@@ -134,5 +134,5 @@ jobs:
         run: node benchmark_v5_5.js
       - name: Run Full ARMX range diagnostic
         env:
-          GAMES: '4'
+          GAMES: '20'
         run: node benchmark_v5_5_range.js
