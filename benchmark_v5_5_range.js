@@ -73,6 +73,69 @@ function positionAfter(opening){
   game.armxObservationStartPly=game.historyStack.length;
   return game;
 }
+function cloneGame(source,observationStartPly=source.armxObservationStartPly||0){
+  const game=new Chess();
+  for(const state of source.historyStack||[])game._applyRaw({...state.move},state.trackRepetition);
+  game.armxObservationStartPly=observationStartPly;
+  if(game.fastPositionKey()!==source.fastPositionKey())throw new Error('Range latency replay failed');
+  return game;
+}
+function buildOverheadPositions(count){
+  const rows=[];
+  for(let i=0;i<count;i++){
+    const opening=generateOpening(5000+i,12+(i%8));
+    const game=positionAfter(opening);
+    // For overhead measurement the history is evidence, not a seeded opening:
+    // this samples realistic mature ARMX bookkeeping rather than only move one.
+    game.armxObservationStartPly=0;
+    rows.push(game);
+  }
+  return rows;
+}
+function timeMoveOnClone(source,fn,seed){
+  clearSharedEngineCaches();
+  const game=cloneGame(source,0);
+  const started=performance.now();
+  const move=withSeed(seed,()=>fn(game));
+  const elapsed=performance.now()-started;
+  if(!move)throw new Error('Latency probe returned no move');
+  return elapsed;
+}
+function armxOverheadBenchmark(sampleCount){
+  const positions=buildOverheadPositions(sampleCount);
+  const totals={noArmx:0,preview:0,athena:0,ares:0,artemis:0};
+  const models={
+    noArmx:getStonefishV55NoARMXMove,
+    preview:getStonefishV55Move,
+    athena:getStonefishV55AthenaMove,
+    ares:getStonefishV55AresMove,
+    artemis:getStonefishV55ArtemisMove,
+  };
+  // Warm each path once before timing.
+  const warm=positions[0];
+  let warmIndex=0;
+  for(const fn of Object.values(models))timeMoveOnClone(warm,fn,0xA700+warmIndex++);
+  for(let i=0;i<positions.length;i++){
+    // Rotate order to reduce systematic cache/CPU-order bias.
+    const names=Object.keys(models);
+    const rotated=names.slice(i%names.length).concat(names.slice(0,i%names.length));
+    for(const name of rotated){
+      totals[name]+=timeMoveOnClone(positions[i],models[name],0xB700+i*17+names.indexOf(name));
+    }
+  }
+  const avg=Object.fromEntries(Object.entries(totals).map(([name,total])=>[name,total/sampleCount]));
+  const previewOverhead=avg.preview-avg.noArmx;
+  const fullOverhead={
+    athena:avg.athena-avg.noArmx,
+    ares:avg.ares-avg.noArmx,
+    artemis:avg.artemis-avg.noArmx,
+  };
+  const ratio={};
+  for(const style of ['athena','ares','artemis']){
+    ratio[style]=previewOverhead>0?fullOverhead[style]/previewOverhead:Infinity;
+  }
+  return {samples:sampleCount,averageMs:avg,previewOverheadMs:previewOverhead,fullOverheadMs:fullOverhead,ratio};
+}
 const STYLE_FEATURES=['capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat'];
 function emptyStyleCounts(){return Object.fromEntries(STYLE_FEATURES.map(feature=>[feature,0]));}
 function fullArmxStyleFor(fn){
@@ -245,7 +308,7 @@ const targets={
     maxArtemisLead:0.05,
     maxCurrentScoreSpread:0.06,
     maxArtemisCurrentLead:0.05,
-    maxFullArmxToPreviewTimeRatio:2.0,
+    maxFullArmxOverheadToPreviewOverheadRatio:2.0,
     artemisBestAgainstCurrent:true,
     aresBeatsAthenaMoreOftenThanArtemis:true,
     athenaDrawsMoreThanItLosesToAres:true,
@@ -262,6 +325,7 @@ const targets={
   moveRatioTolerance:0.25,
 };
 const games=Math.max(0,Number.parseInt(process.env.GAMES||'12',10)||0);
+const overheadSamples=Math.max(8,Number.parseInt(process.env.OVERHEAD_SAMPLES||'20',10)||20);
 const startIndex=Math.max(0,Number.parseInt(process.env.START_INDEX||'0',10)||0);
 const only=process.env.MATCHUP||'';
 if(only&&!definitions[only])throw new Error('Unknown MATCHUP '+only);
@@ -275,14 +339,6 @@ for(const [key,args] of Object.entries(definitions)){
 const ratios=results.athenaVsCurrent&&results.aresVsCurrent&&results.artemisVsCurrent?{
   athenaToArtemis:results.athenaVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
   aresToArtemis:results.aresVsCurrent.averagePlayedMoves/results.artemisVsCurrent.averagePlayedMoves,
-  fullArmxToPreviewTime:Object.freeze({
-    athena:results.athenaVsCurrent.opponentAverageMs
-      ?results.athenaVsCurrent.contenderAverageMs/results.athenaVsCurrent.opponentAverageMs:null,
-    ares:results.aresVsCurrent.opponentAverageMs
-      ?results.aresVsCurrent.contenderAverageMs/results.aresVsCurrent.opponentAverageMs:null,
-    artemis:results.artemisVsCurrent.opponentAverageMs
-      ?results.artemisVsCurrent.contenderAverageMs/results.artemisVsCurrent.opponentAverageMs:null,
-  }),
 }:null;
 
 function complementScore(row){return row?1-row.score:0;}
@@ -357,11 +413,13 @@ const preferredWLDDeviation=Object.fromEntries(
   ])
 );
 
+const armxOverhead=armxOverheadBenchmark(overheadSamples);
+
 const result={
   model:'Stonefish v5.5 Full ARMX range',
   gamesPerMatchup:games,startIndex,
   sourceHashes:Object.fromEntries(loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])),
-  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,preferredWLDDeviation,matchups:results
+  armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,armxOverhead,preferredWLDDeviation,matchups:results
 };
 if(process.env.RESULT_JSON)fs.writeFileSync(process.env.RESULT_JSON,JSON.stringify(result,null,2)+'\n');
 console.log('\nSTONEFISH_V5_5_RANGE '+JSON.stringify(result));
@@ -435,11 +493,17 @@ if(process.env.RELEASE_GATE==='1'){
       <=targets.relationships.maxArtemisCurrentLead,
     'Artemis current-v5.5 lead must stay modest');
 
-  for(const [style,timeRatio] of Object.entries(ratios.fullArmxToPreviewTime)){
-    requireGate(Number.isFinite(timeRatio)
-        &&timeRatio<=targets.relationships.maxFullArmxToPreviewTimeRatio,
-      style+' Full ARMX is too slow versus ARMX Preview: '+timeRatio+'x; need <='
-        +targets.relationships.maxFullArmxToPreviewTimeRatio+'x');
+  requireGate(armxOverhead.previewOverheadMs>0,
+    'ARMX Preview overhead must be positive for the Full-ARMX overhead gate: '
+      +armxOverhead.previewOverheadMs+' ms');
+  for(const [style,overheadRatio] of Object.entries(armxOverhead.ratio)){
+    requireGate(Number.isFinite(overheadRatio)
+        &&overheadRatio<=targets.relationships.maxFullArmxOverheadToPreviewOverheadRatio,
+      style+' Full ARMX overhead is too high: '+overheadRatio
+        +'x Preview ARMX overhead; need <='
+        +targets.relationships.maxFullArmxOverheadToPreviewOverheadRatio+'x. '
+        +'No-ARMX '+armxOverhead.averageMs.noArmx+' ms, Preview '+armxOverhead.averageMs.preview
+        +' ms, Full '+armxOverhead.averageMs[style]+' ms');
   }
 
   const tol=targets.moveRatioTolerance;
