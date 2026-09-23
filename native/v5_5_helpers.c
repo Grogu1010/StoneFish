@@ -997,7 +997,7 @@ static void root_insert(u32 *moves,int *scores,int *exact,int *count,u32 move,in
   moves[i]=move;scores[i]=score;exact[i]=is_exact;(*count)++;
 }
 
-int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
+static int search_all_width_impl(int side,int castling,int ep,int wk,int bk,int halfmove,
                int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count,int root_width){
   SearchState s={0};
   s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;
@@ -1045,4 +1045,17 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   }
   for(int i=0;i<current_count;i++){output[i]=current_moves[i];root_scores[i]=current_scores[i];root_exact[i]=current_exact[i];}
   return current_count;
+}
+
+int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
+               int max_depth,int node_limit,int qdepth,int policy_enabled,int public_history_count){
+  return search_all_width_impl(side,castling,ep,wk,bk,halfmove,
+    max_depth,node_limit,qdepth,policy_enabled,public_history_count,3);
+}
+
+int search_all_width(int side,int castling,int ep,int wk,int bk,int halfmove,
+                     int max_depth,int node_limit,int qdepth,int policy_enabled,
+                     int public_history_count,int root_width){
+  return search_all_width_impl(side,castling,ep,wk,bk,halfmove,
+    max_depth,node_limit,qdepth,policy_enabled,public_history_count,root_width);
 }
