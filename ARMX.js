@@ -93,7 +93,8 @@ const ARMX_FULL = Object.freeze({
       aheadWeights: Object.freeze({}), behindWeights: Object.freeze({}),
       baseScale:0, earlyBoost:0, lateBoost:0, paceTargetPlies:1,
       aheadThreshold:120, behindThreshold:120, advantageRange:580, minStyleLead:Infinity,
-      aheadScale:0, behindScale:0, replyCompressionWeight:0, capturedValueWeight:0,
+      aheadScale:0, behindScale:0, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:0, behindReplyCompressionWeight:0, capturedValueWeight:0,
       repetitionWeight:0, aheadRepetitionWeight:0, behindRepetitionWeight:0,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:-1000000000,
       patientOpponentScale:0, aggressiveOpponentScale:0,
@@ -125,7 +126,8 @@ const ARMX_FULL = Object.freeze({
       }),
       baseScale:12, earlyBoost:1.70, lateBoost:-0.20, paceTargetPlies:260,
       aheadThreshold:80, behindThreshold:110, advantageRange:360, minStyleLead:7,
-      aheadScale:2.25, behindScale:4.80, replyCompressionWeight:0, capturedValueWeight:-0.60,
+      aheadScale:2.25, behindScale:4.80, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:-4.80, behindReplyCompressionWeight:3.20, capturedValueWeight:-0.60,
       repetitionWeight:0, aheadRepetitionWeight:-1.40, behindRepetitionWeight:9.20,
       advantageDelayWeight:3.10, pawnClockResetWeight:3.20, aheadCandidateFloor:180,
       patientOpponentScale:0.00, aggressiveOpponentScale:0.55,
@@ -155,7 +157,8 @@ const ARMX_FULL = Object.freeze({
       }),
       baseScale:8, earlyBoost:0.18, lateBoost:7.60, paceTargetPlies:42,
       aheadThreshold:5, behindThreshold:100, advantageRange:390, minStyleLead:6,
-      aheadScale:5.30, behindScale:0.20, replyCompressionWeight:0, capturedValueWeight:2.80,
+      aheadScale:5.30, behindScale:0.20, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:6.20, behindReplyCompressionWeight:0, capturedValueWeight:2.80,
       repetitionWeight:0, aheadRepetitionWeight:-6.80, behindRepetitionWeight:-0.35,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
       patientOpponentScale:2.20, aggressiveOpponentScale:0.00,
@@ -700,18 +703,21 @@ function armxFullCandidateResponseReport(
     return effect.evidence>=ARMX_FULL.minEffectEvidence;
   });
   const needsCoreReplyScan=allowExtendedReplyScan&&extendedOutcomeFeatures.length>0;
-  const needsReplyCount=style!=='artemis'&&Boolean(styleProfile.replyCompressionWeight);
-  const needsReplySafety=style!=='artemis'&&Boolean(
-    styleProfile.opponentForcingReplyWeight||styleProfile.behindForcingReplyWeight
-      ||styleProfile.opponentKingAttackReplyWeight||styleProfile.behindKingAttackReplyWeight
-      ||styleProfile.opponentCaptureReplyWeight||styleProfile.behindCaptureReplyWeight
-  );
   const styleRange=Math.max(1,Number(styleProfile.advantageRange)||580);
   const styleAhead=armxFullClamp(
     (Number(hostScore)-(Number(styleProfile.aheadThreshold)||0))/styleRange,0,1
   );
   const styleBehind=armxFullClamp(
     (-Number(hostScore)-(Number(styleProfile.behindThreshold)||0))/styleRange,0,1
+  );
+  const effectiveReplyCompression=(Number(styleProfile.replyCompressionWeight)||0)
+    +styleAhead*(Number(styleProfile.aheadReplyCompressionWeight)||0)
+    +styleBehind*(Number(styleProfile.behindReplyCompressionWeight)||0);
+  const needsReplyCount=style!=='artemis'&&Math.abs(effectiveReplyCompression)>=0.08;
+  const needsReplySafety=style!=='artemis'&&Boolean(
+    styleProfile.opponentForcingReplyWeight||styleProfile.behindForcingReplyWeight
+      ||styleProfile.opponentKingAttackReplyWeight||styleProfile.behindKingAttackReplyWeight
+      ||styleProfile.opponentCaptureReplyWeight||styleProfile.behindCaptureReplyWeight
   );
   const effectiveRepetitionWeight=(Number(styleProfile.repetitionWeight)||0)
     +styleAhead*(Number(styleProfile.aheadRepetitionWeight)||0)
@@ -873,7 +879,10 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
 
   const replyCount=Number(response.replyCount)||0;
   const compression=replyCount?armxFullClamp((24-replyCount)/18,-1,1):0;
-  signal+=profile.replyCompressionWeight*compression;
+  const effectiveCompressionWeight=(Number(profile.replyCompressionWeight)||0)
+    +ahead*(Number(profile.aheadReplyCompressionWeight)||0)
+    +behind*(Number(profile.behindReplyCompressionWeight)||0);
+  signal+=effectiveCompressionWeight*compression;
   signal+=((profile.opponentForcingReplyWeight||0)
       +behind*(profile.behindForcingReplyWeight||0))
     *(Number(response.forcingReplyRate)||0);
@@ -925,7 +934,7 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   const max=ARMX_FULL.maxStyleAdjustment[style]||0;
   return {
     signal,scale,adjustment:armxFullClamp(signal*scale,-max,max),
-    tendencies,compression,repetitionPressure,
+    tendencies,compression,effectiveCompressionWeight,repetitionPressure,
     forcingReplyRate:Number(response.forcingReplyRate)||0,
     kingAttackReplyRate:Number(response.kingAttackReplyRate)||0,
     captureReplyRate:Number(response.captureReplyRate)||0,
@@ -1017,6 +1026,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       styleAdjustment:styleResult.adjustment,
       styleTendencies:styleResult.tendencies||null,
       styleCompression:styleResult.compression||0,
+      styleCompressionWeight:styleResult.effectiveCompressionWeight||0,
       styleRepetitionPressure:styleResult.repetitionPressure||0,
       hostGap,deepSacrifice,allowedHostGap,allowedDeepSacrifice,
       objectiveEligible,eligible:objectiveEligible,fullScore:-Infinity,
