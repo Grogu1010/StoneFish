@@ -40,6 +40,7 @@ const ARMX_FULL = Object.freeze({
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 14,
+  predictedReplyLimit: 10,
   fullNoteMinEvidence: 7,
   fullNoteMinConfidence: 0.72,
   fullNoteMinDecisionLead: 2,
@@ -532,10 +533,19 @@ function armxFullCandidateResponseReport(game,entry,book){
     const resultingCount=game.positionCounts&&game.positionCounts.get(resultingKey)||0;
     repetitionPressure=armxFullClamp(Math.max(0,resultingCount-1)/2,0,1);
     const replies=game.fastMoves();
-    const rows=[];
-    for(const reply of replies){
+    // Full ARMX models the opponent, so detailed conditional work belongs on
+    // replies this opponent is actually likely to choose. Score every legal
+    // reply cheaply, then deeply model only the most likely subset.
+    const predictedReplies=replies.map(reply=>{
       const features=armxFullPredictiveMoveFeatures(game,reply);
-      let preference=0,preferenceEvidence=0,outcome=0,outcomeEvidence=0;
+      return {reply,features,quickPreference:armxFullPolicyFeatureScore(book,features)};
+    });
+    predictedReplies.sort((a,b)=>b.quickPreference-a.quickPreference);
+    const rows=[];
+    const detailedReplies=predictedReplies.slice(0,Math.max(1,ARMX_FULL.predictedReplyLimit));
+    for(const predicted of detailedReplies){
+      const features=predicted.features;
+      let preference=predicted.quickPreference,preferenceEvidence=1,outcome=0,outcomeEvidence=0;
       for(const feature of features){
         const choice=armxFullChoiceRate(book,feature);
         if(choice.evidence>=ARMX_FULL.minChoiceEvidence){
@@ -584,7 +594,7 @@ function armxFullCandidateResponseReport(game,entry,book){
         preferenceSignal/=sum;
         evidence/=sum;
       }
-      replyCount=rows.length;
+      replyCount=replies.length;
     }
   }finally{
     while(game.historyStack.length>historyDepth)game.fastUndo();
