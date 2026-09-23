@@ -75,6 +75,12 @@ function positionAfter(opening){
 }
 const STYLE_FEATURES=['capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat'];
 function emptyStyleCounts(){return Object.fromEntries(STYLE_FEATURES.map(feature=>[feature,0]));}
+function fullArmxStyleFor(fn){
+  if(fn===getStonefishV55AthenaMove)return 'athena';
+  if(fn===getStonefishV55AresMove)return 'ares';
+  if(fn===getStonefishV55ArtemisMove)return 'artemis';
+  return null;
+}
 function observeStyleMove(game,move,counts){
   const raw=move&&move._raw;
   if(!raw||typeof armxPreviewFeatureSet!=='function')return;
@@ -89,6 +95,9 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   const openingPlies=opening.length;
   let contenderThinkMs=0,opponentThinkMs=0,contenderMoves=0,opponentMoves=0;
   const contenderStyle=emptyStyleCounts(),opponentStyle=emptyStyleCounts();
+  const contenderFullStyle=fullArmxStyleFor(contenderFn),opponentFullStyle=fullArmxStyleFor(opponentFn);
+  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0};
+  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0};
   return withSeed(seed,()=>{
     while(!game.game_over()&&plies<maxPlies){
       const contenderTurn=(game.side===1)===contenderIsWhite;
@@ -96,6 +105,17 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
       const move=contenderTurn?contenderFn(game):opponentFn(game);
       const elapsed=performance.now()-started;
       if(move)observeStyleMove(game,move,contenderTurn?contenderStyle:opponentStyle);
+      const fullStyle=contenderTurn?contenderFullStyle:opponentFullStyle;
+      if(fullStyle&&typeof armxFullLast==='function'){
+        const last=armxFullLast(fullStyle);
+        if(last){
+          const bucket=contenderTurn?contenderArmx:opponentArmx;
+          bucket.moves++;
+          bucket.rootWidthTotal+=Number(last.rootWidth)||3;
+          bucket.rootWidthMax=Math.max(bucket.rootWidthMax,Number(last.rootWidth)||3);
+          if(last.changedMove)bucket.changedMoves++;
+        }
+      }
       if(!move||!play(game,move)){
         if(!move&&game.game_over())break;
         throw new Error('Illegal/null engine move at ply '+plies);
@@ -115,12 +135,12 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
       playedPlies:plies-openingPlies,
       playedMoves:(plies-openingPlies)/2,
       contenderThinkMs,opponentThinkMs,contenderMoves,opponentMoves,
-      contenderStyle,opponentStyle
+      contenderStyle,opponentStyle,contenderArmx,opponentArmx
     };
   });
 }
 function matchup(games,label,contenderFn,opponentFn,startIndex=0){
-  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts()};
+  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0}};
   for(let local=0;local<games;local++){
     const i=startIndex+local,pair=Math.floor(i/2);
     const opening=generateOpening(pair,10);
@@ -134,6 +154,12 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
       out.contenderStyle[feature]+=row.contenderStyle[feature]||0;
       out.opponentStyle[feature]+=row.opponentStyle[feature]||0;
     }
+    for(const key of ['moves','rootWidthTotal','changedMoves']){
+      out.contenderArmx[key]+=row.contenderArmx[key]||0;
+      out.opponentArmx[key]+=row.opponentArmx[key]||0;
+    }
+    out.contenderArmx.rootWidthMax=Math.max(out.contenderArmx.rootWidthMax,row.contenderArmx.rootWidthMax||0);
+    out.opponentArmx.rootWidthMax=Math.max(out.opponentArmx.rootWidthMax,row.opponentArmx.rootWidthMax||0);
     out.records.push({index:i,pair,contenderIsWhite,...row});
     console.log(label+' '+(local+1)+'/'+games+': '+row.result+' '+row.reason+' '+row.playedPlies+' played plies');
   }
@@ -146,6 +172,10 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.opponentAverageMs=out.opponentMoves?out.opponentThinkMs/out.opponentMoves:0;
   out.contenderStyleRates=Object.fromEntries(STYLE_FEATURES.map(feature=>[feature,out.contenderMoves?out.contenderStyle[feature]/out.contenderMoves:0]));
   out.opponentStyleRates=Object.fromEntries(STYLE_FEATURES.map(feature=>[feature,out.opponentMoves?out.opponentStyle[feature]/out.opponentMoves:0]));
+  out.contenderArmx.averageRootWidth=out.contenderArmx.moves?out.contenderArmx.rootWidthTotal/out.contenderArmx.moves:0;
+  out.contenderArmx.changedMoveRate=out.contenderArmx.moves?out.contenderArmx.changedMoves/out.contenderArmx.moves:0;
+  out.opponentArmx.averageRootWidth=out.opponentArmx.moves?out.opponentArmx.rootWidthTotal/out.opponentArmx.moves:0;
+  out.opponentArmx.changedMoveRate=out.opponentArmx.moves?out.opponentArmx.changedMoves/out.opponentArmx.moves:0;
   return out;
 }
 
