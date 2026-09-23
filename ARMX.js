@@ -81,7 +81,7 @@ const ARMX_FULL = Object.freeze({
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
   styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 190, ares: 180, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 140, ares: 150, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -121,10 +121,10 @@ const ARMX_FULL = Object.freeze({
         capture:2.20,trade:3.80,rookTrade:2.75,queenTrade:4.25,minorTrade:2.20,
         simplify:4.00,check:0.42,kingAttack:0.28,quiet:-1.35,retreat:1.15,castle:1.45,
       }),
-      baseScale:18, earlyBoost:2.10, lateBoost:-0.25, paceTargetPlies:260,
-      aheadThreshold:80, behindThreshold:110, advantageRange:360, minStyleLead:3,
-      aheadScale:2.15, behindScale:4.80, replyCompressionWeight:0, capturedValueWeight:-0.75,
-      repetitionWeight:-1.10, aheadRepetitionWeight:-1.40, behindRepetitionWeight:9.20,
+      baseScale:12, earlyBoost:1.70, lateBoost:-0.20, paceTargetPlies:260,
+      aheadThreshold:80, behindThreshold:110, advantageRange:360, minStyleLead:7,
+      aheadScale:2.25, behindScale:4.80, replyCompressionWeight:0, capturedValueWeight:-0.60,
+      repetitionWeight:0, aheadRepetitionWeight:-1.40, behindRepetitionWeight:9.20,
       advantageDelayWeight:3.10, pawnClockResetWeight:3.20, aheadCandidateFloor:180,
       patientOpponentScale:0.00, aggressiveOpponentScale:0.55,
       patientPressureWeight:0, aggressiveDefenseWeight:1.10,
@@ -136,10 +136,10 @@ const ARMX_FULL = Object.freeze({
     }),
     ares: Object.freeze({
       weights: Object.freeze({
-        capture:1.45, trade:1.00, rookTrade:1.05, queenTrade:0.95,
-        minorTrade:0.88, simplify:1.18, check:1.25, kingAttack:1.55,
-        pawnPush:0.36, castle:-0.10, quiet:-1.20, advance:0.55, retreat:-1.15,
-        forcing:1.38, promotion:1.80, center:0.14, kingside:0.28,
+        capture:0.48, trade:0.24, rookTrade:0.28, queenTrade:0.25,
+        minorTrade:0.22, simplify:0.32, check:0.45, kingAttack:0.58,
+        pawnPush:0.16, castle:-0.04, quiet:-0.34, advance:0.24, retreat:-0.38,
+        forcing:0.46, promotion:0.82, center:0.11, kingside:0.19,
         queenside:0.18, centralize:0.26, development:0.18, pawnMove:0.18,
         knightMove:0.12, bishopMove:0.14, rookMove:0.20, queenMove:0.22, kingMove:-0.20,
       }),
@@ -151,13 +151,13 @@ const ARMX_FULL = Object.freeze({
         capture:0.15,trade:-0.55,simplify:-0.65,check:1.55,kingAttack:1.70,
         forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
       }),
-      baseScale:14, earlyBoost:0.35, lateBoost:7.20, paceTargetPlies:42,
-      aheadThreshold:5, behindThreshold:100, advantageRange:390, minStyleLead:3,
-      aheadScale:5.00, behindScale:0.20, replyCompressionWeight:0, capturedValueWeight:2.60,
+      baseScale:8, earlyBoost:0.18, lateBoost:7.60, paceTargetPlies:42,
+      aheadThreshold:5, behindThreshold:100, advantageRange:390, minStyleLead:6,
+      aheadScale:5.30, behindScale:0.20, replyCompressionWeight:0, capturedValueWeight:2.80,
       repetitionWeight:0, aheadRepetitionWeight:-6.80, behindRepetitionWeight:-0.35,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
-      patientOpponentScale:1.60, aggressiveOpponentScale:0.00,
-      patientPressureWeight:5.00, aggressiveDefenseWeight:0,
+      patientOpponentScale:2.20, aggressiveOpponentScale:0.00,
+      patientPressureWeight:7.20, aggressiveDefenseWeight:0,
       opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
