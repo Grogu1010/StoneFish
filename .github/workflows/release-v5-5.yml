@@ -1,0 +1,25 @@
+name: Release Stonefish v5.5
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'RELEASE_NOTES_v5_5.md'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish Stonefish v5.5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v5.5.0 >/dev/null 2>&1; then
+            gh release edit v5.5.0 --title "Stonefish v5.5" --notes-file RELEASE_NOTES_v5_5.md --latest
+          else
+            gh release create v5.5.0 --target "$GITHUB_SHA" --title "Stonefish v5.5" --notes-file RELEASE_NOTES_v5_5.md --latest
+          fi
