@@ -66,6 +66,7 @@ const ARMX_FULL = Object.freeze({
   fullOnlyOutcomeMinEvidence: 3.5,
   fullOnlyOutcomeMinConsistency: 0.45,
   extendedReplyScanCandidates: 2,
+  extendedReplyScanStride: 2,
   policyWeightDeltaScale: 0,
   policyPriorityScale: 0,
   minChoiceEvidence: 2,
@@ -1124,9 +1125,12 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
   if(!candidates.length)return {reports:[],winner:null,book,maturity};
 
   const hostBest=candidates[0];
+  const extendedScanStride=Math.max(1,ARMX_FULL.extendedReplyScanStride||1);
+  const scanExtendedThisMove=(book.opponentMoves%extendedScanStride)===0;
   const reports=candidates.map((entry,index)=>{
     const previewReport=armxPreviewCandidateReport(game,entry,previewProfile);
-    const allowExtendedReplyScan=index<ARMX_FULL.extendedReplyScanCandidates;
+    const allowExtendedReplyScan=scanExtendedThisMove
+      &&index<ARMX_FULL.extendedReplyScanCandidates;
     const response=armxFullCandidateResponseReport(
       game,entry,book,previewReport,style,allowExtendedReplyScan,hostBest.score
     );
