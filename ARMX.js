@@ -76,6 +76,7 @@ const ARMX_FULL = Object.freeze({
       repetitionWeight:0, aheadRepetitionWeight:0, behindRepetitionWeight:0,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:-1000000000,
       patientOpponentScale:0, aggressiveOpponentScale:0,
+      patientPressureWeight:0, aggressiveDefenseWeight:0,
       aheadHostGapBonus:0, aheadDeepGapBonus:0, behindHostGapBonus:0,
       maxHostGap:40, maxDeepSacrifice:32,
     }),
@@ -104,6 +105,7 @@ const ARMX_FULL = Object.freeze({
       repetitionWeight:0.10, aheadRepetitionWeight:-0.85, behindRepetitionWeight:5.40,
       advantageDelayWeight:3.20, pawnClockResetWeight:3.40, aheadCandidateFloor:140,
       patientOpponentScale:0.04, aggressiveOpponentScale:0.78,
+      patientPressureWeight:0, aggressiveDefenseWeight:1.20,
       aheadHostGapBonus:105, aheadDeepGapBonus:74, behindHostGapBonus:26,
       maxHostGap:38, maxDeepSacrifice:30,
     }),
@@ -129,9 +131,10 @@ const ARMX_FULL = Object.freeze({
       aheadScale:2.35, behindScale:0.28, replyCompressionWeight:2.35, capturedValueWeight:2.10,
       repetitionWeight:-2.40, aheadRepetitionWeight:-4.80, behindRepetitionWeight:-0.80,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:90,
-      patientOpponentScale:1.90, aggressiveOpponentScale:0.00,
-      aheadHostGapBonus:145, aheadDeepGapBonus:100, behindHostGapBonus:0,
-      maxHostGap:32, maxDeepSacrifice:25,
+      patientOpponentScale:1.55, aggressiveOpponentScale:0.00,
+      patientPressureWeight:2.80, aggressiveDefenseWeight:0,
+      aheadHostGapBonus:125, aheadDeepGapBonus:88, behindHostGapBonus:0,
+      maxHostGap:27, maxDeepSacrifice:22,
     }),
   }),
 });
@@ -598,9 +601,21 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
     +profile.lateBoost*Math.max(0,phase-1);
 
   const tendencies=armxFullOpponentTendencies(book);
+  const patient=Math.max(0,tendencies.patient);
+  const aggressive=Math.max(0,tendencies.aggressive);
+  const forcingCandidate=(features.includes('forcing')?1:0)
+    +(features.includes('check')?0.65:0)
+    +(features.includes('kingAttack')?0.45:0);
+  const defensiveCandidate=(features.includes('quiet')?0.75:0)
+    +(features.includes('retreat')?0.55:0)
+    +(features.includes('castle')?0.70:0)
+    -(features.includes('forcing')?0.35:0);
+  signal+=patient*(profile.patientPressureWeight||0)*forcingCandidate;
+  signal+=aggressive*(profile.aggressiveDefenseWeight||0)*defensiveCandidate;
+
   const opponentMultiplier=1
-    +profile.patientOpponentScale*Math.max(0,tendencies.patient)
-    +profile.aggressiveOpponentScale*Math.max(0,tendencies.aggressive);
+    +profile.patientOpponentScale*patient
+    +profile.aggressiveOpponentScale*aggressive;
   const positionMultiplier=1+profile.aheadScale*ahead+profile.behindScale*behind;
   const scale=profile.baseScale*Math.max(0.15,paceMultiplier)*positionMultiplier*opponentMultiplier;
   const max=ARMX_FULL.maxStyleAdjustment[style]||0;
