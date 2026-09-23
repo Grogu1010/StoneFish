@@ -548,6 +548,10 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     return value;
   };
   const previewPriority=preview&&typeof preview.priority==='function'?preview.priority:()=>0;
+  book.lastPolicyTelemetry={
+    maturity,noteUsefulness,learnedStrength,surprise,searchBudget,maxDepth,rootWidth,
+    voluntaryObservations:book.voluntaryOpponentMoves,
+  };
 
   return {
     model:ARMX_FULL.name,
@@ -873,6 +877,9 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     opponentMoves:book.opponentMoves,
     voluntaryOpponentMoves:book.voluntaryOpponentMoves,
     maturity,
+    noteUsefulness:Number(book.lastPolicyTelemetry&&book.lastPolicyTelemetry.noteUsefulness)||0,
+    learnedStrength:Number(book.lastPolicyTelemetry&&book.lastPolicyTelemetry.learnedStrength)||0,
+    predictionSurprise:Number(book.lastPolicyTelemetry&&book.lastPolicyTelemetry.surprise)||0,
     notes:armxFullNotebookSummary(book),
     reports,
     winner:reports.length?reports[0].entry:hostBest,
