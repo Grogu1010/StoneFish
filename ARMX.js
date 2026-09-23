@@ -52,6 +52,8 @@ const ARMX_FULL = Object.freeze({
   rootBreadthEvidenceThreshold: 0.80,
   stateContextMinEvidence: 5,
   stateContextScale: 0.55,
+  responseEffectMinEvidence: 3.5,
+  responseEffectScale: 0.35,
   pieceBaselinePrior: 0.22,
   pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.76,
@@ -887,17 +889,20 @@ function armxFullCandidateResponseReport(
       evidence+=confidence*contextScale;
 
       const contextEffect=armxFullResponseEffect(book,contextFeature,replyFeature);
-      if(contextEffect.evidence>=ARMX_FULL.minEffectEvidence){
+      if(contextEffect.evidence>=ARMX_FULL.responseEffectMinEvidence){
         const globalEffect=armxFullPreviewEffect(book,'opponentEffects',replyFeature);
-        const effectConfidence=armxFullClamp(contextEffect.evidence/6,0,1);
+        const effectConfidence=armxFullClamp(
+          (contextEffect.evidence-ARMX_FULL.responseEffectMinEvidence+1)/6,0,1
+        );
         const baselineExpected=globalEffect.evidence>=ARMX_FULL.minEffectEvidence
           ?baseline.rate*baseline.rate*globalEffect.value:0;
         const contextExpected=conditional.rate*conditional.rate*contextEffect.value;
-        // Only the incremental context-specific expectation belongs to Full ARMX.
+        // Context-specific outcomes are powerful but noisy. They only earn a
+        // bounded incremental vote after repeated independent observations.
         contextualOutcome+=(contextExpected-baselineExpected)
-          *confidence*effectConfidence*contextScale;
+          *confidence*effectConfidence*contextScale*ARMX_FULL.responseEffectScale;
         recordObservations(contextEffect.observations);
-        evidence+=0.65*effectConfidence*contextScale;
+        evidence+=0.35*effectConfidence*contextScale;
       }
     }
   }
