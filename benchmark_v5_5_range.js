@@ -215,8 +215,8 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   let contenderThinkMs=0,opponentThinkMs=0,contenderMoves=0,opponentMoves=0;
   const contenderStyle=emptyStyleCounts(),opponentStyle=emptyStyleCounts();
   const contenderFullStyle=fullArmxStyleFor(contenderFn),opponentFullStyle=fullArmxStyleFor(opponentFn);
-  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0};
-  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0};
+  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0};
+  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0};
   return withSeed(seed,()=>{
     while(!game.game_over()&&plies<maxPlies){
       const contenderTurn=(game.side===1)===contenderIsWhite;
@@ -236,6 +236,9 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
           bucket.noteBreadthTotal+=Array.isArray(last.notes)?last.notes.length:0;
           bucket.searchBudgetTotal+=Number(last.searchBudget)||0;
           bucket.depthLimitTotal+=Number(last.depthLimit)||0;
+          bucket.noteUsefulnessTotal+=Number(last.noteUsefulness)||0;
+          bucket.learnedStrengthTotal+=Number(last.learnedStrength)||0;
+          bucket.surpriseTotal+=Number(last.predictionSurprise)||0;
           if(last.changedMove)bucket.changedMoves++;
         }
       }
@@ -263,7 +266,7 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   });
 }
 function matchup(games,label,contenderFn,opponentFn,startIndex=0){
-  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0}};
+  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0}};
   for(let local=0;local<games;local++){
     const i=startIndex+local,pair=Math.floor(i/2);
     const opening=generateOpening(pair,10);
@@ -277,7 +280,7 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
       out.contenderStyle[feature]+=row.contenderStyle[feature]||0;
       out.opponentStyle[feature]+=row.opponentStyle[feature]||0;
     }
-    for(const key of ['moves','rootWidthTotal','changedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal']){
+    for(const key of ['moves','rootWidthTotal','changedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal']){
       out.contenderArmx[key]+=row.contenderArmx[key]||0;
       out.opponentArmx[key]+=row.opponentArmx[key]||0;
     }
@@ -301,12 +304,18 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.contenderArmx.averageNoteBreadth=out.contenderArmx.moves?out.contenderArmx.noteBreadthTotal/out.contenderArmx.moves:0;
   out.contenderArmx.averageSearchBudget=out.contenderArmx.moves?out.contenderArmx.searchBudgetTotal/out.contenderArmx.moves:0;
   out.contenderArmx.averageDepthLimit=out.contenderArmx.moves?out.contenderArmx.depthLimitTotal/out.contenderArmx.moves:0;
+  out.contenderArmx.averageNoteUsefulness=out.contenderArmx.moves?out.contenderArmx.noteUsefulnessTotal/out.contenderArmx.moves:0;
+  out.contenderArmx.averageLearnedStrength=out.contenderArmx.moves?out.contenderArmx.learnedStrengthTotal/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionSurprise=out.contenderArmx.moves?out.contenderArmx.surpriseTotal/out.contenderArmx.moves:0;
   out.opponentArmx.averageRootWidth=out.opponentArmx.moves?out.opponentArmx.rootWidthTotal/out.opponentArmx.moves:0;
   out.opponentArmx.changedMoveRate=out.opponentArmx.moves?out.opponentArmx.changedMoves/out.opponentArmx.moves:0;
   out.opponentArmx.averageMaturity=out.opponentArmx.moves?out.opponentArmx.maturityTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averageNoteBreadth=out.opponentArmx.moves?out.opponentArmx.noteBreadthTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averageSearchBudget=out.opponentArmx.moves?out.opponentArmx.searchBudgetTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averageDepthLimit=out.opponentArmx.moves?out.opponentArmx.depthLimitTotal/out.opponentArmx.moves:0;
+  out.opponentArmx.averageNoteUsefulness=out.opponentArmx.moves?out.opponentArmx.noteUsefulnessTotal/out.opponentArmx.moves:0;
+  out.opponentArmx.averageLearnedStrength=out.opponentArmx.moves?out.opponentArmx.learnedStrengthTotal/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionSurprise=out.opponentArmx.moves?out.opponentArmx.surpriseTotal/out.opponentArmx.moves:0;
   return out;
 }
 
