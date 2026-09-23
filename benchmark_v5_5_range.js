@@ -363,7 +363,7 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
   }
 }
 
-const definitions=
+const definitions={
   athenaVsCurrent:['Athena-vs-current-v5.5',getStonefishV55AthenaMove,getStonefishV55Move],
   aresVsCurrent:['Ares-vs-current-v5.5',getStonefishV55AresMove,getStonefishV55Move],
   artemisVsCurrent:['Artemis-vs-current-v5.5',getStonefishV55ArtemisMove,getStonefishV55Move],
