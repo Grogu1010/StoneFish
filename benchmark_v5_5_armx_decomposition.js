@@ -109,5 +109,7 @@ const rows=[
   matchup('artemisFull',getStonefishV55ArtemisMove,getStonefishV55Move,games),
   matchup('fullPolicyPreviewReview',getStonefishV55DiagFullPolicyPreviewReviewMove,getStonefishV55Move,games),
   matchup('previewPolicyFullReview',getStonefishV55DiagPreviewPolicyFullReviewMove,getStonefishV55Move,games),
+  matchup('fullBudgetPreviewOrdering',getStonefishV55DiagFullBudgetPreviewOrderingMove,getStonefishV55Move,games),
+  matchup('previewBudgetFullOrdering',getStonefishV55DiagPreviewBudgetFullOrderingMove,getStonefishV55Move,games),
 ];
 console.log('STONEFISH_V5_5_ARMX_DECOMP '+JSON.stringify({games,rows}));
