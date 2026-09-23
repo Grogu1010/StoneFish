@@ -10,7 +10,7 @@
 
 const ARMX_FULL = Object.freeze({
   name: 'ARMX',
-  version: '1.0-full',
+  version: '1.1-full',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 3,
@@ -24,20 +24,29 @@ const ARMX_FULL = Object.freeze({
   matureOpponentMoves: 8,
   decisionGain: 1.85,
   matureDecisionGain: 2.70,
-  counterStyleScale: 54,
-  maxCounterAdjustment: 72,
-  maxHostGap: 105,
-  maxDeepSacrifice: 70,
+  counterStyleScale: 82,
+  maxCounterAdjustment: 110,
+  conversionScale: 52,
+  maxConversionAdjustment: 90,
+  maxHostGap: 135,
+  maxDeepSacrifice: 95,
   styleScale: Object.freeze({
-    athena: 34,
-    ares: 32,
+    athena: 38,
+    ares: 50,
+    artemis: 0,
+  }),
+  winningStyleScale: Object.freeze({
+    athena: 112,
+    ares: 92,
     artemis: 0,
   }),
   maxStyleAdjustment: Object.freeze({
-    athena: 105,
-    ares: 100,
+    athena: 280,
+    ares: 240,
     artemis: 0,
   }),
+  athenaSlowTargetPlies: 300,
+  aresFastTargetPlies: 44,
 });
 
 const ARMX_FULL_LAST = Object.create(null);
@@ -150,44 +159,74 @@ function armxFullCounterStyleSignal(profile, features) {
   return armxFullClamp(signal, -1.5, 1.5);
 }
 
-function armxFullStyleSignal(entry, report, style) {
+function armxFullConversionSignal(hostBest, features) {
+  if (!hostBest || !Number.isFinite(hostBest.score)) return 0;
+  const advantage = armxFullClamp((hostBest.score - 160) / 620, 0, 1);
+  if (!advantage) return 0;
+  const set = new Set(features || []);
+  let signal = 0;
+  if (set.has('check')) signal += 1.35;
+  if (set.has('kingAttack')) signal += 1.05;
+  if (set.has('capture')) signal += 0.48;
+  if (set.has('simplify')) signal += 0.42;
+  if (set.has('trade')) signal += 0.26;
+  if (set.has('advance')) signal += 0.22;
+  if (set.has('quiet')) signal -= 0.24;
+  if (set.has('retreat')) signal -= 0.18;
+  return signal * advantage;
+}
+
+function armxFullStyleSignal(game, entry, report, style, profile) {
   if (!style || style === 'artemis') return 0;
   const set = new Set(report && report.features || []);
   const capturedValue = entry && entry.raw
     ? (ARMX_PREVIEW_PIECE_VALUES[entry.raw.captured || 0] || 0) / 500
     : 0;
+  const observedPlies = Math.max(0, (game && game.historyStack ? game.historyStack.length : 0)
+    - Math.max(0, Math.trunc(Number(game && game.armxObservationStartPly) || 0)));
+  const shape = armxFullOpponentShape(profile);
   let signal = 0;
 
   if (style === 'athena') {
-    // Athena keeps material and tension on the board, reduces forcing contact,
-    // castles readily and accepts retreats. This deliberately creates a
-    // defensive, long-horizon identity without changing chess evaluation.
-    if (set.has('quiet')) signal += 1.25;
-    if (set.has('castle')) signal += 1.65;
-    if (set.has('retreat')) signal += 0.80;
-    if (set.has('capture')) signal -= 0.95 + capturedValue * 0.45;
-    if (set.has('trade')) signal -= 1.30;
-    if (set.has('simplify')) signal -= 1.45;
-    if (set.has('queenTrade')) signal -= 1.10;
-    if (set.has('rookTrade')) signal -= 0.75;
-    if (set.has('check')) signal -= 0.35;
-    if (set.has('kingAttack')) signal -= 0.55;
-    if (set.has('advance')) signal -= 0.25;
-    if (set.has('pawnPush')) signal -= 0.18;
+    // Athena is deliberately hard to dislodge. While the game is young it keeps
+    // pieces and tension on the board; once the long-game target approaches it
+    // relaxes the delay pressure so Full ARMX can convert rather than drift.
+    const slowPressure = armxFullClamp((ARMX_FULL.athenaSlowTargetPlies - observedPlies) / 180, 0, 1);
+    if (set.has('quiet')) signal += 1.85 + 1.10 * slowPressure;
+    if (set.has('castle')) signal += 2.10;
+    if (set.has('retreat')) signal += 1.15 + 0.45 * slowPressure;
+    if (set.has('capture')) signal -= (1.35 + 1.10 * slowPressure) + capturedValue * 0.70;
+    if (set.has('trade')) signal -= 1.75 + 0.90 * slowPressure;
+    if (set.has('simplify')) signal -= 1.90 + 1.00 * slowPressure;
+    if (set.has('queenTrade')) signal -= 1.45 + 0.60 * slowPressure;
+    if (set.has('rookTrade')) signal -= 1.05 + 0.45 * slowPressure;
+    if (set.has('check')) signal -= 0.85 + 0.45 * slowPressure;
+    if (set.has('kingAttack')) signal -= 0.95 + 0.40 * slowPressure;
+    if (set.has('advance')) signal -= 0.42;
+    // A late halfmove clock is a defensive liability. Quiet pawn moves keep the
+    // long game alive without forcing exchanges.
+    if (set.has('pawnPush')) signal += game && game.halfmove >= 54 ? 2.40 : 0.20;
+    if (shape.aggression > 0.45 && set.has('castle')) signal += 0.65 * shape.aggression;
   } else if (style === 'ares') {
-    // Ares asks forcing questions immediately. Checks, king contact, captures,
-    // advances and simplifying conversions all pull it forward; passive retreats
-    // and quiet manoeuvres are strongly disfavoured.
-    if (set.has('check')) signal += 2.10;
-    if (set.has('kingAttack')) signal += 1.75;
-    if (set.has('capture')) signal += 1.25 + capturedValue * 0.55;
-    if (set.has('advance')) signal += 0.78;
-    if (set.has('pawnPush')) signal += 0.52;
-    if (set.has('trade')) signal += 0.52;
-    if (set.has('simplify')) signal += 0.42;
-    if (set.has('quiet')) signal -= 0.92;
-    if (set.has('retreat')) signal -= 1.25;
-    if (set.has('castle')) signal -= 0.20;
+    // Ares escalates forcing play if the game survives beyond its desired pace.
+    const urgency = armxFullClamp((observedPlies - ARMX_FULL.aresFastTargetPlies) / 70, 0, 1);
+    if (set.has('check')) signal += 3.10 + 1.70 * urgency;
+    if (set.has('kingAttack')) signal += 2.55 + 1.45 * urgency;
+    if (set.has('capture')) signal += 1.65 + capturedValue * 0.85 + 0.70 * urgency;
+    if (set.has('advance')) signal += 1.05 + 0.45 * urgency;
+    if (set.has('pawnPush')) signal += 0.72 + 0.28 * urgency;
+    if (set.has('trade')) signal += 0.70;
+    if (set.has('simplify')) signal += 0.62;
+    if (set.has('quiet')) signal -= 1.55 + 0.90 * urgency;
+    if (set.has('retreat')) signal -= 1.95 + 0.95 * urgency;
+    if (set.has('castle')) signal -= 0.30;
+    // A patient opponent is exactly the profile Ares is meant to crack.
+    if (shape.patience > 0.15) {
+      if (set.has('check')) signal += 0.90 * shape.patience;
+      if (set.has('kingAttack')) signal += 0.75 * shape.patience;
+      if (set.has('advance')) signal += 0.35 * shape.patience;
+      if (set.has('quiet')) signal -= 0.30 * shape.patience;
+    }
   }
   return signal;
 }
@@ -223,8 +262,18 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
     );
     const adaptiveAdjustment = (Number(previewReport.adjustment) || 0) * adaptiveGain
       + counterAdjustment;
-    const styleRaw = armxFullStyleSignal(entry, previewReport, style)
-      * (ARMX_FULL.styleScale[style] || 0);
+    const conversionSignal = armxFullConversionSignal(hostBest, previewReport.features);
+    const conversionAdjustment = armxFullClamp(
+      conversionSignal * ARMX_FULL.conversionScale,
+      -ARMX_FULL.maxConversionAdjustment,
+      ARMX_FULL.maxConversionAdjustment
+    );
+    const winningFactor = Number.isFinite(hostBest.score)
+      ? armxFullClamp((hostBest.score - 80) / 520, 0, 1) : 0;
+    const baseStyleScale = ARMX_FULL.styleScale[style] || 0;
+    const winningStyleScale = ARMX_FULL.winningStyleScale[style] || baseStyleScale;
+    const styleScale = baseStyleScale + (winningStyleScale - baseStyleScale) * winningFactor;
+    const styleRaw = armxFullStyleSignal(game, entry, previewReport, style, profile) * styleScale;
     const styleAdjustment = armxFullClamp(
       styleRaw,
       -(ARMX_FULL.maxStyleAdjustment[style] || 0),
@@ -239,7 +288,7 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
       && hostGap <= ARMX_FULL.maxHostGap
       && deepSacrifice <= ARMX_FULL.maxDeepSacrifice);
     const fullScore = eligible
-      ? entry.score + adaptiveAdjustment + styleAdjustment
+      ? entry.score + adaptiveAdjustment + conversionAdjustment + styleAdjustment
       : -Infinity;
 
     return {
@@ -251,6 +300,9 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
       counterSignal,
       counterAdjustment,
       adaptiveAdjustment,
+      conversionSignal,
+      conversionAdjustment,
+      styleScale,
       styleAdjustment,
       hostGap,
       deepSacrifice,
