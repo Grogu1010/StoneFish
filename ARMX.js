@@ -151,14 +151,7 @@ const ARMX_FULL = Object.freeze({
       maxHostGap:3, maxDeepSacrifice:3,
     }),
     ares: Object.freeze({
-      weights: Object.freeze({
-        capture:0.08, trade:0.03, rookTrade:0.04, queenTrade:0.03,
-        minorTrade:0.03, simplify:0.05, check:0.10, kingAttack:0.12,
-        pawnPush:0.03, castle:0, quiet:-0.07, advance:0.05, retreat:-0.08,
-        forcing:0.10, promotion:0.16, center:0.02, kingside:0.03,
-        queenside:0.02, centralize:0.03, development:0.02, pawnMove:0.02,
-        knightMove:0.02, bishopMove:0.02, rookMove:0.02, queenMove:0.02, kingMove:-0.02,
-      }),
+      weights: Object.freeze({}),
       aheadWeights:Object.freeze({
         capture:5.00,trade:4.80,rookTrade:3.70,queenTrade:3.55,minorTrade:3.10,
         simplify:5.40,check:1.30,kingAttack:1.65,quiet:-1.85,retreat:-1.70,
@@ -167,15 +160,15 @@ const ARMX_FULL = Object.freeze({
         capture:0.15,trade:-0.55,simplify:-0.65,check:1.55,kingAttack:1.70,
         forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
       }),
-      baseScale:3, earlyBoost:0.08, lateBoost:9.00, paceTargetPlies:42,
+      baseScale:3, earlyBoost:0.00, lateBoost:9.00, paceTargetPlies:42,
       aheadThreshold:35, behindThreshold:120, advantageRange:280, minStyleLead:4,
-      aheadScale:6.20, behindScale:0.35, replyCompressionWeight:0.15,
+      aheadScale:6.20, behindScale:0.20, replyCompressionWeight:0,
       aheadReplyCompressionWeight:11.50, behindReplyCompressionWeight:0, capturedValueWeight:4.60,
       repetitionWeight:-0.25, aheadRepetitionWeight:-8.00, behindRepetitionWeight:-0.50,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
       patientOpponentScale:0.35, aggressiveOpponentScale:0.00,
-      patientPressureThreshold:0.16, patientPressureRange:0.34,
-      patientPressureWeight:18.00, aggressiveDefenseWeight:0,
+      patientPressureThreshold:0.32, patientPressureRange:0.28,
+      patientPressureWeight:22.00, aggressiveDefenseWeight:0,
       opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
       opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
       opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
@@ -1005,12 +998,23 @@ function armxFullOpponentTendencies(book){
     if(row.evidence<ARMX_FULL.minChoiceEvidence)return 0;
     return (row.rate-0.5)*2*armxFullClamp(row.evidence/8,0,1);
   };
+  const quiet=tendency('quiet');
+  const retreat=tendency('retreat');
+  const castle=tendency('castle');
+  const capture=tendency('capture');
+  const check=tendency('check');
+  const kingAttack=tendency('kingAttack');
   const patient=armxFullClamp(
-    (tendency('quiet')+tendency('retreat')+tendency('castle'))/3
-      -(tendency('check')+tendency('kingAttack')+tendency('capture'))/3,
+    0.70*quiet+0.15*retreat+0.15*castle
+      -0.34*capture-0.28*check-0.38*kingAttack,
     -1,1
   );
-  return {patient,aggressive:-patient};
+  const aggressive=armxFullClamp(
+    0.34*capture+0.28*check+0.38*kingAttack
+      -0.55*quiet-0.10*retreat,
+    -1,1
+  );
+  return {patient,aggressive};
 }
 function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   const profile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
