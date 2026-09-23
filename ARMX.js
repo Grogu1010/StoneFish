@@ -72,6 +72,9 @@ const ARMX_FULL = Object.freeze({
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 8,
   predictedReplyLimit: 10,
+  predictedReplyOutcomeScale: 0.55,
+  predictedReplyPreferenceScale: 0.65,
+  predictedReplyTemperature: 1.35,
   fullNoteMinEvidence: 3.0,
   fullNoteMinConfidence: 0.35,
   fullNoteMinDecisionLead: -40,
@@ -858,7 +861,7 @@ function armxFullCandidateResponseReport(
 
   let repetitionPressure=0,replyCount=0;
   let forcingReplyRate=0,kingAttackReplyRate=0,captureReplyRate=0;
-  let actualReplyAvailable=null,replyFeatureCounts=null;
+  let actualReplyAvailable=null,replyFeatureCounts=null,replyModels=null;
 
   if(needsCoreReplyScan||needsReplyCount||needsReplySafety||needsRepetition){
     const historyDepth=game.historyStack.length;
@@ -872,6 +875,7 @@ function armxFullCandidateResponseReport(
       if(replies){
         actualReplyAvailable=new Set();
         replyFeatureCounts=Object.create(null);
+        replyModels=[];
         let forcing=0,kingAttack=0,captures=0;
         for(const reply of replies){
           const replyFeatures=armxFullPredictiveMoveFeatures(game,reply);
@@ -880,6 +884,53 @@ function armxFullCandidateResponseReport(
             actualReplyAvailable.add(feature);
             replyFeatureCounts[feature]=(replyFeatureCounts[feature]||0)+1;
           }
+
+          if(needsCoreReplyScan){
+            let preference=armxFullPolicyFeatureScore(book,replyFeatures);
+            let outcome=0,outcomeWeight=0;
+            const observations=new Set();
+
+            // Candidate-specific preference: after this kind of move / in this
+            // state, which replies has this opponent actually tended to choose?
+            for(const contextFeature of contextFeatures){
+              if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
+              const stateContext=ARMX_FULL_STATE_CONTEXTS.includes(contextFeature);
+              const contextScale=stateContext?ARMX_FULL.stateContextScale:1;
+              for(const replyFeature of replyFeatures){
+                if(!ARMX_FULL_NOTE_FEATURES.includes(replyFeature))continue;
+                const conditional=armxFullConditionalRate(book,contextFeature,replyFeature);
+                const minimumEvidence=stateContext
+                  ?ARMX_FULL.stateContextMinEvidence:ARMX_FULL.minChoiceEvidence;
+                if(conditional.evidence<minimumEvidence)continue;
+                const baseline=armxFullChoiceRate(book,replyFeature);
+                const confidence=armxFullClamp(conditional.evidence/8,0,1);
+                preference+=(conditional.rate-baseline.rate)*confidence*contextScale
+                  *ARMX_FULL.predictedReplyPreferenceScale;
+              }
+            }
+
+            // Outcome is always from our perspective: positive means this
+            // opponent has historically done worse after choosing this reply type.
+            for(const replyFeature of replyFeatures){
+              if(!ARMX_FULL_NOTE_FEATURES.includes(replyFeature))continue;
+              const effect=armxFullOutcomeEffect(book,replyFeature);
+              const enough=effect.source==='full'
+                ?effect.evidence>=ARMX_FULL.fullOnlyOutcomeMinEvidence
+                  &&effect.consistency>=ARMX_FULL.fullOnlyOutcomeMinConsistency
+                :effect.evidence>=ARMX_FULL.minEffectEvidence;
+              if(!enough)continue;
+              const sourceScale=effect.source==='full'
+                ?ARMX_FULL.fullOnlyOutcomeScale*Math.max(0,effect.consistency||0):1;
+              const confidence=armxFullClamp(effect.evidence/6,0,1)*sourceScale;
+              if(confidence<=0)continue;
+              outcome+=effect.value*confidence;
+              outcomeWeight+=confidence;
+              for(const observation of effect.observations||[])observations.add(observation);
+            }
+            if(outcomeWeight)outcome/=outcomeWeight;
+            replyModels.push({preference,outcome,outcomeWeight,observations});
+          }
+
           if(needsReplySafety){
             if(replyFeatures.has('forcing'))forcing++;
             if(replyFeatures.has('kingAttack'))kingAttack++;
@@ -939,6 +990,38 @@ function armxFullCandidateResponseReport(
     }
   }
 
+  // Predict the opponent's actual reply distribution, rather than treating all
+  // available reply features as equally likely. This is the core Full-ARMX
+  // question: what is *this opponent* likely to choose here, and how have those
+  // choices tended to work out for them?
+  let predictedReplyOutcome=0,predictedReplyEvidence=0;
+  if(replyModels&&replyModels.length){
+    const usable=replyModels.filter(model=>model.outcomeWeight>0)
+      .sort((a,b)=>b.preference-a.preference)
+      .slice(0,ARMX_FULL.predictedReplyLimit);
+    if(usable.length){
+      const maxPreference=Math.max(...usable.map(model=>model.preference));
+      let weightSum=0,evidenceSum=0;
+      for(const model of usable){
+        const weight=Math.exp(
+          armxFullClamp(
+            (model.preference-maxPreference)*ARMX_FULL.predictedReplyTemperature,-6,0
+          )
+        );
+        weightSum+=weight;
+        predictedReplyOutcome+=weight*model.outcome;
+        evidenceSum+=weight*Math.min(2,model.outcomeWeight);
+        recordObservations(model.observations);
+      }
+      if(weightSum){
+        predictedReplyOutcome/=weightSum;
+        predictedReplyEvidence=evidenceSum/weightSum;
+        contextualOutcome+=predictedReplyOutcome*ARMX_FULL.predictedReplyOutcomeScale;
+        evidence+=0.45*predictedReplyEvidence;
+      }
+    }
+  }
+
   // Context-specific response notes answer a different question: after *this
   // kind of move / in this phase*, does this opponent choose the reply behavior
   // more or less often than its own normal baseline?
@@ -989,6 +1072,8 @@ function armxFullCandidateResponseReport(
     kingAttackReplyRate,
     captureReplyRate,
     repetitionPressure,
+    predictedReplyOutcome,
+    predictedReplyEvidence,
     actualReplyFeatures:actualReplyAvailable?Array.from(actualReplyAvailable):[],
   };
 }
