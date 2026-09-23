@@ -580,8 +580,12 @@ function armxFullMateScale(entry){
     ||(Number.isFinite(entry.score)&&Math.abs(entry.score)>=mate*0.9);
 }
 function armxFullReview(game,finished,style='artemis',perspective=game.side){
-  const previewProfile=armxPreviewSyncProfile(game,perspective);
-  const book=armxFullSyncNotebook(game,perspective,previewProfile);
+  let book=armxFullSyncNotebook(game,perspective);
+  let previewProfile=book.previewProfile;
+  if(!previewProfile){
+    previewProfile=armxPreviewSyncProfile(game,perspective);
+    book=armxFullSyncNotebook(game,perspective,previewProfile);
+  }
   const maturity=armxFullNotebookMaturity(book);
   const candidates=(finished||[]).filter(entry=>entry&&Number.isFinite(entry.score))
     .slice(0,ARMX_FULL.candidateLimit);
