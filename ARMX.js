@@ -62,7 +62,7 @@ const ARMX_FULL = Object.freeze({
 
   // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
   styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
-  maxStyleAdjustment: Object.freeze({athena: 220, ares: 200, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 260, ares: 170, artemis: 0}),
 
   // Athena/Ares are the same model with different numbers. The shared style
   // function below interprets these vectors; Artemis's vector is all zero.
@@ -71,6 +71,7 @@ const ARMX_FULL = Object.freeze({
       weights: Object.freeze({}),
       aheadWeights: Object.freeze({}), behindWeights: Object.freeze({}),
       baseScale:0, earlyBoost:0, lateBoost:0, paceTargetPlies:1,
+      aheadThreshold:120, behindThreshold:120, advantageRange:580,
       aheadScale:0, behindScale:0, replyCompressionWeight:0, capturedValueWeight:0,
       repetitionWeight:0, aheadRepetitionWeight:0, behindRepetitionWeight:0,
       advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:-1000000000,
@@ -80,8 +81,8 @@ const ARMX_FULL = Object.freeze({
     }),
     athena: Object.freeze({
       weights: Object.freeze({
-        capture:-1.80, trade:-2.60, rookTrade:-2.10, queenTrade:-2.45,
-        minorTrade:-1.90, simplify:-2.50, check:-1.00, kingAttack:-1.20,
+        capture:-2.15, trade:-3.05, rookTrade:-2.45, queenTrade:-2.85,
+        minorTrade:-2.20, simplify:-2.95, check:-1.10, kingAttack:-1.30,
         pawnPush:0.68, castle:1.85, quiet:2.45, advance:-0.46, retreat:1.55,
         forcing:-1.05, promotion:0.10, center:0.18, kingside:0.12,
         queenside:0.12, centralize:0.22, development:0.25, pawnMove:0.42,
@@ -97,38 +98,40 @@ const ARMX_FULL = Object.freeze({
         capture:1.05,trade:1.65,rookTrade:1.20,queenTrade:1.85,minorTrade:1.00,
         simplify:1.70,check:0.18,kingAttack:0.10,quiet:-0.48,retreat:0.35,castle:0.48,
       }),
-      baseScale:18, earlyBoost:4.50, lateBoost:-0.72, paceTargetPlies:260,
-      aheadScale:0.72, behindScale:0.82, replyCompressionWeight:-2.00, capturedValueWeight:-1.35,
-      repetitionWeight:0.10, aheadRepetitionWeight:-0.65, behindRepetitionWeight:5.20,
-      advantageDelayWeight:2.40, pawnClockResetWeight:2.50, aheadCandidateFloor:140,
-      patientOpponentScale:0.04, aggressiveOpponentScale:0.72,
-      aheadHostGapBonus:90, aheadDeepGapBonus:65, behindHostGapBonus:24,
-      maxHostGap:35, maxDeepSacrifice:28,
+      baseScale:20, earlyBoost:5.20, lateBoost:-0.78, paceTargetPlies:260,
+      aheadThreshold:70, behindThreshold:90, advantageRange:560,
+      aheadScale:0.82, behindScale:0.86, replyCompressionWeight:-3.25, capturedValueWeight:-1.95,
+      repetitionWeight:0.10, aheadRepetitionWeight:-0.85, behindRepetitionWeight:5.40,
+      advantageDelayWeight:3.20, pawnClockResetWeight:3.40, aheadCandidateFloor:140,
+      patientOpponentScale:0.04, aggressiveOpponentScale:0.78,
+      aheadHostGapBonus:105, aheadDeepGapBonus:74, behindHostGapBonus:26,
+      maxHostGap:38, maxDeepSacrifice:30,
     }),
     ares: Object.freeze({
       weights: Object.freeze({
-        capture:2.70, trade:1.65, rookTrade:1.80, queenTrade:1.60,
-        minorTrade:1.45, simplify:2.10, check:1.80, kingAttack:2.15,
-        pawnPush:0.28, castle:-0.18, quiet:-2.25, advance:0.82, retreat:-2.30,
-        forcing:2.10, promotion:2.50, center:0.24, kingside:0.48,
+        capture:1.15, trade:0.55, rookTrade:0.62, queenTrade:0.58,
+        minorTrade:0.50, simplify:0.72, check:0.70, kingAttack:0.95,
+        pawnPush:0.24, castle:-0.08, quiet:-0.70, advance:0.42, retreat:-0.78,
+        forcing:0.82, promotion:1.35, center:0.18, kingside:0.30,
         queenside:0.18, centralize:0.26, development:0.18, pawnMove:0.18,
         knightMove:0.12, bishopMove:0.14, rookMove:0.20, queenMove:0.22, kingMove:-0.20,
       }),
       aheadWeights:Object.freeze({
-        capture:1.80,trade:1.65,rookTrade:1.35,queenTrade:1.25,minorTrade:1.15,
-        simplify:2.10,check:0.72,kingAttack:0.82,quiet:-0.85,retreat:-0.82,
+        capture:3.20,trade:3.05,rookTrade:2.35,queenTrade:2.20,minorTrade:2.00,
+        simplify:3.55,check:0.85,kingAttack:1.05,quiet:-1.20,retreat:-1.10,
       }),
       behindWeights:Object.freeze({
         capture:0.15,trade:-0.55,simplify:-0.65,check:1.55,kingAttack:1.70,
         forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
       }),
-      baseScale:20, earlyBoost:1.20, lateBoost:4.40, paceTargetPlies:42,
-      aheadScale:1.10, behindScale:0.38, replyCompressionWeight:4.10, capturedValueWeight:2.60,
-      repetitionWeight:-5.20, aheadRepetitionWeight:-3.20, behindRepetitionWeight:-1.40,
-      advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:110,
-      patientOpponentScale:1.35, aggressiveOpponentScale:0.02,
-      aheadHostGapBonus:85, aheadDeepGapBonus:60, behindHostGapBonus:0,
-      maxHostGap:36, maxDeepSacrifice:28,
+      baseScale:14, earlyBoost:0.30, lateBoost:5.20, paceTargetPlies:42,
+      aheadThreshold:35, behindThreshold:100, advantageRange:480,
+      aheadScale:2.35, behindScale:0.28, replyCompressionWeight:2.35, capturedValueWeight:2.10,
+      repetitionWeight:-2.40, aheadRepetitionWeight:-4.80, behindRepetitionWeight:-0.80,
+      advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:90,
+      patientOpponentScale:1.90, aggressiveOpponentScale:0.00,
+      aheadHostGapBonus:145, aheadDeepGapBonus:100, behindHostGapBonus:0,
+      maxHostGap:32, maxDeepSacrifice:25,
     }),
   }),
 });
@@ -554,10 +557,14 @@ function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
   if(!profile.baseScale)return {signal:0,scale:0,adjustment:0};
   const features=response.contextFeatures||[];
   const hostScore=Number(hostBest&&hostBest.score)||0;
-  // Style-specific conversion/survival behavior should only intensify once the
-  // shared host sees a real advantage/disadvantage, not around equality.
-  const ahead=armxFullClamp((hostScore-120)/580,0,1);
-  const behind=armxFullClamp((-hostScore-120)/580,0,1);
+  // Same style mechanism for every sibling; personality lives only in numbers.
+  const advantageRange=Math.max(1,Number(profile.advantageRange)||580);
+  const ahead=armxFullClamp(
+    (hostScore-(Number(profile.aheadThreshold)||0))/advantageRange,0,1
+  );
+  const behind=armxFullClamp(
+    (-hostScore-(Number(profile.behindThreshold)||0))/advantageRange,0,1
+  );
 
   let signal=0;
   for(const feature of features){
@@ -640,8 +647,13 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       ?hostBest.deep-entry.deep:hostGap;
     const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
     const hostScore=Number(hostBest&&hostBest.score)||0;
-    const ahead=armxFullClamp((hostScore-120)/580,0,1);
-    const behind=armxFullClamp((-hostScore-120)/580,0,1);
+    const advantageRange=Math.max(1,Number(styleProfile.advantageRange)||580);
+    const ahead=armxFullClamp(
+      (hostScore-(Number(styleProfile.aheadThreshold)||0))/advantageRange,0,1
+    );
+    const behind=armxFullClamp(
+      (-hostScore-(Number(styleProfile.behindThreshold)||0))/advantageRange,0,1
+    );
     const allowedHostGap=styleProfile.maxHostGap
       +ahead*(styleProfile.aheadHostGapBonus||0)
       +behind*(styleProfile.behindHostGapBonus||0);
