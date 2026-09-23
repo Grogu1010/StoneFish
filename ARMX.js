@@ -62,6 +62,9 @@ const ARMX_FULL = Object.freeze({
   pieceBaselinePrior: 0.22,
   pieceBaselinePriorWeight: 8,
   extendedReplyOutcomeScale: 0.82,
+  fullOnlyOutcomeScale: 0.28,
+  fullOnlyOutcomeMinEvidence: 3.5,
+  fullOnlyOutcomeMinConsistency: 0.45,
   extendedReplyScanCandidates: 2,
   policyWeightDeltaScale: 0,
   policyPriorityScale: 0,
@@ -193,7 +196,7 @@ function armxFullFreshCounts() {
 }
 function armxFullFreshEffects() {
   return Object.fromEntries(ARMX_FULL_NOTE_FEATURES.map(feature=>[
-    feature,{weight:0,impact:0,impactSq:0,observations:new Set()}
+    feature,{weight:0,impact:0,impactSq:0,positiveWeight:0,negativeWeight:0,observations:new Set()}
   ]));
 }
 function armxFullPieceFeature(piece) {
@@ -427,9 +430,11 @@ function armxFullExtendedEffect(book,feature){
     return {value:0,evidence:row?row.weight:0,consistency:0,observations:row?row.observations:new Set()};
   }
   const value=row.impact/row.weight;
-  const variance=Math.max(0,row.impactSq/row.weight-value*value);
-  const consistency=1-armxFullClamp(Math.sqrt(variance),0,1);
-  return {value,evidence:row.weight,consistency,observations:row.observations};
+  const directionalWeight=(row.positiveWeight||0)+(row.negativeWeight||0);
+  const consistency=directionalWeight
+    ?Math.abs((row.positiveWeight||0)-(row.negativeWeight||0))/directionalWeight
+    :0;
+  return {value,evidence:row.weight,consistency,source:'full',observations:row.observations};
 }
 function armxFullRecordExtendedEffects(book,features,impact,weight,observationId){
   if(!features||!features.length)return;
@@ -442,6 +447,8 @@ function armxFullRecordExtendedEffects(book,features,impact,weight,observationId
     row.weight+=weight;
     row.impact+=normalized*weight;
     row.impactSq+=normalized*normalized*weight;
+    if(normalized>0.015)row.positiveWeight+=weight;
+    else if(normalized<-0.015)row.negativeWeight+=weight;
     row.observations.add(observationId);
   }
 }
@@ -458,7 +465,9 @@ function armxFullResolveExtendedEffects(book,currentPly,currentScore){
 }
 function armxFullOutcomeEffect(book,feature){
   const preview=armxFullPreviewEffect(book,'opponentEffects',feature);
-  if(preview.evidence>=ARMX_FULL.minEffectEvidence)return preview;
+  if(preview.evidence>=ARMX_FULL.minEffectEvidence){
+    return {...preview,source:'preview'};
+  }
   return armxFullExtendedEffect(book,feature);
 }
 function armxFullPreviewEffect(book,bucketName,feature){
@@ -825,7 +834,9 @@ function armxFullCandidateResponseReport(
   const extendedOutcomeFeatures=ARMX_FULL_EXTENDED_REPLY_FEATURES.filter(feature=>{
     if((book.opportunities[feature]||0)<ARMX_FULL.minChoiceEvidence)return false;
     const effect=armxFullOutcomeEffect(book,feature);
-    return effect.evidence>=ARMX_FULL.minEffectEvidence;
+    if(effect.source==='preview')return effect.evidence>=ARMX_FULL.minEffectEvidence;
+    return effect.evidence>=ARMX_FULL.fullOnlyOutcomeMinEvidence
+      &&effect.consistency>=ARMX_FULL.fullOnlyOutcomeMinConsistency;
   });
   const needsCoreReplyScan=allowExtendedReplyScan&&extendedOutcomeFeatures.length>0;
   const styleRange=Math.max(1,Number(styleProfile.advantageRange)||580);
@@ -920,9 +931,11 @@ function armxFullCandidateResponseReport(
       const effectConfidence=armxFullClamp(effect.evidence/6,0,1);
       const share=armxFullClamp((replyFeatureCounts[feature]||0)/replyCount,0,1);
       const availabilityWeight=0.55+0.45*armxFullClamp(share*2.5,0,1);
+      const sourceScale=effect.source==='full'
+        ?ARMX_FULL.fullOnlyOutcomeScale*Math.max(0,effect.consistency||0):1;
       const contribution=choice.rate*choice.rate*effect.value
         *choiceConfidence*effectConfidence*availabilityWeight
-        *ARMX_FULL.extendedReplyOutcomeScale;
+        *ARMX_FULL.extendedReplyOutcomeScale*sourceScale;
       contextualOutcome+=contribution;
       recordObservations(effect.observations);
       evidence+=Math.min(1.5,(choice.evidence*0.12+effect.evidence*0.18))
