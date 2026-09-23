@@ -23,6 +23,18 @@ engineFiles.push(
   'ARMX-preview.js','Stonefish_v5_5.js','ARMX.js','Stonefish_v5_5_range.js'
 );
 const loadedSources=engineFiles.map(file=>({file,source:fs.readFileSync(file,'utf8')}));
+const sourceHashes=Object.fromEntries(
+  loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])
+);
+const FROZEN_CURRENT_V55_HASHES=Object.freeze({
+  'ARMX-preview.js':'9d4acb55d047d7424ce4186c31e661bdfc1c9c6c692c2326ff85a01aab645656',
+  'Stonefish_v5_5.js':'be3b78a61e79ff164ca5e9d60f9c191190ac0306a1f3da384cbd747864ea9a55',
+});
+for(const [file,expected] of Object.entries(FROZEN_CURRENT_V55_HASHES)){
+  if(sourceHashes[file]!==expected){
+    throw new Error('Frozen current v5.5 source changed: '+file+' '+sourceHashes[file]+' != '+expected);
+  }
+}
 vm.runInThisContext(loadedSources.map(row=>row.source).join('\n\n'),{filename:'stonefish-v55-range-bundle.js'});
 
 function seededRandom(seed){
@@ -462,7 +474,7 @@ const armxAttributedOverhead=armxAttributedOverheadBenchmark(armxTimingSamples);
 const result={
   model:'Stonefish v5.5 Full ARMX range',
   gamesPerMatchup:games,startIndex,
-  sourceHashes:Object.fromEntries(loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])),
+  sourceHashes,
   armx:ARMX_FULL,range:STONEFISH_V5_5_RANGE,targets,ratios,relationships,armxAttributedOverhead,preferredWLDDeviation,matchups:results
 };
 if(process.env.RESULT_JSON)fs.writeFileSync(process.env.RESULT_JSON,JSON.stringify(result,null,2)+'\n');
