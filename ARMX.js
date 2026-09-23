@@ -38,6 +38,7 @@ const ARMX_FULL = Object.freeze({
   maxRootWidth: 4,
   matureOpponentMoves: 6,
   opportunityScanStride: 2,
+  rootBreadthEvidenceThreshold: 0.80,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -529,7 +530,8 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   // finalist only when the opponent notebook is genuinely mature/useful.
   const breadthEvidence=learnedStrength*(0.85+0.15*surprise);
   const rootWidth=ARMX_FULL.baseRootWidth
-    +(breadthEvidence>=0.92?Math.min(1,ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth):0);
+    +(breadthEvidence>=ARMX_FULL.rootBreadthEvidenceThreshold
+      ?Math.min(1,ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth):0);
   const maxDepth=Math.round(
     ARMX_FULL.baseDepth+(ARMX_FULL.maxEvidenceDepth-ARMX_FULL.baseDepth)*learnedStrength
   );
