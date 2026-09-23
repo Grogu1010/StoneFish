@@ -370,6 +370,13 @@ static u64 search_white_occ,search_black_occ;
 static u64 search_white_passed_mask[64],search_black_passed_mask[64];
 static u64 search_white_shield_mask[64],search_black_shield_mask[64];
 static int search_eval_masks_ready;
+#define SEARCH_PAWN_EVAL_CAP 1024
+typedef struct {
+  u32 generation;
+  int mg,eg;
+  u64 white,black,white_advanced,black_advanced;
+} SearchPawnEvalEntry;
+static SearchPawnEvalEntry search_pawn_eval_cache[SEARCH_PAWN_EVAL_CAP];
 
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
 int exact_ptr(void){return (int)(unsigned long)root_exact;}
@@ -722,39 +729,65 @@ int search_evaluate_fast(int side,int white_king,int black_king){
 }
 
 
-static int search_evaluate_state(const SearchState *s){
-  int mg=s->eval_mg,eg=s->eval_eg,phase=s->eval_phase;
-  static const int middle[8]={0,0,8,17,35,65,110,0},endingPawn[8]={0,0,15,32,65,120,210,0};
-  u64 pawns=search_white_pawns;
+static SearchPawnEvalEntry *search_pawn_eval_entry(void){
+  u64 white=search_white_pawns,black=search_black_pawns;
+  u64 mixed=white^(black+0x9e3779b97f4a7c15ULL+(white<<6)+(white>>2));
+  u32 index=(u32)(mixed^(mixed>>32))&(SEARCH_PAWN_EVAL_CAP-1);
+  SearchPawnEvalEntry *e=&search_pawn_eval_cache[index];
+  if(e->generation==search_generation&&e->white==white&&e->black==black)return e;
+
+  static const int middle[8]={0,0,8,17,35,65,110,0};
+  static const int endingPawn[8]={0,0,15,32,65,120,210,0};
+  int mg=0,eg=0;
+  u64 whiteAdvanced=0,blackAdvanced=0,pawns=white;
   while(pawns){
     int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
     int f=sq&7,r=sq>>3,own=search_file_count(search_white_pawn_files,f);
     if(own>1){mg-=12;eg-=16;}
     if(!(search_white_pawn_files&search_adjacent_file_count_masks[f])){mg-=11;eg-=15;}
-    if(!(search_black_pawns&search_white_passed_mask[sq])){
+    if(!(black&search_white_passed_mask[sq])){
       mg+=middle[r];eg+=endingPawn[r];
-      if(r>=4){
-        int ed=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-7));
-        int od=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-7));
-        eg+=(ed-od)*r*3;
-      }
+      if(r>=4)whiteAdvanced|=(u64)1<<sq;
     }
   }
-  pawns=search_black_pawns;
+  pawns=black;
   while(pawns){
     int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
     int f=sq&7,r=7-(sq>>3),own=search_file_count(search_black_pawn_files,f);
     if(own>1){mg+=12;eg+=16;}
     if(!(search_black_pawn_files&search_adjacent_file_count_masks[f])){mg+=11;eg+=15;}
-    if(!(search_white_pawns&search_black_passed_mask[sq])){
+    if(!(white&search_black_passed_mask[sq])){
       mg-=middle[r];eg-=endingPawn[r];
-      if(r>=4){
-        int ed=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-0));
-        int od=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-0));
-        eg-=(ed-od)*r*3;
-      }
+      if(r>=4)blackAdvanced|=(u64)1<<sq;
     }
   }
+  e->generation=search_generation;e->white=white;e->black=black;
+  e->mg=mg;e->eg=eg;e->white_advanced=whiteAdvanced;e->black_advanced=blackAdvanced;
+  return e;
+}
+
+static int search_evaluate_state(const SearchState *s){
+  int mg=s->eval_mg,eg=s->eval_eg,phase=s->eval_phase;
+  SearchPawnEvalEntry *pawnEval=search_pawn_eval_entry();
+  mg+=pawnEval->mg;eg+=pawnEval->eg;
+
+  u64 pawns=pawnEval->white_advanced;
+  while(pawns){
+    int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
+    int f=sq&7,r=sq>>3;
+    int ed=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-7));
+    int od=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-7));
+    eg+=(ed-od)*r*3;
+  }
+  pawns=pawnEval->black_advanced;
+  while(pawns){
+    int sq=__builtin_ctzll(pawns);pawns&=pawns-1;
+    int f=sq&7,r=7-(sq>>3);
+    int ed=maximum(absolute((s->wk&7)-f),absolute((s->wk>>3)-0));
+    int od=maximum(absolute((s->bk&7)-f),absolute((s->bk>>3)-0));
+    eg-=(ed-od)*r*3;
+  }
+
   if(s->white_bishops>=2){mg+=30;eg+=45;}if(s->black_bishops>=2){mg-=30;eg-=45;}
   u64 rooks=search_white_rooks;
   while(rooks){
