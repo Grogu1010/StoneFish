@@ -570,8 +570,7 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
   const features = new Set();
   const available = new Set();
   const offered = new Set();
-  let replyOptionsCount = 0;
-  if (!raw) return { features, replyOptions: { available, offered, count: 0 } };
+  if (!raw) return { features, replyOptions: { available, offered } };
 
   const historyDepth = game.historyStack.length;
   const actor = game.side;
@@ -604,9 +603,7 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
     if (!captured && !givesCheck && !raw.promotion && !(raw.flags & (4 | 8))) features.add('quiet');
 
     if (includeReplyOptions) {
-      const replies = game.fastMoves();
-      replyOptionsCount = replies.length;
-      for (const reply of replies) {
+      for (const reply of game.fastMoves()) {
         const replyMask = armxPreviewCheapFeatureMask(reply);
         armxPreviewAddCheapFeatureMask(available, replyMask);
         if (armxPreviewCapturedSquare(reply, game.side) === raw.to) {
@@ -618,7 +615,7 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
     while (game.historyStack.length > historyDepth) game.fastUndo();
   }
 
-  return { features, replyOptions: { available, offered, count: replyOptionsCount } };
+  return { features, replyOptions: { available, offered } };
 }
 
 function armxPreviewCandidateReplyOpportunities(game, raw) {
@@ -713,9 +710,6 @@ function armxPreviewCandidateReport(game, entry, profile) {
     independentObservations: independentObservations.size,
     features: Array.from(features),
     reasons,
-    replyFeaturesAvailable: Array.from(replyOptions.available),
-    replyFeaturesOffered: Array.from(replyOptions.offered),
-    replyCount: Number(replyOptions.count) || 0,
   };
 }
 
