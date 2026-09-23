@@ -462,16 +462,27 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
 }
 
 
+function sf55cReplyPolicyNodeLimit(replyPolicy,requested){
+  const extraCap=Number.isFinite(replyPolicy&&replyPolicy.maxExtraNodes)
+    ?Math.max(8400,Math.min(60000,Math.round(replyPolicy.maxExtraNodes))):8400;
+  return Number.isFinite(requested)
+    ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+extraCap,Math.round(requested))):SF55C.nodes;
+}
+function sf55cReplyPolicyDepthLimit(replyPolicy,requested){
+  const extraCap=Number.isFinite(replyPolicy&&replyPolicy.maxExtraDepth)
+    ?Math.max(2,Math.min(6,Math.round(replyPolicy.maxExtraDepth))):2;
+  return Number.isFinite(requested)
+    ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+extraCap,Math.round(requested))):SF55C.maxDepth;
+}
+
 function sf55cNativeAcceleratedHost(g,replyPolicy){
   const k=SF55C_KERNEL;
   if(!k||!k.api.search_all||!k.scores||!k.policyWeights||!replyPolicy)return null;
   k.board.set(g.boardState);
   k.policyWeights.fill(0);
   if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
-  const limit=Number.isFinite(replyPolicy.searchBudget)
-    ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(replyPolicy.searchBudget))):SF55C.nodes;
-  const depthLimit=Number.isFinite(replyPolicy.maxDepth)
-    ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(replyPolicy.maxDepth))):SF55C.maxDepth;
+  const limit=sf55cReplyPolicyNodeLimit(replyPolicy,replyPolicy.searchBudget);
+  const depthLimit=sf55cReplyPolicyDepthLimit(replyPolicy,replyPolicy.maxDepth);
   let publicHistoryCount=0;
   if(k.publicKeys&&k.publicCounts){
     for(const [historyKey,countValue] of g.positionCounts){
@@ -513,9 +524,9 @@ function sf55cHost(g,replyPolicy=null){
   g._sf55cKernelSearchActive=true;g._sf55cKernelDirty=true;
   const legal=sf55cLegalMoves(g);if(!legal.length){g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;return {finished:[],fastLeader:null,refutationGuard:null};}
   const requested=replyPolicy&&replyPolicy.searchBudget;
-  const limit=Number.isFinite(requested)?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(requested))):SF55C.nodes;
+  const limit=sf55cReplyPolicyNodeLimit(replyPolicy,requested);
   const requestedDepth=replyPolicy&&replyPolicy.maxDepth;
-  const depthLimit=Number.isFinite(requestedDepth)?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(requestedDepth))):SF55C.maxDepth;
+  const depthLimit=sf55cReplyPolicyDepthLimit(replyPolicy,requestedDepth);
   const ctx={nodes:0,limit,depth:0,abort:false,tt:new Map(),pathCounts:[],pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],moveBuffers:[],replyPolicy};
   ctx.material=0;for(const piece of g.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
   let roots=legal.map(raw=>({raw,uci:stonefishV45RawUci(g,raw),score:0,deep:0,preliminary:0,tactical:0,knowledge:0,conversion:0}));
