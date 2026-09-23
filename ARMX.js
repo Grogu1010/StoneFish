@@ -824,7 +824,7 @@ function armxFullCandidateResponseReport(
 
   const extendedOutcomeFeatures=ARMX_FULL_EXTENDED_REPLY_FEATURES.filter(feature=>{
     if((book.opportunities[feature]||0)<ARMX_FULL.minChoiceEvidence)return false;
-    const effect=armxFullPreviewEffect(book,'opponentEffects',feature);
+    const effect=armxFullOutcomeEffect(book,feature);
     return effect.evidence>=ARMX_FULL.minEffectEvidence;
   });
   const needsCoreReplyScan=allowExtendedReplyScan&&extendedOutcomeFeatures.length>0;
@@ -913,7 +913,7 @@ function armxFullCandidateResponseReport(
     for(const feature of extendedOutcomeFeatures){
       if(!actualReplyAvailable.has(feature))continue;
       const choice=armxFullChoiceRate(book,feature);
-      const effect=armxFullPreviewEffect(book,'opponentEffects',feature);
+      const effect=armxFullOutcomeEffect(book,feature);
       if(choice.evidence<ARMX_FULL.minChoiceEvidence
           ||effect.evidence<ARMX_FULL.minEffectEvidence)continue;
       const choiceConfidence=armxFullClamp(choice.evidence/8,0,1);
@@ -952,7 +952,7 @@ function armxFullCandidateResponseReport(
 
       const contextEffect=armxFullResponseEffect(book,contextFeature,replyFeature);
       if(contextEffect.evidence>=ARMX_FULL.responseEffectMinEvidence){
-        const globalEffect=armxFullPreviewEffect(book,'opponentEffects',replyFeature);
+        const globalEffect=armxFullOutcomeEffect(book,replyFeature);
         const effectConfidence=armxFullClamp(
           (contextEffect.evidence-ARMX_FULL.responseEffectMinEvidence+1)/6,0,1
         );
