@@ -462,6 +462,18 @@ function sf55cSearch(g,ctx,depth,alpha,beta,ply){
 }
 
 
+function sf55cPublicHistoryCodes(g,historyKey){
+  let cache=g._sf55cPublicHistoryCodeCache;
+  if(!cache)cache=g._sf55cPublicHistoryCodeCache=new Map();
+  let codes=cache.get(historyKey);
+  if(codes)return codes;
+  const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
+  codes=new Uint16Array(17);
+  for(let i=0;i<17;i++)codes[i]=packed.charCodeAt(i);
+  cache.set(historyKey,codes);
+  return codes;
+}
+
 function sf55cReplyPolicyNodeLimit(replyPolicy,requested){
   const extraCap=Number.isFinite(replyPolicy&&replyPolicy.maxExtraNodes)
     ?Math.max(8400,Math.min(120000,Math.round(replyPolicy.maxExtraNodes))):8400;
@@ -497,9 +509,9 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     if(k.publicKeys&&k.publicCounts){
       for(const [historyKey,countValue] of g.positionCounts){
         if(publicHistoryCount>=512)break;
-        const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
+        const codes=sf55cPublicHistoryCodes(g,historyKey);
         const offset=publicHistoryCount*17;
-        for(let i=0;i<17;i++)k.publicKeys[offset+i]=packed.charCodeAt(i);
+        for(let i=0;i<17;i++)k.publicKeys[offset+i]=codes[i];
         k.publicCounts[publicHistoryCount]=countValue;
         publicHistoryCount++;
       }
@@ -530,9 +542,9 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   if(k.publicKeys&&k.publicCounts){
     for(const [historyKey,countValue] of g.positionCounts){
       if(publicHistoryCount>=512)break;
-      const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
+      const codes=sf55cPublicHistoryCodes(g,historyKey);
       const offset=publicHistoryCount*17;
-      for(let i=0;i<17;i++)k.publicKeys[offset+i]=packed.charCodeAt(i);
+      for(let i=0;i<17;i++)k.publicKeys[offset+i]=codes[i];
       k.publicCounts[publicHistoryCount]=countValue;
       publicHistoryCount++;
     }
