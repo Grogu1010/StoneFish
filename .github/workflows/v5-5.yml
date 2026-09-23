@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - 'ARMX-preview.js'
+      - 'ARMX.js'
+      - 'Stonefish_v5_5_range.js'
+      - 'Stonefish_v5_5_range_ui.js'
+      - 'benchmark_v5_5_range.js'
       - 'Stonefish_v5_5_search.js'
       - 'Stonefish_v5_5_native.js'
       - 'benchmark_v5_5_native_contract.js'
@@ -31,6 +35,10 @@ on:
   pull_request:
     paths:
       - 'ARMX-preview.js'
+      - 'ARMX.js'
+      - 'Stonefish_v5_5_range.js'
+      - 'Stonefish_v5_5_range_ui.js'
+      - 'benchmark_v5_5_range.js'
       - 'Stonefish_v5_5_search.js'
       - 'Stonefish_v5_5_native.js'
       - 'benchmark_v5_5_native_contract.js'
@@ -76,6 +84,12 @@ jobs:
         run: node --check Stonefish_v5_5_refutation_guard.js
       - name: Syntax check v5.5
         run: node --check Stonefish_v5_5.js
+      - name: Syntax check Full ARMX
+        run: node --check ARMX.js
+      - name: Syntax check v5.5 range
+        run: node --check Stonefish_v5_5_range.js
+      - name: Syntax check v5.5 range benchmark
+        run: node --check benchmark_v5_5_range.js
       - name: Syntax check browser dev-test worker
         run: node --check test-worker.js
       - name: Syntax check parallel dev-test UI
@@ -118,3 +132,7 @@ jobs:
           SAMPLES: '20'
           GAMES: '8'
         run: node benchmark_v5_5.js
+      - name: Run Full ARMX range diagnostic
+        env:
+          GAMES: '4'
+        run: node benchmark_v5_5_range.js
