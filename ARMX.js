@@ -10,35 +10,35 @@
 
 const ARMX_FULL = Object.freeze({
   name: 'ARMX',
-  version: '1.2-full',
+  version: '1.3-full',
   kind: 'opponent-adaptation',
   reset: 'per-game',
   candidateLimit: 8,
   maxRootWidth: 8,
-  baseSearchNodes: 9600,
-  evidenceSearchNodes: 18400,
-  surpriseSearchNodes: 7200,
+  baseSearchNodes: 18000,
+  evidenceSearchNodes: 32000,
+  surpriseSearchNodes: 12000,
   maxExtraNodes: 60000,
-  baseDepth: 6,
-  matureDepth: 8,
-  maxExtraDepth: 4,
-  matureOpponentMoves: 8,
-  decisionGain: 1.85,
-  matureDecisionGain: 2.70,
-  counterStyleScale: 82,
-  maxCounterAdjustment: 110,
-  conversionScale: 52,
-  maxConversionAdjustment: 90,
+  baseDepth: 7,
+  matureDepth: 9,
+  maxExtraDepth: 5,
+  matureOpponentMoves: 6,
+  decisionGain: 2.20,
+  matureDecisionGain: 3.80,
+  counterStyleScale: 95,
+  maxCounterAdjustment: 140,
+  conversionScale: 72,
+  maxConversionAdjustment: 125,
   maxHostGap: 135,
   maxDeepSacrifice: 95,
   styleScale: Object.freeze({
-    athena: 14,
-    ares: 34,
+    athena: 18,
+    ares: 44,
     artemis: 0,
   }),
   winningStyleScale: Object.freeze({
-    athena: 120,
-    ares: 88,
+    athena: 180,
+    ares: 140,
     artemis: 0,
   }),
   maxHostGapByStyle: Object.freeze({
@@ -52,12 +52,12 @@ const ARMX_FULL = Object.freeze({
     artemis: 95,
   }),
   maxStyleAdjustment: Object.freeze({
-    athena: 280,
-    ares: 240,
+    athena: 420,
+    ares: 340,
     artemis: 0,
   }),
-  athenaSlowTargetPlies: 300,
-  aresFastTargetPlies: 44,
+  athenaSlowTargetPlies: 320,
+  aresFastTargetPlies: 36,
 });
 
 const ARMX_FULL_LAST = Object.create(null);
@@ -108,17 +108,13 @@ function armxFullOpponentPolicy(game, perspective = game.side, style = 'artemis'
   const shape = armxFullOpponentShape(profile);
   const positionScore = profile.currentSnapshot && Number.isFinite(profile.currentSnapshot.score)
     ? profile.currentSnapshot.score : 0;
-  // Preview stays at three exact roots. Full ARMX only buys extra exact root
-  // alternatives when they have a concrete use: Athena is already ahead and
-  // can choose a slower safe continuation, Ares is ahead and can seek a forcing
-  // conversion, or prediction surprise says the opponent model needs breadth.
-  let rootWidth = style === 'ares' ? 4 : 3;
-  if (style === 'athena' && positionScore >= 220) rootWidth = ARMX_FULL.maxRootWidth;
-  else if (style === 'ares' && positionScore >= 160) rootWidth = 6;
-  if (opponentMoves >= 6 && predictionSurprise >= 0.68) {
-    rootWidth = Math.max(rootWidth, style === 'artemis' ? 6 : 5);
-  }
-  const rootWidthReserve = Math.max(0, rootWidth - 3) * 6200;
+  // Full ARMX's neutral reference remains narrow and strength-first. Extra
+  // finalist breadth is a playstyle tool only: Athena buys slow alternatives
+  // once safely ahead; Ares buys forcing alternatives once it has an edge.
+  let rootWidth = 3;
+  if (style === 'athena' && positionScore >= 140) rootWidth = ARMX_FULL.maxRootWidth;
+  else if (style === 'ares' && positionScore >= 100) rootWidth = 6;
+  const rootWidthReserve = Math.max(0, rootWidth - 3) * 7000;
   const searchBudget = Math.round(
     ARMX_FULL.baseSearchNodes
       + ARMX_FULL.evidenceSearchNodes * maturity
@@ -299,7 +295,7 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
       ARMX_FULL.maxConversionAdjustment
     );
     const winningFactor = Number.isFinite(hostBest.score)
-      ? armxFullClamp((hostBest.score - 160) / 520, 0, 1) : 0;
+      ? armxFullClamp((hostBest.score - 140) / 500, 0, 1) : 0;
     const baseStyleScale = ARMX_FULL.styleScale[style] || 0;
     const winningStyleScale = ARMX_FULL.winningStyleScale[style] || baseStyleScale;
     const styleScale = baseStyleScale + (winningStyleScale - baseStyleScale) * winningFactor;
@@ -314,8 +310,12 @@ function armxFullReview(game, finished, style = 'artemis', perspective = game.si
       ? hostBest.deep - entry.deep
       : hostGap;
     const protectedTruth = armxFullMateScale(hostBest) || armxFullMateScale(entry);
-    const allowedHostGap = ARMX_FULL.maxHostGapByStyle[style] || ARMX_FULL.maxHostGap;
-    const allowedDeepSacrifice = ARMX_FULL.maxDeepSacrificeByStyle[style] || ARMX_FULL.maxDeepSacrifice;
+    const baseHostGap = ARMX_FULL.maxHostGapByStyle[style] || ARMX_FULL.maxHostGap;
+    const baseDeepSacrifice = ARMX_FULL.maxDeepSacrificeByStyle[style] || ARMX_FULL.maxDeepSacrifice;
+    const styleWinningGap = style === 'athena' ? 180 : style === 'ares' ? 100 : 0;
+    const styleWinningDeep = style === 'athena' ? 130 : style === 'ares' ? 80 : 0;
+    const allowedHostGap = baseHostGap + styleWinningGap * winningFactor;
+    const allowedDeepSacrifice = baseDeepSacrifice + styleWinningDeep * winningFactor;
     const eligible = entry === hostBest || (!protectedTruth
       && hostGap <= allowedHostGap
       && deepSacrifice <= allowedDeepSacrifice);
