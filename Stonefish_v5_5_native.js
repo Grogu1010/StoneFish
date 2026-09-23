@@ -481,6 +481,49 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   k.board.set(g.boardState);
   k.policyWeights.fill(0);
   if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
+
+  // Preserve the frozen Preview hot path. Full-ARMX-only controls are absent
+  // from ARMX Preview, so ordinary v5.5 should not pay generalized-policy
+  // plumbing overhead on every move.
+  const extendedPolicy=Number.isFinite(replyPolicy.rootWidth)
+    ||Number.isFinite(replyPolicy.maxExtraNodes)
+    ||Number.isFinite(replyPolicy.maxExtraDepth);
+  if(!extendedPolicy){
+    const limit=Number.isFinite(replyPolicy.searchBudget)
+      ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+8400,Math.round(replyPolicy.searchBudget))):SF55C.nodes;
+    const depthLimit=Number.isFinite(replyPolicy.maxDepth)
+      ?Math.max(SF55C.maxDepth,Math.min(SF55C.maxDepth+2,Math.round(replyPolicy.maxDepth))):SF55C.maxDepth;
+    let publicHistoryCount=0;
+    if(k.publicKeys&&k.publicCounts){
+      for(const [historyKey,countValue] of g.positionCounts){
+        if(publicHistoryCount>=512)break;
+        const packed=historyKey.length===17?historyKey:sf55cPackHistoryKey(historyKey);
+        const offset=publicHistoryCount*17;
+        for(let i=0;i<17;i++)k.publicKeys[offset+i]=packed.charCodeAt(i);
+        k.publicCounts[publicHistoryCount]=countValue;
+        publicHistoryCount++;
+      }
+    }
+    const count=k.api.search_all(
+      g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
+      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
+    const finished=new Array(count);
+    for(let i=0;i<count;i++){
+      const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
+        captured:(m>>>15)&7,promotion:(m>>>18)&7,flags:m>>>21};
+      const exact=!k.exact||k.exact[i]!==0;
+      const score=exact?k.scores[i]:-Infinity;
+      finished[i]={raw,uci:stonefishV45RawUci(g,raw),score,deep:exact?k.scores[i]:null,
+        preliminary:exact?k.scores[i]:null,tactical:0,knowledge:0,conversion:0,exact};
+    }
+    finished.sort((a,b)=>b.score-a.score||a.uci.localeCompare(b.uci));
+    return {finished,fastLeader:finished.length?finished[0].raw:null,
+      refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
+      nodes:k.api.search_nodes?k.api.search_nodes():limit,
+      depth:k.api.search_depth?k.api.search_depth():depthLimit,
+      searchBudget:limit,depthLimit};
+  }
+
   const limit=sf55cReplyPolicyNodeLimit(replyPolicy,replyPolicy.searchBudget);
   const depthLimit=sf55cReplyPolicyDepthLimit(replyPolicy,replyPolicy.maxDepth);
   let publicHistoryCount=0;
