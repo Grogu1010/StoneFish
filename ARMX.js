@@ -32,11 +32,12 @@ const ARMX_FULL = Object.freeze({
   maxSurpriseSearchNodes: 1500,
   maxExtraNodes: 10000,
   baseDepth: 4,
-  maxEvidenceDepth: 7,
-  maxExtraDepth: 3,
+  maxEvidenceDepth: 6,
+  maxExtraDepth: 2,
   baseRootWidth: 3,
   maxRootWidth: 4,
-  matureOpponentMoves: 10,
+  matureOpponentMoves: 6,
+  opportunityScanStride: 2,
   minChoiceEvidence: 2,
   minEffectEvidence: 1.25,
   fullConfidenceEvidence: 12,
@@ -356,14 +357,23 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
     if(index>=observationStartPly){
       const features=armxFullMoveFeatures(book.replay,move);
       if(actor===-perspective){
-        const legal=book.replay.fastMoves();
-        const available=new Set(features);
-        for(const option of legal){
-          for(const feature of armxFullPredictiveMoveFeatures(book.replay,option)){
-            available.add(feature);
+        const stride=Math.max(1,ARMX_FULL.opportunityScanStride||1);
+        const sampleOpportunity=(book.opponentMoves%stride)===0;
+        if(sampleOpportunity){
+          const legal=book.replay.fastMoves();
+          const available=new Set(features);
+          for(const option of legal){
+            for(const feature of armxFullPredictiveMoveFeatures(book.replay,option)){
+              available.add(feature);
+            }
           }
+          armxFullObserveHistoricalOpponent(book,features,available,legal.length,index);
+        }else{
+          // Preview still observes its proven subset every move. Full ARMX samples
+          // the broader legal-option set to stay lightweight without inventing
+          // preference evidence on unsampled turns.
+          book.opponentMoves++;
         }
-        armxFullObserveHistoricalOpponent(book,features,available,legal.length,index);
       }else if(actor===perspective){
         book.lastOurFeatures=new Set(features);
       }
