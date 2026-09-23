@@ -29,7 +29,7 @@ const STONEFISH_V5_5_RANGE = Object.freeze({
 
 function stonefishV55RangeScoreAllMoves(game, style = 'artemis') {
   const perspective = game.side;
-  const policy = armxFullOpponentPolicy(game, perspective);
+  const policy = armxFullOpponentPolicy(game, perspective, style);
   const host = stonefishV55HostSearch(game, policy);
   return armxFullRankHost(game, host, style);
 }
