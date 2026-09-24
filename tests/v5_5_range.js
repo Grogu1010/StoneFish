@@ -167,6 +167,12 @@ function armxAttributedOverheadBenchmark(sampleCount){
   const styles=['athena','ares','artemis'];
   const rows={preview:[],athena:[],ares:[],artemis:[]};
 
+  // Compare each policy against the same compiled v5.5 path. The historical
+  // null-policy fallback is JavaScript and is not a valid compiled baseline.
+  const neutralPolicy=()=>({
+    searchBudget:SF55C.nodes,maxDepth:SF55C.maxDepth,
+    weights:Object.create(null),priority:()=>0,isLowPriority:()=>false,
+  });
   // Warm all paths once outside timing.
   if(positions.length){
     const source=positions[0];
@@ -182,17 +188,17 @@ function armxAttributedOverheadBenchmark(sampleCount){
       const host=stonefishV55HostSearch(game,policy);
       armxFullReview(game,host.finished,style,game.side);
     }
-    stonefishV55HostSearch(cloneGame(source,0));
+    stonefishV55HostSearch(cloneGame(source,0),neutralPolicy());
   }
 
   for(let i=0;i<positions.length;i++){
     const source=positions[i];
 
-    // Base host is timed separately and never counted as ARMX work.
+    // Measure the neutral compiled search for this exact position.
     const baseGame=cloneGame(source,0);
     clearSharedEngineCaches();
     const baseStart=performance.now();
-    stonefishV55HostSearch(baseGame);
+    stonefishV55HostSearch(baseGame,neutralPolicy());
     const baseHostMs=performance.now()-baseStart;
 
     {
@@ -206,7 +212,7 @@ function armxAttributedOverheadBenchmark(sampleCount){
         game,host.finished.slice(0,Math.max(1,ARMX_PREVIEW.candidateLimit)),game.side
       ));
       const directMs=policyTimed.ms+reviewTimed.ms;
-      const extraHostMs=Math.max(0,hostMs-baseHostMs);
+      const extraHostMs=hostMs-baseHostMs;
       rows.preview.push({directMs,extraHostMs,attributedMs:directMs+extraHostMs});
     }
 
@@ -219,7 +225,7 @@ function armxAttributedOverheadBenchmark(sampleCount){
       const hostMs=performance.now()-hostStart;
       const reviewTimed=timeComponent(()=>armxFullReview(game,host.finished,style,game.side));
       const directMs=policyTimed.ms+reviewTimed.ms;
-      const extraHostMs=Math.max(0,hostMs-baseHostMs);
+      const extraHostMs=hostMs-baseHostMs;
       rows[style].push({directMs,extraHostMs,attributedMs:directMs+extraHostMs});
     }
   }
@@ -461,9 +467,21 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
     const paths={};
     for(const style of ['athena','ares','artemis']){
       const game=cloneGame(probe,0);
+      const previewPolicy=armxPreviewOpponentPolicy(game,game.side);
       const policy=armxFullOpponentPolicy(game,game.side,style);
+      const minimumPreviewBudget=previewPolicy&&Number.isFinite(previewPolicy.searchBudget)
+        ?previewPolicy.searchBudget:SF55C.nodes;
+      if(policy.searchBudget<minimumPreviewBudget){
+        throw new Error(style+' Full ARMX must preserve Preview earned search budget');
+      }
       const replies=game.fastMoves();
       const host=stonefishV55HostSearch(game,policy);
+      if(host.searchBudget<policy.searchBudget){
+        throw new Error(style+' Full ARMX host must honor its earned node budget');
+      }
+      if(host.rootWidth!==ARMX_FULL.baseRootWidth){
+        throw new Error(style+' Full ARMX telemetry must report actual root width');
+      }
       paths[style]={
         policy:project(policy),
         priorities:replies.map(move=>policy.priority(move)),

@@ -2068,10 +2068,14 @@ function sf55cPublicHistoryCodes(g,historyKey){
 }
 
 function sf55cReplyPolicyNodeLimit(replyPolicy,requested){
+  // Preview's earned budget can already reach SF55C.nodes + 8400. Full ARMX's
+  // maxExtraNodes is additional to that Preview ceiling, not a replacement
+  // ceiling that would silently erase Preview-earned search.
   const extraCap=Number.isFinite(replyPolicy&&replyPolicy.maxExtraNodes)
-    ?Math.max(8400,Math.min(120000,Math.round(replyPolicy.maxExtraNodes))):8400;
+    ?Math.max(0,Math.min(120000,Math.round(replyPolicy.maxExtraNodes))):0;
+  const maximum=SF55C.nodes+8400+extraCap;
   return Number.isFinite(requested)
-    ?Math.max(SF55C.nodes,Math.min(SF55C.nodes+extraCap,Math.round(requested))):SF55C.nodes;
+    ?Math.max(SF55C.nodes,Math.min(maximum,Math.round(requested))):SF55C.nodes;
 }
 function sf55cReplyPolicyDepthLimit(replyPolicy,requested){
   const extraCap=Number.isFinite(replyPolicy&&replyPolicy.maxExtraDepth)
@@ -2144,9 +2148,10 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   }
   const rootWidth=replyPolicy&&Number.isFinite(replyPolicy.rootWidth)
     ?Math.max(SF55C.multiPV,Math.min(12,Math.round(replyPolicy.rootWidth))):SF55C.multiPV;
-  const searchAll = rootWidth > SF55C.multiPV && k.api.search_all_width
+  const supportsRequestedWidth = rootWidth > SF55C.multiPV && !!k.api.search_all_width;
+  const searchAll = supportsRequestedWidth
     ? k.api.search_all_width : k.api.search_all;
-  const count = rootWidth > SF55C.multiPV && k.api.search_all_width
+  const count = supportsRequestedWidth
     ? searchAll(
       g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
       depthLimit,limit,SF55C.qDepth,1,publicHistoryCount,rootWidth)
@@ -2167,7 +2172,9 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
     nodes:k.api.search_nodes?k.api.search_nodes():limit,
     depth:k.api.search_depth?k.api.search_depth():depthLimit,
-    searchBudget:limit,depthLimit,rootWidth};
+    searchBudget:limit,depthLimit,
+    requestedRootWidth:rootWidth,
+    rootWidth:supportsRequestedWidth?rootWidth:SF55C.multiPV};
   return result;
 }
 

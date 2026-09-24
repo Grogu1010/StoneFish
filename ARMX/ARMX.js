@@ -48,9 +48,9 @@ const ARMX_FULL = Object.freeze({
   // v5.5 host budget/width and earns extra analysis only from opponent evidence.
   candidateLimit: 4,
   baseSearchNodes: 1200,
-  maxEvidenceSearchNodes: 0,
-  maxSurpriseSearchNodes: 0,
-  maxExtraNodes: 0,
+  maxEvidenceSearchNodes: 2400,
+  maxSurpriseSearchNodes: 1200,
+  maxExtraNodes: 3600,
   baseDepth: 4,
   maxEvidenceDepth: 6,
   maxExtraDepth: 2,
@@ -903,7 +903,12 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
 
   const previewSearchBudget=preview&&Number.isFinite(preview.searchBudget)
     ?preview.searchBudget:ARMX_FULL.baseSearchNodes;
-  const searchBudget=previewSearchBudget;
+  const extraSearchNodes=Math.round(
+    ARMX_FULL.maxEvidenceSearchNodes*learnedStrength
+      +ARMX_FULL.maxSurpriseSearchNodes*surprise
+  );
+  const earnedExtraNodes=Math.min(ARMX_FULL.maxExtraNodes,extraSearchNodes);
+  const searchBudget=previewSearchBudget+earnedExtraNodes;
   // Extra root breadth is expensive and can dilute depth. Unlock the fourth
   // finalist only when the opponent notebook is genuinely mature/useful.
   const breadthEvidence=learnedStrength*(0.85+0.15*surprise);
@@ -912,7 +917,10 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
       ?Math.min(1,ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth):0);
   const previewDepth=preview&&Number.isFinite(preview.maxDepth)
     ?preview.maxDepth:ARMX_FULL.baseDepth;
-  const maxDepth=previewDepth;
+  const maxDepth=Math.min(
+    SF55C.maxDepth+Math.min(2,ARMX_FULL.maxExtraDepth),
+    previewDepth+(learnedStrength>=ARMX_FULL.rootBreadthEvidenceThreshold?1:0)
+  );
 
   const previewWeights=preview&&preview.weights?preview.weights:new Float64Array(13);
   const compiledWeights=new Float64Array(previewWeights);
@@ -1526,6 +1534,7 @@ function armxFullRankHost(game,host,style='artemis'){
     searchDepth:host.depth,
     depthLimit:host.depthLimit,
     rootWidth:host.rootWidth||ARMX_FULL.baseRootWidth,
+    requestedRootWidth:host.requestedRootWidth||host.rootWidth||ARMX_FULL.baseRootWidth,
     changedMove:Boolean(original&&winner&&!stonefishV5SameMove(original.raw,winner.raw)),
     provisionalRaw:original&&original.raw,
     recommendedRaw:winner&&winner.raw,
