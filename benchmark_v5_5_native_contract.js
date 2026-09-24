@@ -1,5 +1,5 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const files=['StonefishChess.js','models/models.js','ARMX/ARMX.js'];
+const files=['StonefishChess.js',...['v1.js','v2.js','v3.js','v4.js','v4_5.js','v5.js','v5_pro.js','v5_5.js'].map(file=>`models/${file}`),'ARMX/ARMX-preview.js','ARMX/ARMX.js'];
 vm.runInThisContext(files.map(f=>fs.readFileSync(f,'utf8')).join('\n'));
 function position(pieces,side=1,halfmove=0){const g=new Chess();g.boardState.fill(0);g.castling=0;g.ep=-1;g.side=side;g.halfmove=halfmove;g.positionCounts.clear();g._stonefishRuntimePositionKey=null;g._stonefishRuntimeMemo=null;for(const [sq,p] of Object.entries(pieces)){const n=g._sq(sq);g.boardState[n]=p;if(Math.abs(p)===6)g.kingSq[p>0?1:-1]=n;}return g;}
 function context(){return {nodes:0,limit:1600,depth:1,abort:false,tt:new Map(),path:new Map(),pathIds:[],positionIds:new Map(),killers:[],history:new Int32Array(32768)};}

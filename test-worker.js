@@ -3,7 +3,9 @@ const stonefishWorkerAsset = path => `${path}${stonefishWorkerAssetSuffix}`;
 
 importScripts(
   stonefishWorkerAsset('./StonefishChess.js'),
-  stonefishWorkerAsset('./models/models.js'),
+  ...['v1.js','v2.js','v3.js','v4.js','v4_5.js','v5.js','v5_pro.js','v5_5.js']
+    .map(file=>stonefishWorkerAsset(`./models/${file}`)),
+  stonefishWorkerAsset('./ARMX/ARMX-preview.js'),
   stonefishWorkerAsset('./ARMX/ARMX.js')
 );
 

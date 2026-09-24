@@ -9,7 +9,7 @@ const vm=require('vm');
 const crypto=require('crypto');
 const {performance}=require('perf_hooks');
 
-const engineFiles=['StonefishChess.js','models/models.js','ARMX/ARMX.js'];
+const engineFiles=['StonefishChess.js',...['v1.js','v2.js','v3.js','v4.js','v4_5.js','v5.js','v5_pro.js','v5_5.js'].map(file=>`models/${file}`),'ARMX/ARMX-preview.js','ARMX/ARMX.js'];
 const loadedSources=engineFiles.map(file=>({file,source:fs.readFileSync(file,'utf8')}));
 const sourceHashes=Object.fromEntries(
   loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])
@@ -21,12 +21,20 @@ function bundledSource(bundle,file){
   return match[1];
 }
 const FROZEN_CURRENT_V55_HASHES=Object.freeze({
-  'ARMX-preview.js':'15ce780a0c38c3363b27e2eee40b5ed0c32962b74a074af7d5e4ae87a3d6143f',
+  'ARMX/ARMX-preview.js':'15ce780a0c38c3363b27e2eee40b5ed0c32962b74a074af7d5e4ae87a3d6143f',
   'Stonefish_v5_5.js':'ce867135cdd2462c5793565d4e310fd893763809f75cee8e8bea6814d1e66b40',
 });
+const sourceByFile=Object.fromEntries(loadedSources.map(row=>[row.file,row.source]));
+function markedModelSegment(file,name,nextName){
+  const source=sourceByFile[file];
+  const start=source.indexOf(`// ${name}\n`);
+  const end=source.indexOf(`// ${nextName}\n`,start+1);
+  if(start<0||end<0)throw new Error(`Missing model source boundary: ${name}`);
+  return source.slice(start+`// ${name}\n`.length,end).trimEnd()+'\n';
+}
 const frozenSources={
-  'ARMX-preview.js':bundledSource(loadedSources[2].source,'ARMX-preview.js'),
-  'Stonefish_v5_5.js':bundledSource(loadedSources[1].source,'Stonefish_v5_5.js'),
+  'ARMX/ARMX-preview.js':sourceByFile['ARMX/ARMX-preview.js'],
+  'Stonefish_v5_5.js':markedModelSegment('models/v5_5.js','Stonefish_v5_5.js','Stonefish_v5_5_range.js'),
 };
 for(const [file,expected] of Object.entries(FROZEN_CURRENT_V55_HASHES)){
   // Git checks out text with platform-specific newlines; hash canonical LF so

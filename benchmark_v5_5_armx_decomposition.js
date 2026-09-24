@@ -6,7 +6,7 @@
 const fs=require('fs');
 const vm=require('vm');
 
-const engineFiles=['StonefishChess.js','models/models.js','ARMX/ARMX.js'];
+const engineFiles=['StonefishChess.js',...['v1.js','v2.js','v3.js','v4.js','v4_5.js','v5.js','v5_pro.js','v5_5.js'].map(file=>`models/${file}`),'ARMX/ARMX-preview.js','ARMX/ARMX.js'];
 vm.runInThisContext(engineFiles.map(file=>fs.readFileSync(file,'utf8')).join('\n\n'),{
   filename:'stonefish-v55-armx-decomposition-bundle.js'
 });

@@ -2,7 +2,7 @@
 
 `v5_5_helpers.c` implements the existing evaluation, legal move generation and
 check detection. It has no imports, search algorithm or opponent state. Its
-27 KB WebAssembly module is embedded in `models/models.js` (the bundled v5.5 native search segment), so existing
+27 KB WebAssembly module is embedded in `models/v5_5.js` (the v5.5 native search segment), so existing
 browser, worker and command-line loaders need no asynchronous resource fetch.
 The original JavaScript routines remain the fallback. Both v5.5 variants use
 the same helpers, evaluation tables and legal move ordering.
@@ -18,6 +18,6 @@ material-counter restoration, and 128 complete search fixtures with both the
 compiled module and JavaScript fallback. Search scores, nodes and decisions
 must match the saved prototype and original No-ARMX control.
 
-Per-game memory and note-dependent search effort remain in `ARMX/ARMX.js` (the bundled ARMX Preview segment).
+Per-game Preview memory and learned quiet policy live in `ARMX/ARMX-preview.js`; Full ARMX notes and finalist review live in `ARMX/ARMX.js`.
 The helper module cannot identify opponents or retain notes between games.
 

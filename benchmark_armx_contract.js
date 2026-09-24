@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-vm.runInThisContext(['StonefishChess.js', 'ARMX/ARMX.js']
+vm.runInThisContext(['StonefishChess.js', 'ARMX/ARMX-preview.js', 'ARMX/ARMX.js']
   .map(file => fs.readFileSync(file, 'utf8')).join('\n\n'));
 
 function play(game, ...moves) {

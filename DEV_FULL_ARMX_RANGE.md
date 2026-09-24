@@ -1,6 +1,6 @@
 # Full ARMX range: active development checkpoint
 
-The active draft is PR #133, `dev/full-armx-v55-range`. The frozen current v5.5 comparison is retained verbatim inside `models/models.js` and `ARMX/ARMX.js` and checked by source hashes in the range harness. The site loads the consolidated bundles; Dev Test exposes the three rolling best-known test units.
+The active draft is PR #133, `dev/full-armx-v55-range`. Each playable model has its own source file in `models/`; ARMX Preview and Full ARMX have separate files in `ARMX/`. The frozen current v5.5 comparison remains in `models/v5_5.js` and `ARMX/ARMX.js`, checked by source hashes in the range harness. Dev Test exposes the three rolling best-known test units.
 
 ## Required outcomes
 
@@ -17,6 +17,8 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 - Full-ARMX decomposition implicated finalist review in a weak small-sample result; neither policy nor search budget alone explained it. These small, paired diagnostic samples are hypothesis evidence only, not release evidence.
 - A probability-calibration diagnostic removed one redundant choice-probability factor from Full-only global and contextual response-outcome estimates. Across two separate 20-game six-pairing sets, combined current-v5.5 scores were Athena 42.5%, Ares 48.75%, Artemis 50.0%, compared with the corrected baseline's 43.75%, 46.25%, and 47.5%. The gain for Ares/Artemis came with an Athena regression, weak sibling balance, and combined played-move ratios around 0.92x for both Athena and Ares; overhead remained below 1.41x Preview. This mixed diagnostic was reverted and not promoted to any testunit.
 - A separate reply-ordering diagnostic enabled a small learned Full-only policy delta (`policyWeightDeltaScale=0.35`, priority scale 70, maturity-scaled evidence). On one 20-game opening set, Athena/Ares/Artemis scored 45%/47.5%/45% against current v5.5; sibling scores were Ares 52.5% over Athena, Artemis 55% over Athena, and Artemis 62.5% over Ares. Pace ratios were 0.87x/0.96x and overhead stayed below 1.4x Preview. The sample does not isolate a strength improvement and worsens peer/style identity; the change was reverted.
+- An evidence-gated search diagnostic gave Full ARMX up to 1,200 extra nodes and one extra ply once learned strength reached 0.80. Across two separate 20-game six-pairing sets, combined scores vs current v5.5 were Athena 55%, Ares 48.75%, Artemis 48.75%, versus corrected-baseline scores of 43.75%, 46.25%, 47.5%. The Athena gain did not carry the other two models above 50%; pace ratios were only 1.17x Athena and 1.12x Ares, and sibling results stayed weak. Attributed overhead ranged from 1.36x to 1.55x Preview. Reverted as a mixed result; testunits remain unchanged.
+- A root-breadth diagnostic raised Full ARMX `maxRootWidth` from 3 to 4. The widened branch averaged 3.82 root moves, confirming the previously unreachable breadth path activated. Across two 20-game six-pairing sets combined, Athena/Ares/Artemis scored 43.75%/48.75%/47.5% against current v5.5, effectively matching corrected-baseline 40-game scores within noise. Pace ratios were 1.05x Athena and 0.99x Ares; sibling balance was weak. Attributed overhead remained 1.22x–1.44x Preview. Reverted; no candidate promotion.
 - The structural range contract checks that policy, reply priorities/reductions, native search nodes/depth, and ordered exact root scores are identical before numeric finalist scoring across all three models. The compiled v5.5 contract covers 5,524 positions, 2,080 identities, and 128 complete searches. Attribution, reset, and reply-policy contracts are retained.
 
 ## Test units and promotion rule
@@ -25,4 +27,4 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 
 ## Active verification
 
-Use `node benchmark_v5_5_range.js` for the six-pairing screen, `node benchmark_v5_5_armx_decomposition.js` for the diagnostic decomposition, and the retained kernel/ARMX contract scripts for regressions. CI runs these checks. Raw archived result bundles were intentionally removed during repository cleanup; the reproducible harnesses and concise findings above remain.
+Use `node benchmark_v5_5_range.js` for the six-pairing screen, `node benchmark_v5_5_armx_decomposition.js` for the diagnostic decomposition, and the retained kernel/ARMX contract scripts for regressions. CI runs these checks. Temporary raw result bundles are removed after each diagnostic; reproducible harnesses and concise findings remain.

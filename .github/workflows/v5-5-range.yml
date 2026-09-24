@@ -5,9 +5,10 @@ on:
     paths:
       - 'ARMX/**'
       - 'models/**'
-      - 'Stonefish_v5_5_range_ui.js'
+      - 'app.js'
       - 'index.html'
       - 'test-worker.js'
+      - 'build_v5_5_kernel.cjs'
       - 'benchmark_v5_5_range.js'
       - 'benchmark_v5_5_armx_decomposition.js'
       - 'benchmark_armx_contract.js'
@@ -38,9 +39,10 @@ jobs:
         run: node build_v5_5_kernel.cjs
       - name: Check active files
         run: |
+          node --check ARMX/ARMX-preview.js
           node --check ARMX/ARMX.js
-          node --check models/models.js
-          node --check Stonefish_v5_5_range_ui.js
+          for f in models/*.js; do node --check "$f"; done
+          node --check app.js
           node --check test-worker.js
           node --check benchmark_v5_5_range.js
           node --check benchmark_v5_5_armx_decomposition.js
