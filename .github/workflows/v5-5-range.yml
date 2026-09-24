@@ -1,0 +1,61 @@
+name: Stonefish v5.5 Full ARMX range
+
+on:
+  pull_request:
+    paths:
+      - 'ARMX/**'
+      - 'models/**'
+      - 'Stonefish_v5_5_range_ui.js'
+      - 'index.html'
+      - 'test-worker.js'
+      - 'benchmark_v5_5_range.js'
+      - 'benchmark_v5_5_armx_decomposition.js'
+      - 'benchmark_armx_contract.js'
+      - 'benchmark_armx_reply_policy.js'
+      - 'benchmark_v5_5_kernel_contract.js'
+      - 'benchmark_v5_5_native_contract.js'
+      - 'build_v5_5_kernel.cjs'
+      - 'native/**'
+      - '.github/workflows/v5-5-range.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: v55-range-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build compiled v5.5 kernel
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Check active files
+        run: |
+          node --check ARMX/ARMX.js
+          node --check models/models.js
+          node --check Stonefish_v5_5_range_ui.js
+          node --check test-worker.js
+          node --check benchmark_v5_5_range.js
+          node --check benchmark_v5_5_armx_decomposition.js
+      - name: Verify v5.5 kernel contract
+        run: node benchmark_v5_5_kernel_contract.js
+      - name: Verify Full ARMX contracts
+        run: |
+          node benchmark_armx_contract.js
+          node benchmark_armx_reply_policy.js
+          node benchmark_v5_5_native_contract.js
+      - name: Run saved-best range screen
+        env:
+          GAMES: '20'
+        run: node benchmark_v5_5_range.js
+      - name: Run Full ARMX decomposition diagnostic
+        env:
+          GAMES: '8'
+        run: node benchmark_v5_5_armx_decomposition.js

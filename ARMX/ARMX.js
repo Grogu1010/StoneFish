@@ -1,0 +1,2336 @@
+// BEGIN SOURCE: ARMX-preview.js
+// ARMX-preview — per-game opponent adaptation model for Stonefish v5.5.
+//
+// ARMX is intentionally a separate model from Stonefish. It does not search the
+// move tree. Instead it watches the
+// actual game, builds a small profile of this opponent's choices and of what has
+// worked (or failed) against them. Learned quiet-reply preferences guide the
+// native search and allocate extra effort when predictions disappoint;
+// bounded outcome multipliers compare finalists.
+// The profile lives in a WeakMap keyed
+// by the game object, so it automatically resets between games/rounds.
+
+const ARMX_PREVIEW = Object.freeze({
+  name: 'ARMX-preview',
+  version: 'preview-evidence-effort',
+  kind: 'opponent-adaptation',
+  reset: 'per-game',
+  candidateLimit: 3,
+  baseCandidateLimit: 2,
+  expandedCandidateMinPlies: 36,
+  expandedCandidateMinEvidence: 5.5,
+  thirdCandidateMinSignal: 0.20,
+  thirdCandidateMinConfidence: 0.90,
+  thirdCandidateMinEvidence: 5.5,
+  minEvidence: 1.25,
+  fullConfidenceEvidence: 5.5,
+  maxMultiplierDelta: 0.18,
+  multiplierSignalScale: 0.18,
+  opponentSignalWeight: 1.10,
+  responseOutcomeWeight: 0.65,
+  acceptedResponseWeight: 0.75,
+  effectScale: 360,
+  episodeFeatureWeight: 0.55,
+  maxHostGap: 40,
+  maxDeepSacrifice: 25,
+  minOverrideEvidence: 3.5,
+  minOverrideConfidence: 0.65,
+  minAdaptedLead: 2,
+  earlyOverridePlies: 20,
+  earlyOverrideEvidence: 5,
+  earlyOverrideConfidence: 0.90,
+  shortHorizonPlies: 2,
+  longHorizonPlies: 4,
+  quietChoiceMinObservations: 4,
+  quietChoiceLearningRate: 0.8,
+  quietChoiceDecay: 0.995,
+  quietChoiceWeightLimit: 6,
+  predictionQualityDecay: 0.9,
+  predictionSurpriseScale: 0.3,
+  maxExtraSearchNodes: 3600,
+  evidenceSearchNodes: 4800,
+  fullSearchEvidence: 8,
+  maxExtraSearchDepth: 2,
+});
+
+const ARMX_PREVIEW_GAME_PROFILES = new WeakMap();
+const ARMX_PREVIEW_FEATURES = Object.freeze([
+  'capture', 'trade', 'rookTrade', 'queenTrade', 'minorTrade', 'simplify',
+  'check', 'kingAttack', 'pawnPush', 'castle', 'quiet', 'advance', 'retreat'
+]);
+const ARMX_PREVIEW_REPLY_FEATURES = Object.freeze([
+  'capture', 'trade', 'rookTrade', 'queenTrade', 'simplify'
+]);
+const ARMX_PREVIEW_PIECE_VALUES = Object.freeze([0, 100, 320, 335, 510, 930, 0]);
+
+// Geometric activity features for comparing available quiet choices. These
+// priors describe moves; all preference weights start at zero in every game.
+const ARMX_PREVIEW_QUIET_FEATURE_NAMES = Object.freeze([
+  'pawn moves', 'knight moves', 'bishop moves', 'rook moves', 'queen moves',
+  'king moves', 'middlegame activity', 'endgame activity', 'forward moves',
+  'castling', 'minor-piece development', 'central files', 'advanced pawns'
+]);
+const ARMX_PREVIEW_QUIET_ACTIVITY = Array.from({length: 7}, () => new Int16Array(64));
+const ARMX_PREVIEW_QUIET_ENDGAME = Array.from({length: 7}, () => new Int16Array(64));
+for (let square = 0; square < 64; square++) {
+  const file = square & 7, rank = square >> 3;
+  const center = 7 - Math.abs(2 * file - 7) - Math.abs(2 * rank - 7);
+  const fileCenter = 7 - Math.abs(2 * file - 7);
+  const middle = ARMX_PREVIEW_QUIET_ACTIVITY, ending = ARMX_PREVIEW_QUIET_ENDGAME;
+  middle[1][square] = rank * 7 + fileCenter * 3 + (rank >= 3 && file >= 2 && file <= 5 ? 14 : 0);
+  ending[1][square] = rank * rank * 5 + fileCenter;
+  middle[2][square] = center * 7 - (rank === 0 ? 15 : 0);
+  ending[2][square] = center * 5;
+  middle[3][square] = center * 4 + rank * 3;
+  ending[3][square] = center * 3;
+  middle[4][square] = rank === 6 ? 30 : rank * 2;
+  ending[4][square] = center * 2;
+  middle[5][square] = center * 2 - (rank > 2 ? 8 : 0);
+  ending[5][square] = center * 3;
+  middle[6][square] = -center * 5 - rank * 12 + (rank === 0 && (file === 6 || file === 2) ? 45 : 0);
+  ending[6][square] = center * 8;
+}
+
+function armxPreviewQuietFeatures(move, side) {
+  const features = new Float64Array(13), piece = move.piece;
+  const from = side === 1 ? move.from : move.from ^ 56;
+  const to = side === 1 ? move.to : move.to ^ 56;
+  features[piece - 1] = 1;
+  features[6] = (ARMX_PREVIEW_QUIET_ACTIVITY[piece][to] - ARMX_PREVIEW_QUIET_ACTIVITY[piece][from]) / 100;
+  features[7] = (ARMX_PREVIEW_QUIET_ENDGAME[piece][to] - ARMX_PREVIEW_QUIET_ENDGAME[piece][from]) / 100;
+  features[8] = Math.max(-1, Math.min(1, ((to >> 3) - (from >> 3)) / 3));
+  features[9] = move.flags & (4 | 8) ? 1 : 0;
+  features[10] = (piece === 2 || piece === 3) && (from >> 3) === 0 ? 1 : 0;
+  features[11] = (Math.abs((from & 7) - 3.5) - Math.abs((to & 7) - 3.5)) / 4;
+  features[12] = piece === 1 && (to >> 3) >= 4 ? 1 : 0;
+  return features;
+}
+
+function armxPreviewQuietLogit(features, weights) {
+  let value = 0;
+  for (let i = 0; i < features.length; i++) value += features[i] * weights[i];
+  return value;
+}
+
+function armxPreviewObserveQuietChoice(profile, game, chosen, legalMoves = null) {
+  if (chosen.captured || chosen.promotion || game.in_check()) return;
+  const moves = (legalMoves || game.fastMoves()).filter(move => !move.captured && !move.promotion);
+  if (moves.length < 2) return;
+  if (!profile.quietPolicy) profile.quietPolicy = {
+    weights: new Float64Array(13), count: 0, qualitySum: 0, qualityWeight: 0
+  };
+  const model = profile.quietPolicy;
+  const rows = moves.map(move => armxPreviewQuietFeatures(move, game.side));
+  const logits = rows.map(row => armxPreviewQuietLogit(row, model.weights));
+  const maximum = Math.max(...logits);
+  const probabilities = logits.map(logit => Math.exp(logit - maximum));
+  const sum = probabilities.reduce((a, b) => a + b, 0);
+  // Measure the prediction before learning from this choice. Compare its
+  // probability with uniform selection among the available quiet moves.
+  const selectedIndex = moves.findIndex(move => move.from === chosen.from && move.to === chosen.to
+    && (move.promotion || 0) === (chosen.promotion || 0));
+  if (model.count >= 1 && selectedIndex >= 0) {
+    const gain = Math.log(moves.length * probabilities[selectedIndex] / sum);
+    model.qualitySum = model.qualitySum * ARMX_PREVIEW.predictionQualityDecay + gain;
+    model.qualityWeight = model.qualityWeight * ARMX_PREVIEW.predictionQualityDecay + 1;
+  }
+  const selected = armxPreviewQuietFeatures(chosen, game.side);
+  for (let i = 0; i < model.weights.length; i++) {
+    let expected = 0;
+    for (let j = 0; j < rows.length; j++) expected += probabilities[j] * rows[j][i] / sum;
+    model.weights[i] = armxPreviewClamp(
+      model.weights[i] * ARMX_PREVIEW.quietChoiceDecay
+        + ARMX_PREVIEW.quietChoiceLearningRate * (selected[i] - expected),
+      -ARMX_PREVIEW.quietChoiceWeightLimit, ARMX_PREVIEW.quietChoiceWeightLimit
+    );
+  }
+  model.count++;
+}
+
+function armxPreviewOpponentPolicy(game, perspective = game.side) {
+  const profile = armxPreviewSyncProfile(game, perspective), model = profile.quietPolicy;
+  if (!model || model.count < ARMX_PREVIEW.quietChoiceMinObservations) return null;
+  // Freeze the learned preferences for this search. Cache only geometry-based
+  // scores, including piece type and flags in the identity; nothing crosses turns.
+  const weights = new Float64Array(model.weights);
+  let cache = null;
+  const score = move => {
+    if (!cache) cache = new Map();
+    const key = move.from | (move.to << 6) | (move.piece << 12)
+      | ((move.promotion || 0) << 15) | ((move.flags || 0) << 18);
+    let value = cache.get(key);
+    if (value === undefined) {
+      value = armxPreviewQuietLogit(armxPreviewQuietFeatures(move, -perspective), weights);
+      cache.set(key, value);
+    }
+    return value;
+  };
+  const uncertainty = armxPreviewClamp(
+    -(model.qualityWeight ? model.qualitySum / model.qualityWeight : 0)
+      / ARMX_PREVIEW.predictionSurpriseScale, 0, 1);
+  const searchBudget = SF55C.nodes + Math.round(ARMX_PREVIEW.maxExtraSearchNodes * uncertainty)
+    + Math.round(ARMX_PREVIEW.evidenceSearchNodes * Math.min(1, model.count / ARMX_PREVIEW.fullSearchEvidence));
+  return {
+    observations: model.count,
+    // Accumulated voluntary choices activate deeper analysis of learned replies;
+    // surprising choices request additional verification. All evidence and
+    // preferences belong to this game, never to an opponent name.
+    searchBudget,
+    maxDepth: SF55C.maxDepth + ARMX_PREVIEW.maxExtraSearchDepth,
+    // Frozen per-search weights let the compiled ARMX search reproduce the same learned reply ordering.
+    weights,
+    priority: move => Math.round(300 * score(move)),
+    isLowPriority: move => score(move) < 0,
+  };
+}
+
+function armxPreviewClamp(value, low, high) {
+  return Math.max(low, Math.min(high, value));
+}
+
+function armxPreviewSquareDistance(a, b) {
+  const af = a & 7, ar = a >> 3, bf = b & 7, br = b >> 3;
+  return Math.max(Math.abs(af - bf), Math.abs(ar - br));
+}
+
+function armxPreviewStateSnapshot(game, perspective) {
+  let score = 0;
+  const material = {
+    whiteRooks: 0,
+    blackRooks: 0,
+    whiteQueens: 0,
+    blackQueens: 0,
+    whiteMinors: 0,
+    blackMinors: 0,
+    whiteNonPawn: 0,
+    blackNonPawn: 0,
+  };
+  const board = game.boardState;
+  const enemyKing = game.kingSq[-perspective];
+  const ourKing = game.kingSq[perspective];
+
+  for (let sq = 0; sq < 64; sq += 1) {
+    const piece = board[sq];
+    if (!piece) continue;
+    const side = piece > 0 ? 1 : -1;
+    const type = Math.abs(piece);
+    const sign = side === perspective ? 1 : -1;
+    score += sign * ARMX_PREVIEW_PIECE_VALUES[type];
+
+    if (type >= 2 && type <= 5) {
+      if (side === 1) material.whiteNonPawn += 1;
+      else material.blackNonPawn += 1;
+    }
+    if (type === 4) {
+      if (side === 1) material.whiteRooks += 1;
+      else material.blackRooks += 1;
+    } else if (type === 5) {
+      if (side === 1) material.whiteQueens += 1;
+      else material.blackQueens += 1;
+    } else if (type === 2 || type === 3) {
+      if (side === 1) material.whiteMinors += 1;
+      else material.blackMinors += 1;
+    }
+
+    const file = sq & 7;
+    const rank = sq >> 3;
+    const centerDistance = Math.abs(file - 3.5) + Math.abs(rank - 3.5);
+    if (type === 2 || type === 3) score += sign * (18 - centerDistance * 3);
+    if (type === 1) {
+      const advance = side === 1 ? rank - 1 : 6 - rank;
+      score += sign * Math.max(0, advance) * 5;
+    }
+
+    if (side === perspective && type !== 6 && armxPreviewSquareDistance(sq, enemyKing) <= 2) score += 12;
+    if (side !== perspective && type !== 6 && armxPreviewSquareDistance(sq, ourKing) <= 2) score -= 12;
+  }
+  return { score, material };
+}
+
+function armxPreviewModelEval(game, perspective) {
+  return armxPreviewStateSnapshot(game, perspective).score;
+}
+
+function armxPreviewFeatureSet(game, move) {
+  const features = new Set();
+  if (!move) return features;
+  const piece = move.piece || Math.abs(game.boardState[move.from] || 0);
+  const captured = move.captured || 0;
+  const moveValue = ARMX_PREVIEW_PIECE_VALUES[piece] || 0;
+  const capturedValue = ARMX_PREVIEW_PIECE_VALUES[captured] || 0;
+
+  if (captured) features.add('capture');
+  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) features.add('trade');
+  if (captured && piece === 4 && captured === 4) features.add('rookTrade');
+  if (captured && piece === 5 && captured === 5) features.add('queenTrade');
+  if (captured && (piece === 2 || piece === 3) && (captured === 2 || captured === 3)) features.add('minorTrade');
+  if (captured >= 2) features.add('simplify');
+  if (piece === 1) features.add('pawnPush');
+  if (move.flags & (4 | 8)) features.add('castle');
+
+  let givesCheck = false;
+  if (typeof game.fastGivesCheck === 'function') givesCheck = game.fastGivesCheck(move);
+  if (givesCheck) features.add('check');
+  const enemyKing = game.kingSq[-game.side];
+  if (givesCheck || (piece !== 6 && armxPreviewSquareDistance(move.to, enemyKing) <= 2)) features.add('kingAttack');
+
+  const fromRank = move.from >> 3;
+  const toRank = move.to >> 3;
+  const forward = game.side === 1 ? toRank - fromRank : fromRank - toRank;
+  if (forward > 0) features.add('advance');
+  if (forward < 0) features.add('retreat');
+  if (!captured && !givesCheck && !move.promotion && !(move.flags & (4 | 8))) features.add('quiet');
+  return features;
+}
+
+function armxPreviewCheapFeatureMask(move) {
+  if (!move) return 0;
+  const piece = move.piece || 0;
+  const captured = move.captured || 0;
+  const moveValue = ARMX_PREVIEW_PIECE_VALUES[piece] || 0;
+  const capturedValue = ARMX_PREVIEW_PIECE_VALUES[captured] || 0;
+  let mask = 0;
+  if (captured) mask |= 1;
+  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) mask |= 2;
+  if (captured && piece === 4 && captured === 4) mask |= 4;
+  if (captured && piece === 5 && captured === 5) mask |= 8;
+  if (captured >= 2) mask |= 16;
+  return mask;
+}
+
+function armxPreviewAddCheapFeatureMask(target, mask) {
+  if (mask & 1) target.add('capture');
+  if (mask & 2) target.add('trade');
+  if (mask & 4) target.add('rookTrade');
+  if (mask & 8) target.add('queenTrade');
+  if (mask & 16) target.add('simplify');
+  return target;
+}
+
+function armxPreviewCheapFeatureSet(move) {
+  return armxPreviewAddCheapFeatureMask(new Set(), armxPreviewCheapFeatureMask(move));
+}
+
+function armxPreviewFreshStats() {
+  const stats = Object.create(null);
+  for (const feature of ARMX_PREVIEW_FEATURES) {
+    stats[feature] = { weight: 0, impact: 0, positive: 0, observations: new Set() };
+  }
+  return stats;
+}
+
+function armxPreviewNewProfile(perspective, game = null, observationStartPly = 0) {
+  const replay = new Chess();
+  // Recover the actual starting board, including positions supplied with a
+  // partial history. Never pretend an arbitrary position began at move one.
+  if (game) {
+    replay.boardState = new Int8Array(game.boardState);
+    replay.side = game.side;
+    replay.castling = game.castling;
+    replay.ep = game.ep;
+    replay.halfmove = game.halfmove;
+    replay.fullmove = game.fullmove;
+    replay.kingSq = { 1: game.kingSq[1], '-1': game.kingSq[-1] };
+    replay.historyStack = (game.historyStack || []).slice();
+    replay.positionCounts = new Map(game.positionCounts);
+    replay._stonefishRuntimePositionKey = null;
+    while (replay.historyStack.length) replay.fastUndo();
+  }
+  return {
+    perspective,
+    processedPlies: 0,
+    observationStartPly,
+    lastHistoryState: null,
+    initialPositionKey: replay.fastPositionKey(),
+    replay,
+    currentSnapshot: armxPreviewStateSnapshot(replay, perspective),
+    pending: [],
+    pendingOffer: null,
+    ourEffects: armxPreviewFreshStats(),
+    opponentEffects: armxPreviewFreshStats(),
+    acceptedResponseEffects: armxPreviewFreshStats(),
+    opponentMoves: 0,
+    opponentChoices: Object.create(null),
+    opponentOpportunities: Object.create(null),
+    opponentOpportunityPlies: Object.create(null),
+    notes: [],
+    quietPolicy: null,
+  };
+}
+
+function armxPreviewRecordImpact(bucket, features, impact, weight, observationId) {
+  const normalized = armxPreviewClamp(impact / ARMX_PREVIEW.effectScale, -1, 1);
+  for (const feature of features) {
+    const row = bucket[feature];
+    if (!row) continue;
+    row.weight += weight;
+    row.impact += normalized * weight;
+    if (normalized > 0) row.positive += weight;
+    if (observationId !== undefined) row.observations.add(observationId);
+  }
+}
+
+function armxPreviewEpisodeFeatures(baseFeatures, before, after) {
+  const derived = new Set();
+  if (!before || !after) return derived;
+  const bothDropped = (whiteKey, blackKey) => after[whiteKey] < before[whiteKey]
+    && after[blackKey] < before[blackKey];
+
+  if (bothDropped('whiteRooks', 'blackRooks')) derived.add('rookTrade');
+  if (bothDropped('whiteQueens', 'blackQueens')) derived.add('queenTrade');
+  if (bothDropped('whiteMinors', 'blackMinors')) derived.add('minorTrade');
+  if (bothDropped('whiteNonPawn', 'blackNonPawn')) {
+    derived.add('trade');
+    derived.add('simplify');
+  }
+  for (const feature of baseFeatures) derived.delete(feature);
+  return derived;
+}
+
+function armxPreviewResolvePending(profile, currentPly, currentSnapshot = profile.currentSnapshot) {
+  if (!profile.pending.length) return;
+  const snapshot = currentSnapshot || armxPreviewStateSnapshot(profile.replay, profile.perspective);
+  const now = snapshot.score;
+  const keep = [];
+  for (const event of profile.pending) {
+    if (currentPly < event.resolveAt) {
+      keep.push(event);
+      continue;
+    }
+    const impact = now - event.before;
+    const bucket = event.bucket === 'accepted-response'
+      ? profile.acceptedResponseEffects
+      : (event.actor === profile.perspective ? profile.ourEffects : profile.opponentEffects);
+    armxPreviewRecordImpact(bucket, event.features, impact, event.weight, event.observationId);
+    if (event.bucket !== 'accepted-response') {
+      const episodeFeatures = armxPreviewEpisodeFeatures(event.features, event.beforeMaterial, snapshot.material);
+      if (episodeFeatures.size) {
+        armxPreviewRecordImpact(bucket, episodeFeatures, impact, event.weight * ARMX_PREVIEW.episodeFeatureWeight, event.observationId);
+      }
+    }
+  }
+  profile.pending = keep;
+}
+
+function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
+  const legal = game.fastMoves();
+  let availableMask = 0;
+  for (const move of legal) availableMask |= armxPreviewCheapFeatureMask(move);
+  const chosenMask = armxPreviewCheapFeatureMask(chosenMove);
+  const available = armxPreviewAddCheapFeatureMask(new Set(), availableMask);
+  const chosen = armxPreviewAddCheapFeatureMask(new Set(), chosenMask);
+  profile.opponentMoves += 1;
+  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
+    if (available.has(feature)) {
+      profile.opponentOpportunities[feature] = (profile.opponentOpportunities[feature] || 0) + 1;
+      if (chosen.has(feature)) profile.opponentChoices[feature] = (profile.opponentChoices[feature] || 0) + 1;
+      if (!profile.opponentOpportunityPlies[feature]) profile.opponentOpportunityPlies[feature] = new Set();
+      profile.opponentOpportunityPlies[feature].add(profile.processedPlies);
+    }
+  }
+  armxPreviewObserveQuietChoice(profile, game, chosenMove, legal);
+  return { available, chosen, move: chosenMove, actor: game.side };
+}
+
+function armxPreviewCapturedSquare(move, actor) {
+  if (!move || !move.captured) return -1;
+  return move.flags & 2 ? move.to - actor * 8 : move.to;
+}
+
+function armxPreviewRecordAcceptedResponse(profile, observed, opponentPlyIndex) {
+  const offer = profile.pendingOffer;
+  profile.pendingOffer = null;
+  if (!offer || !observed || opponentPlyIndex !== offer.index + 1) return;
+  // A capture elsewhere is an opponent choice, but is not acceptance of the
+  // piece we just offered. Keep this more specific outcome memory attributable.
+  if (armxPreviewCapturedSquare(observed.move, observed.actor) !== offer.to) return;
+  const accepted = new Set();
+  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
+    if (observed.available.has(feature) && observed.chosen.has(feature)) accepted.add(feature);
+  }
+  if (!accepted.size) return;
+
+  profile.pending.push({
+    bucket: 'accepted-response',
+    observationId: opponentPlyIndex,
+    features: accepted,
+    before: offer.before,
+    resolveAt: offer.index + ARMX_PREVIEW.shortHorizonPlies,
+    weight: 0.65,
+  });
+  profile.pending.push({
+    bucket: 'accepted-response',
+    observationId: opponentPlyIndex,
+    features: accepted,
+    before: offer.before,
+    resolveAt: offer.index + ARMX_PREVIEW.longHorizonPlies,
+    weight: 0.35,
+  });
+}
+
+function armxPreviewSyncProfile(game, perspective) {
+  let profiles = ARMX_PREVIEW_GAME_PROFILES.get(game);
+  if (!profiles) {
+    profiles = new Map();
+    ARMX_PREVIEW_GAME_PROFILES.set(game, profiles);
+  }
+  let profile = profiles.get(perspective);
+  const historyLength = game.historyStack ? game.historyStack.length : 0;
+  const history = game.historyStack || [];
+  const observationStartPly = Math.max(0, Math.trunc(Number(game.armxObservationStartPly) || 0));
+  const changedHistory = profile && profile.processedPlies > 0
+    && history[profile.processedPlies - 1] !== profile.lastHistoryState;
+  const changedEmptyPosition = profile && !historyLength
+    && game.fastPositionKey() !== profile.initialPositionKey;
+  if (!profile || historyLength < profile.processedPlies || changedHistory
+    || changedEmptyPosition || profile.observationStartPly !== observationStartPly) {
+    profile = armxPreviewNewProfile(perspective, game, observationStartPly);
+    profiles.set(perspective, profile);
+  }
+
+  while (profile.processedPlies < history.length) {
+    const index = profile.processedPlies;
+    const state = history[index];
+    const move = state && state.move;
+    if (!move) break;
+    // Seeded openings provide board history, not evidence about this opponent.
+    if (index < observationStartPly) {
+      profile.replay.fastApply(move);
+      profile.currentSnapshot = armxPreviewStateSnapshot(profile.replay, perspective);
+      profile.processedPlies += 1;
+      profile.lastHistoryState = state;
+      continue;
+    }
+    const actor = profile.replay.side;
+    const before = profile.currentSnapshot.score;
+    const beforeMaterial = profile.currentSnapshot.material;
+    const features = armxPreviewFeatureSet(profile.replay, move);
+
+    if (actor === -perspective) {
+      const observed = armxPreviewObserveOpponentOpportunity(profile, profile.replay, move);
+      armxPreviewRecordAcceptedResponse(profile, observed, index);
+    }
+
+    profile.pending.push({ actor, features, before, beforeMaterial, observationId: index, resolveAt: index + ARMX_PREVIEW.shortHorizonPlies, weight: 0.65 });
+    profile.pending.push({ actor, features, before, beforeMaterial, observationId: index, resolveAt: index + ARMX_PREVIEW.longHorizonPlies, weight: 0.35 });
+
+    profile.replay.fastApply(move);
+    profile.currentSnapshot = armxPreviewStateSnapshot(profile.replay, perspective);
+    profile.processedPlies += 1;
+    profile.lastHistoryState = state;
+    armxPreviewResolvePending(profile, profile.processedPlies, profile.currentSnapshot);
+
+    if (actor === perspective) profile.pendingOffer = { before, index, to: move.to };
+  }
+
+  armxPreviewResolvePending(profile, profile.processedPlies, profile.currentSnapshot);
+  return profile;
+}
+
+function armxPreviewEffect(stats, feature) {
+  const row = stats[feature];
+  if (!row || row.weight < ARMX_PREVIEW.minEvidence) return { value: 0, evidence: row ? row.weight : 0 };
+  return { value: row.impact / row.weight, evidence: row.weight };
+}
+
+function armxPreviewOpponentChoiceRate(profile, feature) {
+  const opportunities = profile.opponentOpportunities[feature] || 0;
+  if (!opportunities) return { rate: 0, evidence: 0 };
+  // A uniform Beta prior prevents one forced capture becoming a 100% habit.
+  return { rate: ((profile.opponentChoices[feature] || 0) + 1) / (opportunities + 2), evidence: opportunities };
+}
+
+function armxPreviewHasUsefulReplyEvidence(profile) {
+  for (const feature of ARMX_PREVIEW_REPLY_FEATURES) {
+    const choiceEvidence = profile.opponentOpportunities[feature] || 0;
+    if (choiceEvidence < 2) continue;
+    const opponent = profile.opponentEffects[feature];
+    if (opponent && opponent.weight >= ARMX_PREVIEW.minEvidence) return true;
+    const ours = profile.ourEffects[feature];
+    if (choiceEvidence >= 3 && ours && ours.weight >= ARMX_PREVIEW.minEvidence) return true;
+    const accepted = profile.acceptedResponseEffects[feature];
+    if (accepted && accepted.weight >= ARMX_PREVIEW.minEvidence) return true;
+  }
+  return false;
+}
+
+function armxPreviewProfileMatureForThirdCandidate(profile) {
+  if (!profile || profile.processedPlies - profile.observationStartPly < ARMX_PREVIEW.expandedCandidateMinPlies) return false;
+  for (const feature of ARMX_PREVIEW_FEATURES) {
+    const ours = profile.ourEffects[feature];
+    const opponent = profile.opponentEffects[feature];
+    const accepted = profile.acceptedResponseEffects[feature];
+    if (ours && ours.weight >= ARMX_PREVIEW.expandedCandidateMinEvidence) return true;
+    if (opponent && opponent.weight >= ARMX_PREVIEW.expandedCandidateMinEvidence) return true;
+    if (accepted && accepted.weight >= ARMX_PREVIEW.expandedCandidateMinEvidence) return true;
+  }
+  return false;
+}
+
+function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
+  const features = new Set();
+  const available = new Set();
+  const offered = new Set();
+  if (!raw) return { features, replyOptions: { available, offered } };
+
+  const historyDepth = game.historyStack.length;
+  const actor = game.side;
+  const piece = raw.piece || Math.abs(game.boardState[raw.from] || 0);
+  const captured = raw.captured || 0;
+  const moveValue = ARMX_PREVIEW_PIECE_VALUES[piece] || 0;
+  const capturedValue = ARMX_PREVIEW_PIECE_VALUES[captured] || 0;
+  const enemyKing = game.kingSq[-actor];
+
+  if (captured) features.add('capture');
+  if (captured && piece > 1 && captured > 1 && Math.abs(moveValue - capturedValue) <= 180) features.add('trade');
+  if (captured && piece === 4 && captured === 4) features.add('rookTrade');
+  if (captured && piece === 5 && captured === 5) features.add('queenTrade');
+  if (captured && (piece === 2 || piece === 3) && (captured === 2 || captured === 3)) features.add('minorTrade');
+  if (captured >= 2) features.add('simplify');
+  if (piece === 1) features.add('pawnPush');
+  if (raw.flags & (4 | 8)) features.add('castle');
+
+  try {
+    game.fastApply(raw);
+    const givesCheck = game.in_check();
+    if (givesCheck) features.add('check');
+    if (givesCheck || (piece !== 6 && armxPreviewSquareDistance(raw.to, enemyKing) <= 2)) features.add('kingAttack');
+
+    const fromRank = raw.from >> 3;
+    const toRank = raw.to >> 3;
+    const forward = actor === 1 ? toRank - fromRank : fromRank - toRank;
+    if (forward > 0) features.add('advance');
+    if (forward < 0) features.add('retreat');
+    if (!captured && !givesCheck && !raw.promotion && !(raw.flags & (4 | 8))) features.add('quiet');
+
+    if (includeReplyOptions) {
+      for (const reply of game.fastMoves()) {
+        const replyMask = armxPreviewCheapFeatureMask(reply);
+        armxPreviewAddCheapFeatureMask(available, replyMask);
+        if (armxPreviewCapturedSquare(reply, game.side) === raw.to) {
+          armxPreviewAddCheapFeatureMask(offered, replyMask);
+        }
+      }
+    }
+  } finally {
+    while (game.historyStack.length > historyDepth) game.fastUndo();
+  }
+
+  return { features, replyOptions: { available, offered } };
+}
+
+function armxPreviewCandidateReplyOpportunities(game, raw) {
+  return armxPreviewCandidateContext(game, raw, true).replyOptions;
+}
+
+function armxPreviewCandidateReport(game, entry, profile) {
+  const includeReplyOptions = armxPreviewHasUsefulReplyEvidence(profile);
+  const context = includeReplyOptions
+    ? armxPreviewCandidateContext(game, entry.raw, true)
+    : { features: armxPreviewFeatureSet(game, entry.raw), replyOptions: { available: new Set(), offered: new Set() } };
+  const features = context.features;
+  const replyOptions = context.replyOptions;
+  let signal = 0;
+  let evidence = 0;
+  const independentObservations = new Set();
+  const recordObservations = observations => {
+    for (const observation of observations || []) independentObservations.add(observation);
+  };
+  const reasons = [];
+
+  for (const feature of features) {
+    const effect = armxPreviewEffect(profile.ourEffects, feature);
+    if (effect.evidence < ARMX_PREVIEW.minEvidence) continue;
+    recordObservations(profile.ourEffects[feature].observations);
+    const weight = feature === 'rookTrade' || feature === 'queenTrade' ? 1.45
+      : feature === 'trade' || feature === 'simplify' ? 1.15 : 0.72;
+    signal += effect.value * weight;
+    evidence += Math.min(3, effect.evidence) * weight;
+    if (Math.abs(effect.value) >= 0.12) reasons.push(`${feature}:${effect.value > 0 ? '+' : ''}${effect.value.toFixed(2)}`);
+  }
+
+  for (const feature of replyOptions.available) {
+    const choice = armxPreviewOpponentChoiceRate(profile, feature);
+    const opponentEffect = armxPreviewEffect(profile.opponentEffects, feature);
+    if (choice.evidence >= 2 && opponentEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+      recordObservations(profile.opponentOpportunityPlies[feature]);
+      recordObservations(profile.opponentEffects[feature].observations);
+      const propensity = choice.rate * choice.rate;
+      const contribution = propensity * opponentEffect.value * ARMX_PREVIEW.opponentSignalWeight;
+      signal += contribution;
+      evidence += Math.min(2.5, (choice.evidence * 0.35 + opponentEffect.evidence * 0.25) * Math.max(0.25, choice.rate));
+      if (Math.abs(contribution) >= 0.08) reasons.push(`opp-${feature}:${Math.round(choice.rate * 100)}%/${opponentEffect.value > 0 ? '+' : ''}${opponentEffect.value.toFixed(2)}`);
+    }
+
+    const ourEffect = armxPreviewEffect(profile.ourEffects, feature);
+    if (choice.evidence >= 3 && ourEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+      recordObservations(profile.opponentOpportunityPlies[feature]);
+      recordObservations(profile.ourEffects[feature].observations);
+      const reliability = armxPreviewClamp((choice.evidence - 1) / 6, 0.25, 1);
+      const expectedOutcome = choice.rate * ourEffect.value * ARMX_PREVIEW.responseOutcomeWeight * reliability;
+      signal += expectedOutcome;
+      evidence += Math.min(1.75, ourEffect.evidence * 0.20 + choice.evidence * 0.12) * Math.max(0.2, choice.rate);
+      if (Math.abs(expectedOutcome) >= 0.06) reasons.push(`offer-${feature}:${Math.round(choice.rate * 100)}%/${ourEffect.value > 0 ? '+' : ''}${ourEffect.value.toFixed(2)}`);
+    }
+
+    const acceptedEffect = armxPreviewEffect(profile.acceptedResponseEffects, feature);
+    if (replyOptions.offered.has(feature) && choice.evidence >= 2 && acceptedEffect.evidence >= ARMX_PREVIEW.minEvidence) {
+      recordObservations(profile.opponentOpportunityPlies[feature]);
+      recordObservations(profile.acceptedResponseEffects[feature].observations);
+      const reliability = armxPreviewClamp(acceptedEffect.evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0.25, 1);
+      const acceptedOutcome = choice.rate * acceptedEffect.value
+        * ARMX_PREVIEW.acceptedResponseWeight * reliability;
+      signal += acceptedOutcome;
+      evidence += Math.min(2.25, acceptedEffect.evidence * 0.32 + choice.evidence * 0.10)
+        * Math.max(0.25, choice.rate);
+      if (Math.abs(acceptedOutcome) >= 0.06) {
+        reasons.push(`accepted-${feature}:${Math.round(choice.rate * 100)}%/${acceptedEffect.value > 0 ? '+' : ''}${acceptedEffect.value.toFixed(2)}`);
+      }
+    }
+  }
+
+  const featureEvidence = evidence;
+  // Correlated labels and the two horizons do not create new observations.
+  evidence = Math.min(evidence, independentObservations.size);
+  const confidence = armxPreviewClamp(evidence / ARMX_PREVIEW.fullConfidenceEvidence, 0, 1);
+  const delta = armxPreviewClamp(signal * ARMX_PREVIEW.multiplierSignalScale * confidence, -ARMX_PREVIEW.maxMultiplierDelta, ARMX_PREVIEW.maxMultiplierDelta);
+  const multiplier = 1 + delta;
+  const scoreMagnitude = armxPreviewClamp(Math.abs(entry.score || 0), 180, 1600);
+  const adjustment = scoreMagnitude * delta;
+  return {
+    raw: entry.raw,
+    hostScore: entry.score,
+    hostDeep: entry.deep,
+    multiplier,
+    adjustment,
+    adaptedScore: entry.score + adjustment,
+    signal,
+    confidence,
+    evidence,
+    featureEvidence,
+    independentObservations: independentObservations.size,
+    features: Array.from(features),
+    reasons,
+  };
+}
+
+function armxPreviewProfileNotes(profile) {
+  const notes = [];
+  if (profile.quietPolicy && profile.quietPolicy.count >= ARMX_PREVIEW.quietChoiceMinObservations) {
+    const preferences = Array.from(profile.quietPolicy.weights, (weight, index) => ({ weight, index }))
+      .filter(row => row.weight > 0.25).sort((a, b) => b.weight - a.weight).slice(0, 2);
+    if (preferences.length) notes.push('Opponent favors '
+      + preferences.map(row => ARMX_PREVIEW_QUIET_FEATURE_NAMES[row.index]).join(' and ')
+      + ' among quiet choices (n=' + profile.quietPolicy.count + ')');
+  }
+  const important = ['rookTrade', 'queenTrade', 'minorTrade', 'trade', 'simplify', 'capture', 'kingAttack', 'quiet'];
+  for (const feature of important) {
+    const ours = armxPreviewEffect(profile.ourEffects, feature);
+    if (ours.evidence >= ARMX_PREVIEW.minEvidence && Math.abs(ours.value) >= 0.14) {
+      notes.push(`${feature} against opponent has been ${ours.value > 0 ? 'working' : 'hurting us'} (${ours.value > 0 ? '+' : ''}${ours.value.toFixed(2)}, n=${ours.evidence.toFixed(1)})`);
+    }
+    const accepted = armxPreviewEffect(profile.acceptedResponseEffects, feature);
+    if (accepted.evidence >= ARMX_PREVIEW.minEvidence && Math.abs(accepted.value) >= 0.16) {
+      notes.push(`opponent accepting ${feature} has been ${accepted.value > 0 ? 'working for us' : 'hurting us'} (${accepted.value > 0 ? '+' : ''}${accepted.value.toFixed(2)}, n=${accepted.evidence.toFixed(1)})`);
+    }
+    const choice = armxPreviewOpponentChoiceRate(profile, feature);
+    if (choice.evidence >= 3 && (choice.rate >= 0.70 || choice.rate <= 0.25)) {
+      notes.push(`opponent ${choice.rate >= 0.70 ? 'often' : 'rarely'} chooses ${feature} when available (${Math.round(choice.rate * 100)}%)`);
+    }
+  }
+  return notes.slice(0, 6);
+}
+
+function armxPreviewReview(game, candidates, perspective = game.side) {
+  const profile = armxPreviewSyncProfile(game, perspective);
+  const expanded = armxPreviewProfileMatureForThirdCandidate(profile);
+  const reviewLimit = expanded ? ARMX_PREVIEW.candidateLimit : ARMX_PREVIEW.baseCandidateLimit;
+  const finalists = candidates.filter(entry => entry && Number.isFinite(entry.score)).slice(0, reviewLimit);
+  const candidateReports = finalists.map(entry => armxPreviewCandidateReport(game, entry, profile));
+  const reports = candidateReports.filter((report, index) => {
+    if (index < ARMX_PREVIEW.baseCandidateLimit) return true;
+    return report.signal >= ARMX_PREVIEW.thirdCandidateMinSignal
+      && report.confidence >= ARMX_PREVIEW.thirdCandidateMinConfidence
+      && report.evidence >= ARMX_PREVIEW.thirdCandidateMinEvidence;
+  });
+  reports.sort((a, b) => b.adaptedScore - a.adaptedScore);
+  profile.notes = armxPreviewProfileNotes(profile);
+
+  return {
+    model: ARMX_PREVIEW.name,
+    version: ARMX_PREVIEW.version,
+    kind: ARMX_PREVIEW.kind,
+    reset: ARMX_PREVIEW.reset,
+    observedPlies: Math.max(0, profile.processedPlies - profile.observationStartPly),
+    opponentMovesObserved: profile.opponentMoves,
+    quietChoicesObserved: profile.quietPolicy ? profile.quietPolicy.count : 0,
+    notes: profile.notes.slice(),
+    candidateLimitUsed: reviewLimit,
+    expandedCandidateReview: expanded,
+    thirdCandidateAccepted: reports.length > ARMX_PREVIEW.baseCandidateLimit,
+    candidatesReviewed: reports.length,
+    reports,
+    nodes: 0,
+  };
+}
+
+function armxPreviewResetGame(game) {
+  if (game) ARMX_PREVIEW_GAME_PROFILES.delete(game);
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.ARMX_PREVIEW = ARMX_PREVIEW;
+  globalThis.armxPreviewReview = armxPreviewReview;
+  globalThis.armxPreviewResetGame = armxPreviewResetGame;
+  globalThis.armxPreviewOpponentPolicy = armxPreviewOpponentPolicy;
+}
+// END SOURCE: ARMX-preview.js
+
+// BEGIN SOURCE: ARMX.js
+// ARMX — full per-game opponent adaptation for the Stonefish v5.5 range.
+//
+// Full ARMX has one job: observe this opponent, keep better notes than Preview,
+// and use those notes to make better decisions. It is not a second chess
+// evaluator and it does not contain generic conversion or matchup heuristics.
+//
+// All three v5.5 range models use this exact Full ARMX. Artemis has no style
+// adjustment at all. Athena and Ares differ only through numeric style profiles
+// applied to objectively close finalists after the shared Full-ARMX decision.
+
+const ARMX_FULL_NOTE_FEATURES = Object.freeze([
+  'capture','trade','rookTrade','queenTrade','minorTrade','simplify',
+  'check','kingAttack','pawnPush','castle','quiet','advance','retreat',
+  'forcing','promotion','center','kingside','queenside','centralize',
+  'development','pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove'
+]);
+const ARMX_FULL_STATE_CONTEXTS = Object.freeze([
+  'queensOn','queenless','materialHigh','materialMid','materialLow',
+  'opponentAhead','opponentBehind','roughlyEqual'
+]);
+const ARMX_FULL_RICH_CONTEXTS = Object.freeze([
+  'forcing','center','centralize','development','kingside','queenside'
+]);
+const ARMX_FULL_CONTEXT_FEATURES = Object.freeze([
+  'capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat',
+  ...ARMX_FULL_RICH_CONTEXTS,
+  ...ARMX_FULL_STATE_CONTEXTS
+]);
+// Preview already reasons about capture/trade reply opportunities. Full ARMX
+// extends candidate-time prediction only to broader behaviors its notebook has
+// actually observed with opportunity evidence.
+const ARMX_FULL_OWN_OUTCOME_FEATURES = Object.freeze([
+  'forcing','promotion','center','kingside','queenside','centralize','development',
+  'pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove'
+]);
+const ARMX_FULL_EXTENDED_REPLY_FEATURES = Object.freeze([
+  'minorTrade','kingAttack','pawnPush','castle','quiet','advance','retreat',
+  ...ARMX_FULL_OWN_OUTCOME_FEATURES
+]);
+
+const ARMX_FULL = Object.freeze({
+  name: 'ARMX',
+  version: '2.1-response-attributed',
+  kind: 'opponent-adaptation',
+  reset: 'per-game',
+
+  // No evidence means no free strength bump: Full ARMX begins from the current
+  // v5.5 host budget/width and earns extra analysis only from opponent evidence.
+  candidateLimit: 4,
+  baseSearchNodes: 1200,
+  maxEvidenceSearchNodes: 0,
+  maxSurpriseSearchNodes: 0,
+  maxExtraNodes: 0,
+  baseDepth: 4,
+  maxEvidenceDepth: 6,
+  maxExtraDepth: 2,
+  baseRootWidth: 3,
+  maxRootWidth: 3,
+  matureOpponentMoves: 6,
+  opportunityScanStride: 2,
+  rootBreadthEvidenceThreshold: 0.80,
+  stateContextMinEvidence: 5,
+  stateContextScale: 0.55,
+  richContextMinEvidence: 3,
+  richContextScale: 0.75,
+  responseEffectMinEvidence: 4.5,
+  responseEffectMinConsistency: 0.35,
+  responseEffectScale: 0.16,
+  pieceBaselinePrior: 0.22,
+  pieceBaselinePriorWeight: 8,
+  extendedReplyOutcomeScale: 0.82,
+  fullOnlyOutcomeScale: 0.28,
+  fullOnlyOutcomeMinEvidence: 3.5,
+  fullOnlyOutcomeMinConsistency: 0.45,
+  ownOutcomeScale: 0.80,
+  ownOutcomeMinEvidence: 3.0,
+  ownOutcomeMinConsistency: 0.40,
+  ownContextOutcomeScale: 0.70,
+  ownContextOutcomeMinEvidence: 2.5,
+  ownContextOutcomeMinConsistency: 0.45,
+  extendedReplyScanCandidates: 2,
+  extendedReplyScanStride: 2,
+  policyWeightDeltaScale: 0,
+  policyPriorityScale: 0,
+  minChoiceEvidence: 2,
+  minEffectEvidence: 1.25,
+  fullConfidenceEvidence: 8,
+  predictedReplyLimit: 10,
+  fullNoteMinEvidence: 3.0,
+  fullNoteMinConfidence: 0.35,
+  fullNoteMinDecisionLead: -40,
+  fullNoteMinPositiveSignal: 0.012,
+  fullNoteStrongAvoidSignal: -0.06,
+  fullNoteEarlyPlies: 10,
+  fullNoteEarlyEvidence: 4.0,
+  fullNoteEarlyConfidence: 0.50,
+
+  // Preview's proven opponent model is the strict subset of Full ARMX. Full
+  // ARMX reuses that evidence and adds broader/contextual notes; it does not
+  // pay to relearn the same history a second time.
+  previewDecisionGain: 1.25,
+  fullDecisionGain: 1.00,
+  fullNoteScale: 320,
+  maxNoteAdjustment: 190,
+  maxHostGap: 40,
+  maxDeepSacrifice: 32,
+
+  // Compatibility fields used by benchmark assertions. Artemis is exactly zero.
+  styleScale: Object.freeze({athena: 18, ares: 20, artemis: 0}),
+  maxStyleAdjustment: Object.freeze({athena: 72, ares: 85, artemis: 0}),
+
+  // Athena/Ares are the same model with different numbers. The shared style
+  // function below interprets these vectors; Artemis's vector is all zero.
+  styleProfiles: Object.freeze({
+    artemis: Object.freeze({
+      weights: Object.freeze({}),
+      aheadWeights: Object.freeze({}), behindWeights: Object.freeze({}),
+      baseScale:0, earlyBoost:0, lateBoost:0, paceTargetPlies:1,
+      aheadThreshold:120, behindThreshold:120, advantageRange:580, minStyleLead:Infinity,
+      aheadScale:0, behindScale:0, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:0, behindReplyCompressionWeight:0, capturedValueWeight:0,
+      repetitionWeight:0, aheadRepetitionWeight:0, behindRepetitionWeight:0,
+      advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:-1000000000,
+      patientOpponentScale:0, aggressiveOpponentScale:0,
+      patientPressureThreshold:1, patientPressureRange:1,
+      patientPressureWeight:0, aggressiveDefenseWeight:0,
+      opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
+      opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
+      opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
+      aheadHostGapBonus:0, aheadDeepGapBonus:0, behindHostGapBonus:0, behindDeepGapBonus:0,
+      maxHostGap:40, maxDeepSacrifice:32,
+    }),
+    athena: Object.freeze({
+      weights: Object.freeze({}),
+      aheadWeights:Object.freeze({
+        capture:-1.65,trade:-2.45,simplify:-2.70,queenTrade:-2.30,
+        quiet:1.55,retreat:1.05,pawnPush:0.62,
+      }),
+      // When the host says Athena is worse, defensive play means converting
+      // danger into a drawable ending rather than blindly preserving material.
+      behindWeights:Object.freeze({
+        capture:0.90,trade:1.45,rookTrade:1.10,queenTrade:2.10,minorTrade:0.95,
+        simplify:1.35,check:-0.15,kingAttack:-0.35,quiet:0.85,retreat:1.45,castle:1.70,
+      }),
+      baseScale:3, earlyBoost:0.00, lateBoost:-0.05, paceTargetPlies:260,
+      aheadThreshold:120, behindThreshold:100, advantageRange:260, minStyleLead:11,
+      aheadScale:4.20, behindScale:4.60, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:-10.00, behindReplyCompressionWeight:-5.80, capturedValueWeight:-0.15,
+      repetitionWeight:0, aheadRepetitionWeight:-2.60, behindRepetitionWeight:10.50,
+      advantageDelayWeight:5.80, pawnClockResetWeight:5.00, aheadCandidateFloor:180,
+      patientOpponentScale:0.00, aggressiveOpponentScale:1.15,
+      patientPressureThreshold:1, patientPressureRange:1,
+      patientPressureWeight:0, aggressiveDefenseWeight:2.80,
+      opponentForcingReplyWeight:-0.35, behindForcingReplyWeight:-4.20,
+      opponentKingAttackReplyWeight:-0.30, behindKingAttackReplyWeight:-3.20,
+      opponentCaptureReplyWeight:-0.10, behindCaptureReplyWeight:-1.40,
+      aheadHostGapBonus:18, aheadDeepGapBonus:13, behindHostGapBonus:28, behindDeepGapBonus:20,
+      maxHostGap:1, maxDeepSacrifice:1,
+    }),
+    ares: Object.freeze({
+      weights: Object.freeze({}),
+      aheadWeights:Object.freeze({
+        capture:1.35,trade:1.15,rookTrade:0.90,queenTrade:0.82,minorTrade:0.76,
+        simplify:1.45,check:0.42,kingAttack:0.55,quiet:-0.48,retreat:-0.44,
+      }),
+      behindWeights:Object.freeze({
+        capture:0.15,trade:-0.55,simplify:-0.65,check:1.55,kingAttack:1.70,
+        forcing:1.35,advance:0.62,quiet:-0.72,retreat:-0.95,
+      }),
+      baseScale:3, earlyBoost:0.00, lateBoost:8.50, paceTargetPlies:42,
+      aheadThreshold:45, behindThreshold:160, advantageRange:260, minStyleLead:8,
+      aheadScale:2.10, behindScale:0.08, replyCompressionWeight:0,
+      aheadReplyCompressionWeight:4.00, behindReplyCompressionWeight:0, capturedValueWeight:1.35,
+      repetitionWeight:0, aheadRepetitionWeight:-8.80, behindRepetitionWeight:-0.30,
+      advantageDelayWeight:0, pawnClockResetWeight:0, aheadCandidateFloor:105,
+      patientOpponentScale:0.25, aggressiveOpponentScale:0.00,
+      patientPressureThreshold:0.12, patientPressureRange:0.14,
+      patientPressureWeight:22.00, aggressiveDefenseWeight:0,
+      opponentForcingReplyWeight:0, behindForcingReplyWeight:0,
+      opponentKingAttackReplyWeight:0, behindKingAttackReplyWeight:0,
+      opponentCaptureReplyWeight:0, behindCaptureReplyWeight:0,
+      aheadHostGapBonus:14, aheadDeepGapBonus:10, behindHostGapBonus:0, behindDeepGapBonus:0,
+      maxHostGap:1, maxDeepSacrifice:1,
+    }),
+  }),
+});
+
+const ARMX_FULL_GAME_NOTES = new WeakMap();
+const ARMX_FULL_LAST = Object.create(null);
+
+function armxFullClamp(value, low, high) {
+  return Math.max(low, Math.min(high, value));
+}
+function armxFullAverage(values) {
+  return values.length ? values.reduce((a,b)=>a+b,0)/values.length : 0;
+}
+function armxFullFreshCounts() {
+  return Object.fromEntries(ARMX_FULL_NOTE_FEATURES.map(feature=>[feature,0]));
+}
+function armxFullFreshEffects() {
+  return Object.fromEntries(ARMX_FULL_NOTE_FEATURES.map(feature=>[
+    feature,{weight:0,impact:0,impactSq:0,positiveWeight:0,negativeWeight:0,observations:new Set()}
+  ]));
+}
+function armxFullPieceFeature(piece) {
+  return piece===1?'pawnMove':piece===2?'knightMove':piece===3?'bishopMove'
+    :piece===4?'rookMove':piece===5?'queenMove':piece===6?'kingMove':null;
+}
+function armxFullSquareCenterDistance(square) {
+  const file=square&7, rank=square>>3;
+  return Math.abs(file-3.5)+Math.abs(rank-3.5);
+}
+function armxFullMoveFeatures(game, move) {
+  const features = new Set(armxPreviewFeatureSet(game, move));
+  if (!move) return features;
+  const piece = move.piece || Math.abs(game.boardState[move.from] || 0);
+  const pieceFeature = armxFullPieceFeature(piece);
+  if (pieceFeature) features.add(pieceFeature);
+  if (piece===1) features.add('pawnMove');
+  if (move.promotion) features.add('promotion');
+  if (features.has('capture') || features.has('check') || move.promotion) features.add('forcing');
+
+  const file=move.to&7, rank=move.to>>3;
+  if (file>=2&&file<=5&&rank>=2&&rank<=5) features.add('center');
+  if (file>=4) features.add('kingside');
+  else features.add('queenside');
+  if (armxFullSquareCenterDistance(move.to)+0.25<armxFullSquareCenterDistance(move.from)) {
+    features.add('centralize');
+  }
+  const side=game.side;
+  const fromRank=side===1?(move.from>>3):7-(move.from>>3);
+  if ((piece===2||piece===3) && fromRank===0) features.add('development');
+  return features;
+}
+function armxFullCheapMoveFeatures(move, side) {
+  const features = new Set(armxPreviewCheapFeatureSet(move));
+  if (!move) return features;
+  const piece=move.piece||0;
+  const pieceFeature=armxFullPieceFeature(piece);
+  if(pieceFeature)features.add(pieceFeature);
+  if(piece===1){features.add('pawnPush');features.add('pawnMove');}
+  if(move.promotion){features.add('promotion');features.add('forcing');}
+  if(move.captured)features.add('forcing');
+  if(move.captured&&(piece===2||piece===3)&&(move.captured===2||move.captured===3)){
+    features.add('minorTrade');
+  }
+  if(move.flags&(4|8))features.add('castle');
+
+  const fromRank=side===1?(move.from>>3):7-(move.from>>3);
+  const toRank=side===1?(move.to>>3):7-(move.to>>3);
+  if(toRank>fromRank)features.add('advance');
+  if(toRank<fromRank)features.add('retreat');
+  const file=move.to&7, rank=move.to>>3;
+  if(file>=2&&file<=5&&rank>=2&&rank<=5)features.add('center');
+  if(file>=4)features.add('kingside');else features.add('queenside');
+  if(armxFullSquareCenterDistance(move.to)+0.25<armxFullSquareCenterDistance(move.from))features.add('centralize');
+  if((piece===2||piece===3)&&fromRank===0)features.add('development');
+  return features;
+}
+function armxFullPredictiveMoveFeatures(game,move){
+  const features=armxFullCheapMoveFeatures(move,game.side);
+  if(!move)return features;
+  const piece=move.piece||Math.abs(game.boardState[move.from]||0);
+  const enemyKing=game.kingSq[-game.side];
+  if(piece!==6&&armxPreviewSquareDistance(move.to,enemyKing)<=2){
+    features.add('kingAttack');
+    features.add('forcing');
+  }
+  if(!move.captured&&!move.promotion&&!(move.flags&(4|8))
+      &&!features.has('kingAttack'))features.add('quiet');
+  return features;
+}
+function armxFullStateContextFromTotals(totalMaterial,perspectiveScore,queenCount){
+  const contexts=new Set();
+  contexts.add(queenCount>0?'queensOn':'queenless');
+  contexts.add(totalMaterial>=5200?'materialHigh':totalMaterial<=2800?'materialLow':'materialMid');
+  if(perspectiveScore>=150)contexts.add('opponentBehind');
+  else if(perspectiveScore<=-150)contexts.add('opponentAhead');
+  else contexts.add('roughlyEqual');
+  return contexts;
+}
+function armxFullStateContexts(game,perspective){
+  let totalMaterial=0,perspectiveScore=0,queenCount=0;
+  for(const piece of game.boardState){
+    if(!piece)continue;
+    const type=Math.abs(piece);
+    if(type===6)continue;
+    const value=ARMX_PREVIEW_PIECE_VALUES[type]||0;
+    totalMaterial+=value;
+    perspectiveScore+=(piece>0?1:-1)===perspective?value:-value;
+    if(type===5)queenCount++;
+  }
+  return armxFullStateContextFromTotals(totalMaterial,perspectiveScore,queenCount);
+}
+function armxFullStateContextsAfterMove(game,move,perspective){
+  let totalMaterial=0,perspectiveScore=0,queenCount=0;
+  for(const piece of game.boardState){
+    if(!piece)continue;
+    const type=Math.abs(piece);
+    if(type===6)continue;
+    const value=ARMX_PREVIEW_PIECE_VALUES[type]||0;
+    totalMaterial+=value;
+    perspectiveScore+=(piece>0?1:-1)===perspective?value:-value;
+    if(type===5)queenCount++;
+  }
+  const mover=game.side;
+  const captured=move&&move.captured||0;
+  if(captured){
+    const value=ARMX_PREVIEW_PIECE_VALUES[captured]||0;
+    totalMaterial-=value;
+    // Captured material belonged to the other side.
+    perspectiveScore+=(mover===perspective?1:-1)*value;
+    if(captured===5)queenCount=Math.max(0,queenCount-1);
+  }
+  if(move&&move.promotion){
+    const delta=(ARMX_PREVIEW_PIECE_VALUES[move.promotion]||0)
+      -(ARMX_PREVIEW_PIECE_VALUES[1]||0);
+    totalMaterial+=delta;
+    perspectiveScore+=(mover===perspective?1:-1)*delta;
+    if(move.promotion===5)queenCount++;
+  }
+  return armxFullStateContextFromTotals(totalMaterial,perspectiveScore,queenCount);
+}
+function armxFullResponseKey(contextFeature,replyFeature){
+  return contextFeature+'>'+replyFeature;
+}
+function armxFullHistoricalMoveFeatures(state,move){
+  const side=state&&state.side||1;
+  const features=armxFullCheapMoveFeatures(move,side);
+  if(!move)return features;
+  const piece=move.piece||0;
+  const enemyKing=side===1?(state&&state.kingB):state&&state.kingW;
+  if(Number.isFinite(enemyKing)&&piece!==6&&armxPreviewSquareDistance(move.to,enemyKing)<=2){
+    features.add('kingAttack');
+    features.add('forcing');
+  }
+  if(!move.captured&&!move.promotion&&!(move.flags&(4|8))&&!features.has('kingAttack')){
+    features.add('quiet');
+  }
+  return features;
+}
+function armxFullReplayFromGameStart(game){
+  const replay=new Chess();
+  replay.boardState=new Int8Array(game.boardState);
+  replay.side=game.side;
+  replay.castling=game.castling;
+  replay.ep=game.ep;
+  replay.halfmove=game.halfmove;
+  replay.fullmove=game.fullmove;
+  replay.kingSq={1:game.kingSq[1],'-1':game.kingSq[-1]};
+  replay.historyStack=(game.historyStack||[]).slice();
+  replay.positionCounts=new Map(game.positionCounts);
+  replay._stonefishRuntimePositionKey=null;
+  while(replay.historyStack.length)replay.fastUndo();
+  return replay;
+}
+function armxFullNewNotebook(perspective,game,observationStartPly,previewProfile){
+  const replay=armxFullReplayFromGameStart(game);
+  return {
+    perspective,
+    observationStartPly,
+    processedPlies:0,
+    lastHistoryState:null,
+    initialPositionKey:replay.fastPositionKey(),
+    replay,
+    opponentMoves:0,
+    voluntaryOpponentMoves:0,
+    opportunities:armxFullFreshCounts(),
+    choices:armxFullFreshCounts(),
+    responseOpportunities:Object.create(null),
+    responseChoices:Object.create(null),
+    responseEffects:Object.create(null),
+    pendingResponseEffects:[],
+    extendedEffects:armxFullFreshEffects(),
+    pendingExtendedEffects:[],
+    ourExtendedEffects:armxFullFreshEffects(),
+    pendingOurExtendedEffects:[],
+    ourContextEffects:Object.create(null),
+    pendingOurContextEffects:[],
+    currentScore:armxPreviewStateSnapshot(replay,perspective).score,
+    lastOurFeatures:new Set(),
+    surpriseSum:0,
+    surpriseWeight:0,
+    previewProfile:previewProfile||null,
+  };
+}
+function armxFullChoiceRate(book,feature){
+  const evidence=book.opportunities[feature]||0;
+  if(!evidence)return {rate:0.5,evidence:0};
+  return {rate:((book.choices[feature]||0)+1)/(evidence+2),evidence};
+}
+function armxFullConditionalRate(book,contextFeature,replyFeature){
+  const key=armxFullResponseKey(contextFeature,replyFeature);
+  const evidence=book.responseOpportunities[key]||0;
+  if(!evidence)return {rate:0.5,evidence:0};
+  return {rate:((book.responseChoices[key]||0)+1)/(evidence+2),evidence};
+}
+function armxFullResponseEffect(book,contextFeature,replyFeature){
+  const row=book.responseEffects[armxFullResponseKey(contextFeature,replyFeature)];
+  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
+    return {
+      value:0,evidence:row?row.weight:0,consistency:0,
+      observations:row?row.observations:new Set()
+    };
+  }
+  const directionalWeight=(row.positiveWeight||0)+(row.negativeWeight||0);
+  const consistency=directionalWeight
+    ?Math.abs((row.positiveWeight||0)-(row.negativeWeight||0))/directionalWeight
+    :0;
+  return {
+    value:row.impact/row.weight,
+    evidence:row.weight,
+    consistency,
+    observations:row.observations,
+  };
+}
+function armxFullRecordResponseEffects(book,pairKeys,impact,weight,observationId){
+  if(!pairKeys||!pairKeys.length)return;
+  const effectScale=Number(ARMX_PREVIEW.effectScale)||360;
+  const normalized=armxFullClamp(impact/effectScale,-1,1);
+  for(const key of pairKeys){
+    let row=book.responseEffects[key];
+    if(!row){
+      row=book.responseEffects[key]={
+        weight:0,impact:0,impactSq:0,positiveWeight:0,negativeWeight:0,
+        observations:new Set()
+      };
+    }
+    row.weight+=weight;
+    row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
+    if(normalized>0.015)row.positiveWeight+=weight;
+    else if(normalized<-0.015)row.negativeWeight+=weight;
+    row.observations.add(observationId);
+  }
+}
+function armxFullResolveResponseEffects(book,currentPly,currentScore){
+  if(!book.pendingResponseEffects.length)return;
+  const keep=[];
+  for(const event of book.pendingResponseEffects){
+    if(currentPly<event.resolveAt){keep.push(event);continue;}
+    armxFullRecordResponseEffects(
+      book,event.pairKeys,currentScore-event.before,event.weight,event.observationId
+    );
+  }
+  book.pendingResponseEffects=keep;
+}
+function armxFullExtendedEffect(book,feature){
+  const row=book&&book.extendedEffects&&book.extendedEffects[feature];
+  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
+    return {value:0,evidence:row?row.weight:0,consistency:0,observations:row?row.observations:new Set()};
+  }
+  const value=row.impact/row.weight;
+  const directionalWeight=(row.positiveWeight||0)+(row.negativeWeight||0);
+  const consistency=directionalWeight
+    ?Math.abs((row.positiveWeight||0)-(row.negativeWeight||0))/directionalWeight
+    :0;
+  return {value,evidence:row.weight,consistency,source:'full',observations:row.observations};
+}
+function armxFullRecordExtendedEffects(book,features,impact,weight,observationId){
+  if(!features||!features.length)return;
+  const effectScale=Number(ARMX_PREVIEW.effectScale)||360;
+  const normalized=armxFullClamp(impact/effectScale,-1,1);
+  for(const feature of features){
+    if(!ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature))continue;
+    const row=book.extendedEffects[feature];
+    if(!row)continue;
+    row.weight+=weight;
+    row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
+    if(normalized>0.015)row.positiveWeight+=weight;
+    else if(normalized<-0.015)row.negativeWeight+=weight;
+    row.observations.add(observationId);
+  }
+}
+function armxFullResolveExtendedEffects(book,currentPly,currentScore){
+  if(!book.pendingExtendedEffects.length)return;
+  const keep=[];
+  for(const event of book.pendingExtendedEffects){
+    if(currentPly<event.resolveAt){keep.push(event);continue;}
+    armxFullRecordExtendedEffects(
+      book,event.features,currentScore-event.before,event.weight,event.observationId
+    );
+  }
+  book.pendingExtendedEffects=keep;
+}
+function armxFullOwnExtendedEffect(book,feature){
+  const row=book&&book.ourExtendedEffects&&book.ourExtendedEffects[feature];
+  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
+    return {value:0,evidence:row?row.weight:0,consistency:0,observations:row?row.observations:new Set()};
+  }
+  const value=row.impact/row.weight;
+  const directionalWeight=(row.positiveWeight||0)+(row.negativeWeight||0);
+  const consistency=directionalWeight
+    ?Math.abs((row.positiveWeight||0)-(row.negativeWeight||0))/directionalWeight
+    :0;
+  return {value,evidence:row.weight,consistency,source:'full',observations:row.observations};
+}
+function armxFullRecordOwnExtendedEffects(book,features,impact,weight,observationId){
+  if(!features||!features.length)return;
+  const effectScale=Number(ARMX_PREVIEW.effectScale)||360;
+  const normalized=armxFullClamp(impact/effectScale,-1,1);
+  for(const feature of features){
+    if(!ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature))continue;
+    const row=book.ourExtendedEffects[feature];
+    if(!row)continue;
+    row.weight+=weight;
+    row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
+    if(normalized>0.015)row.positiveWeight+=weight;
+    else if(normalized<-0.015)row.negativeWeight+=weight;
+    row.observations.add(observationId);
+  }
+}
+function armxFullResolveOwnExtendedEffects(book,currentPly,currentScore){
+  if(!book.pendingOurExtendedEffects.length)return;
+  const keep=[];
+  for(const event of book.pendingOurExtendedEffects){
+    if(currentPly<event.resolveAt){keep.push(event);continue;}
+    armxFullRecordOwnExtendedEffects(
+      book,event.features,currentScore-event.before,event.weight,event.observationId
+    );
+  }
+  book.pendingOurExtendedEffects=keep;
+}
+function armxFullOwnContextEffect(book,stateContext,moveFeature){
+  const row=book.ourContextEffects[armxFullResponseKey(stateContext,moveFeature)];
+  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
+    return {
+      value:0,evidence:row?row.weight:0,consistency:0,
+      observations:row?row.observations:new Set()
+    };
+  }
+  const directionalWeight=(row.positiveWeight||0)+(row.negativeWeight||0);
+  const consistency=directionalWeight
+    ?Math.abs((row.positiveWeight||0)-(row.negativeWeight||0))/directionalWeight
+    :0;
+  return {
+    value:row.impact/row.weight,evidence:row.weight,consistency,
+    observations:row.observations
+  };
+}
+function armxFullRecordOwnContextEffects(book,pairKeys,impact,weight,observationId){
+  if(!pairKeys||!pairKeys.length)return;
+  const effectScale=Number(ARMX_PREVIEW.effectScale)||360;
+  const normalized=armxFullClamp(impact/effectScale,-1,1);
+  for(const key of pairKeys){
+    let row=book.ourContextEffects[key];
+    if(!row){
+      row=book.ourContextEffects[key]={
+        weight:0,impact:0,impactSq:0,positiveWeight:0,negativeWeight:0,
+        observations:new Set()
+      };
+    }
+    row.weight+=weight;
+    row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
+    if(normalized>0.015)row.positiveWeight+=weight;
+    else if(normalized<-0.015)row.negativeWeight+=weight;
+    row.observations.add(observationId);
+  }
+}
+function armxFullResolveOwnContextEffects(book,currentPly,currentScore){
+  if(!book.pendingOurContextEffects.length)return;
+  const keep=[];
+  for(const event of book.pendingOurContextEffects){
+    if(currentPly<event.resolveAt){keep.push(event);continue;}
+    armxFullRecordOwnContextEffects(
+      book,event.pairKeys,currentScore-event.before,event.weight,event.observationId
+    );
+  }
+  book.pendingOurContextEffects=keep;
+}
+function armxFullOwnOutcomeEffect(book,feature){
+  // Preview already owns its proven ourEffects subset. Full ARMX's additional
+  // signal is intentionally limited to the broader move categories Preview
+  // does not use for this candidate-level opponent-handling note.
+  return armxFullOwnExtendedEffect(book,feature);
+}
+function armxFullOutcomeEffect(book,feature){
+  const preview=armxFullPreviewEffect(book,'opponentEffects',feature);
+  if(preview.evidence>=ARMX_FULL.minEffectEvidence){
+    return {...preview,source:'preview'};
+  }
+  return armxFullExtendedEffect(book,feature);
+}
+function armxFullPreviewEffect(book,bucketName,feature){
+  const profile=book&&book.previewProfile;
+  const bucket=profile&&profile[bucketName];
+  if(!bucket||!bucket[feature])return {value:0,evidence:0,consistency:0};
+  const effect=armxPreviewEffect(bucket,feature);
+  return {
+    value:Number(effect.value)||0,
+    evidence:Number(effect.evidence)||0,
+    consistency:1,
+    observations:bucket[feature]&&bucket[feature].observations
+      ?bucket[feature].observations:new Set(),
+  };
+}
+function armxFullObserveHistoricalOpponent(book,features,available,legalCount,index,stateContexts=new Set()){
+  book.opponentMoves++;
+  // A forced move says nothing about preference. Keep it out of the tendency
+  // notebook while still counting it as an observed opponent move.
+  if(legalCount<=1)return [];
+
+  if(book.voluntaryOpponentMoves>=2){
+    const probabilities=[];
+    for(const feature of features){
+      const row=armxFullChoiceRate(book,feature);
+      if(row.evidence>=ARMX_FULL.minChoiceEvidence)probabilities.push(row.rate);
+    }
+    if(probabilities.length){
+      const p=armxFullClamp(armxFullAverage(probabilities),0.05,0.95);
+      book.surpriseSum+=-Math.log(p);
+      book.surpriseWeight++;
+    }
+  }
+
+  book.voluntaryOpponentMoves++;
+  for(const feature of available){
+    if(!Object.prototype.hasOwnProperty.call(book.opportunities,feature))continue;
+    book.opportunities[feature]=(book.opportunities[feature]||0)+1;
+    if(features.has(feature))book.choices[feature]=(book.choices[feature]||0)+1;
+  }
+
+  const responseContexts=new Set([...book.lastOurFeatures,...stateContexts]);
+  const chosenPairKeys=[];
+  for(const contextFeature of responseContexts){
+    if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
+    for(const replyFeature of available){
+      if(!ARMX_FULL_NOTE_FEATURES.includes(replyFeature))continue;
+      const key=armxFullResponseKey(contextFeature,replyFeature);
+      book.responseOpportunities[key]=(book.responseOpportunities[key]||0)+1;
+      if(features.has(replyFeature)){
+        book.responseChoices[key]=(book.responseChoices[key]||0)+1;
+        chosenPairKeys.push(key);
+      }
+    }
+  }
+  return chosenPairKeys;
+}
+function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
+  let books=ARMX_FULL_GAME_NOTES.get(game);
+  if(!books){books=new Map();ARMX_FULL_GAME_NOTES.set(game,books);}
+  const history=game.historyStack||[];
+  const observationStartPly=Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0));
+  let book=books.get(perspective);
+  const changedHistory=book&&book.processedPlies>0
+    &&history[book.processedPlies-1]!==book.lastHistoryState;
+  const changedEmptyPosition=book&&!history.length&&game.fastPositionKey()!==book.initialPositionKey;
+  if(!book||history.length<book.processedPlies||changedHistory||changedEmptyPosition
+    ||book.observationStartPly!==observationStartPly){
+    book=armxFullNewNotebook(perspective,game,observationStartPly,previewProfile);
+    books.set(perspective,book);
+  }
+  book.previewProfile=previewProfile||book.previewProfile;
+
+  while(book.processedPlies<history.length){
+    const index=book.processedPlies;
+    const state=history[index],move=state&&state.move;
+    if(!move)break;
+
+    const actor=book.replay.side;
+    const startedOwnEffects=[];
+    if(index>=observationStartPly){
+      const features=armxFullMoveFeatures(book.replay,move);
+      if(actor===-perspective){
+        const extendedChosen=Array.from(features).filter(
+          feature=>ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature)
+        );
+        if(extendedChosen.length){
+          book.pendingExtendedEffects.push({
+            features:extendedChosen,before:book.currentScore,observationId:index,
+            resolveAt:index+1,weight:1,
+          });
+        }
+        const stride=Math.max(1,ARMX_FULL.opportunityScanStride||1);
+        const sampleOpportunity=(book.opponentMoves%stride)===0;
+        if(sampleOpportunity){
+          const legal=book.replay.fastMoves();
+          const available=new Set(features);
+          for(const option of legal){
+            for(const feature of armxFullPredictiveMoveFeatures(book.replay,option)){
+              available.add(feature);
+            }
+          }
+          const stateContexts=armxFullStateContexts(book.replay,perspective);
+          const pairKeys=armxFullObserveHistoricalOpponent(
+            book,features,available,legal.length,index,stateContexts
+          );
+          if(pairKeys.length){
+            book.pendingResponseEffects.push({
+              pairKeys,before:book.currentScore,observationId:index,
+              resolveAt:index+1,weight:1,
+            });
+          }
+        }else{
+          // Preview still observes its proven subset every move. Full ARMX samples
+          // the broader legal-option set to stay lightweight without inventing
+          // preference evidence on unsampled turns.
+          book.opponentMoves++;
+        }
+      }else if(actor===perspective){
+        const ownExtended=Array.from(features).filter(
+          feature=>ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature)
+        );
+        if(ownExtended.length){
+          const ownEffect={
+            features:ownExtended,before:null,observationId:index,
+            resolveAt:index+2,weight:1,
+          };
+          book.pendingOurExtendedEffects.push(ownEffect);
+          startedOwnEffects.push(ownEffect);
+
+          const afterContexts=armxFullStateContextsAfterMove(
+            book.replay,move,book.perspective
+          );
+          const contextPairs=[];
+          for(const stateContext of afterContexts){
+            if(!ARMX_FULL_STATE_CONTEXTS.includes(stateContext))continue;
+            for(const moveFeature of ownExtended){
+              contextPairs.push(armxFullResponseKey(stateContext,moveFeature));
+            }
+          }
+          if(contextPairs.length){
+            const contextEffect={
+              pairKeys:contextPairs,before:null,observationId:index,
+              resolveAt:index+2,weight:1,
+            };
+            book.pendingOurContextEffects.push(contextEffect);
+            startedOwnEffects.push(contextEffect);
+          }
+        }
+        book.lastOurFeatures=new Set(features);
+      }
+    }
+
+    book.replay.fastApply(move);
+    book.currentScore=armxPreviewStateSnapshot(book.replay,perspective).score;
+    for(const event of startedOwnEffects)event.before=book.currentScore;
+    book.processedPlies++;
+    book.lastHistoryState=state;
+    armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);
+    armxFullResolveExtendedEffects(book,book.processedPlies,book.currentScore);
+    armxFullResolveOwnExtendedEffects(book,book.processedPlies,book.currentScore);
+    armxFullResolveOwnContextEffects(book,book.processedPlies,book.currentScore);
+  }
+  armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);
+  armxFullResolveExtendedEffects(book,book.processedPlies,book.currentScore);
+  armxFullResolveOwnExtendedEffects(book,book.processedPlies,book.currentScore);
+  armxFullResolveOwnContextEffects(book,book.processedPlies,book.currentScore);
+  return book;
+}
+function armxFullNotebookMaturity(book){
+  const moveMaturity=armxFullClamp(book.voluntaryOpponentMoves/ARMX_FULL.matureOpponentMoves,0,1);
+  let broadFeatures=0;
+  for(const feature of ARMX_FULL_NOTE_FEATURES){
+    if((book.opportunities[feature]||0)>=ARMX_FULL.minChoiceEvidence)broadFeatures++;
+  }
+  const breadth=armxFullClamp(broadFeatures/10,0,1);
+  return armxFullClamp(moveMaturity*0.72+breadth*0.28,0,1);
+}
+function armxFullNotebookSummary(book){
+  const rows=[];
+  for(const feature of ARMX_FULL_NOTE_FEATURES){
+    const choice=armxFullChoiceRate(book,feature);
+    const effect=armxFullOutcomeEffect(book,feature);
+    const frequencyEvidence=Math.min(1,choice.evidence/8);
+    const importance=frequencyEvidence*Math.min(0.75,choice.rate)
+      +Math.abs(effect.value)*Math.min(1,effect.evidence/4);
+    if(choice.evidence>=ARMX_FULL.minChoiceEvidence||Math.abs(effect.value)>=0.10){
+      rows.push({
+        feature,
+        choices:book.choices[feature]||0,
+        opportunities:book.opportunities[feature]||0,
+        choiceRate:choice.rate,choiceEvidence:choice.evidence,
+        effect:effect.value,effectEvidence:effect.evidence,
+        effectConsistency:effect.consistency||0,importance,
+      });
+    }
+  }
+  rows.sort((a,b)=>b.importance-a.importance);
+  return rows.slice(0,10);
+}
+function armxFullRawFrequency(book,feature){
+  const opportunities=book&&book.opportunities&&book.opportunities[feature]||0;
+  return opportunities?(book.choices[feature]||0)/opportunities:0;
+}
+function armxFullFeaturePreference(book,feature){
+  const row=armxFullChoiceRate(book,feature);
+  if(row.evidence<ARMX_FULL.minChoiceEvidence)return 0;
+  const confidence=armxFullClamp(row.evidence/10,0,1);
+  const rate=armxFullRawFrequency(book,feature);
+  const pieceFeatures=['pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove'];
+  if(pieceFeatures.includes(feature)){
+    let weightedRate=0,totalWeight=0;
+    for(const name of pieceFeatures){
+      const observed=armxFullChoiceRate(book,name);
+      if(observed.evidence<ARMX_FULL.minChoiceEvidence)continue;
+      const weight=Math.min(12,observed.evidence);
+      weightedRate+=observed.rate*weight;
+      totalWeight+=weight;
+    }
+    const priorWeight=ARMX_FULL.pieceBaselinePriorWeight;
+    const opponentBaseline=totalWeight
+      ?(ARMX_FULL.pieceBaselinePrior*priorWeight+weightedRate)/(priorWeight+totalWeight)
+      :ARMX_FULL.pieceBaselinePrior;
+    return armxFullClamp((rate-opponentBaseline)*1.8,-1,1)*confidence;
+  }
+  if(feature==='advance'||feature==='retreat'){
+    const other=armxFullRawFrequency(book,feature==='advance'?'retreat':'advance');
+    return armxFullClamp((rate-other)*1.35,-1,1)*confidence;
+  }
+  if(feature==='kingside'||feature==='queenside'){
+    const other=armxFullRawFrequency(book,feature==='kingside'?'queenside':'kingside');
+    return armxFullClamp((rate-other)*1.15,-1,1)*confidence;
+  }
+  // The useful note is conditional: when this behavior was actually available,
+  // how often did this opponent choose it?
+  return armxFullClamp((row.rate-0.5)*2,-1,1)*confidence;
+}
+function armxFullPolicyFeatureScore(book,features){
+  let score=0,evidence=0;
+  for(const feature of features){
+    if(!ARMX_FULL_NOTE_FEATURES.includes(feature))continue;
+    const preference=armxFullFeaturePreference(book,feature);
+    if(!preference)continue;
+    score+=preference;
+    evidence+=Math.min(1,(book.opportunities[feature]||0)/8);
+  }
+  return evidence?score/Math.sqrt(evidence):0;
+}
+function armxFullLearnedWeightDelta(book,feature,scale=1){
+  return armxFullFeaturePreference(book,feature)*scale;
+}
+function armxFullCompiledPolicyWeights(previewWeights,book){
+  const weights=new Float64Array(previewWeights||13);
+  const add=(index,value)=>{
+    const delta=value*ARMX_FULL.policyWeightDeltaScale;
+    weights[index]=armxFullClamp((weights[index]||0)+delta,-6,6);
+  };
+  add(0,armxFullLearnedWeightDelta(book,'pawnMove',1.35));
+  add(1,armxFullLearnedWeightDelta(book,'knightMove',1.35));
+  add(2,armxFullLearnedWeightDelta(book,'bishopMove',1.35));
+  add(3,armxFullLearnedWeightDelta(book,'rookMove',1.20));
+  add(4,armxFullLearnedWeightDelta(book,'queenMove',1.20));
+  add(5,armxFullLearnedWeightDelta(book,'kingMove',1.10));
+  add(6,armxFullLearnedWeightDelta(book,'centralize',1.15));
+  add(8,armxFullLearnedWeightDelta(book,'advance',1.45)-armxFullLearnedWeightDelta(book,'retreat',0.85));
+  add(9,armxFullLearnedWeightDelta(book,'castle',1.55));
+  add(10,armxFullLearnedWeightDelta(book,'development',1.45));
+  add(11,armxFullLearnedWeightDelta(book,'center',1.35));
+  add(12,armxFullLearnedWeightDelta(book,'pawnPush',1.10)+armxFullLearnedWeightDelta(book,'advance',0.55));
+  return weights;
+}
+function armxFullPreviewPolicyFromSyncedProfile(profile,perspective){
+  const model=profile&&profile.quietPolicy;
+  if(!model||model.count<ARMX_PREVIEW.quietChoiceMinObservations)return null;
+  const weights=new Float64Array(model.weights);
+  let cache=null;
+  const score=move=>{
+    if(!cache)cache=new Map();
+    const key=move.from|(move.to<<6)|(move.piece<<12)
+      |((move.promotion||0)<<15)|((move.flags||0)<<18);
+    let value=cache.get(key);
+    if(value===undefined){
+      value=armxPreviewQuietLogit(armxPreviewQuietFeatures(move,-perspective),weights);
+      cache.set(key,value);
+    }
+    return value;
+  };
+  const uncertainty=armxPreviewClamp(
+    -(model.qualityWeight?model.qualitySum/model.qualityWeight:0)
+      /ARMX_PREVIEW.predictionSurpriseScale,0,1
+  );
+  const searchBudget=SF55C.nodes+Math.round(ARMX_PREVIEW.maxExtraSearchNodes*uncertainty)
+    +Math.round(ARMX_PREVIEW.evidenceSearchNodes
+      *Math.min(1,model.count/ARMX_PREVIEW.fullSearchEvidence));
+  return {
+    observations:model.count,
+    searchBudget,
+    maxDepth:SF55C.maxDepth+ARMX_PREVIEW.maxExtraSearchDepth,
+    weights,
+    priority:move=>Math.round(300*score(move)),
+    isLowPriority:move=>score(move)<0,
+  };
+}
+function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
+  // Style is deliberately ignored: all three models receive the same Full ARMX.
+  const previewProfile=armxPreviewSyncProfile(game,perspective);
+  // Reuse the already-synced frozen Preview profile inside Full ARMX. This
+  // reproduces Preview's policy math without a second profile sync.
+  const preview=armxFullPreviewPolicyFromSyncedProfile(previewProfile,perspective);
+  const book=armxFullSyncNotebook(game,perspective,previewProfile);
+  const maturity=armxFullNotebookMaturity(book);
+  const noteSummary=armxFullNotebookSummary(book);
+  const noteUsefulness=armxFullClamp(
+    noteSummary.reduce((sum,row)=>sum+row.importance,0)/3.5,0,1
+  );
+  const learnedStrength=maturity*noteUsefulness;
+  const surprise=book.surpriseWeight
+    ?armxFullClamp((book.surpriseSum/book.surpriseWeight-0.45)/1.4,0,1):0;
+
+  const previewSearchBudget=preview&&Number.isFinite(preview.searchBudget)
+    ?preview.searchBudget:ARMX_FULL.baseSearchNodes;
+  const searchBudget=previewSearchBudget;
+  // Extra root breadth is expensive and can dilute depth. Unlock the fourth
+  // finalist only when the opponent notebook is genuinely mature/useful.
+  const breadthEvidence=learnedStrength*(0.85+0.15*surprise);
+  const rootWidth=ARMX_FULL.baseRootWidth
+    +(breadthEvidence>=ARMX_FULL.rootBreadthEvidenceThreshold
+      ?Math.min(1,ARMX_FULL.maxRootWidth-ARMX_FULL.baseRootWidth):0);
+  const previewDepth=preview&&Number.isFinite(preview.maxDepth)
+    ?preview.maxDepth:ARMX_FULL.baseDepth;
+  const maxDepth=previewDepth;
+
+  const previewWeights=preview&&preview.weights?preview.weights:new Float64Array(13);
+  const compiledWeights=new Float64Array(previewWeights);
+  const policyEvidenceScale=0;
+  const cache=new Map();
+  const side=-perspective;
+  const notePriority=move=>{
+    const key=move.from|(move.to<<6)|((move.piece||0)<<12)|((move.promotion||0)<<15)|((move.flags||0)<<18);
+    if(cache.has(key))return cache.get(key);
+    const value=Math.round(
+      ARMX_FULL.policyPriorityScale*policyEvidenceScale
+        *armxFullPolicyFeatureScore(book,armxFullCheapMoveFeatures(move,side))
+    );
+    cache.set(key,value);
+    return value;
+  };
+  const previewPriority=preview&&typeof preview.priority==='function'?preview.priority:()=>0;
+  book.lastPolicyTelemetry={
+    maturity,noteUsefulness,learnedStrength,surprise,searchBudget,maxDepth,rootWidth,
+    voluntaryObservations:book.voluntaryOpponentMoves,
+  };
+
+  return {
+    model:ARMX_FULL.name,
+    version:ARMX_FULL.version,
+    observations:book.opponentMoves,
+    voluntaryObservations:book.voluntaryOpponentMoves,
+    maturity,
+    noteUsefulness,
+    learnedStrength,
+    noteBreadth:noteSummary.length,
+    searchBudget,
+    maxDepth,
+    maxExtraNodes:ARMX_FULL.maxExtraNodes,
+    maxExtraDepth:ARMX_FULL.maxExtraDepth,
+    rootWidth,
+    predictionSurprise:surprise,
+    weights:compiledWeights,
+    priority:move=>previewPriority(move)+notePriority(move),
+    isLowPriority:move=>{
+      const previewLow=preview&&typeof preview.isLowPriority==='function'&&preview.isLowPriority(move);
+      // Preview owns hard low-priority pruning. Full notes only nudge ordering;
+      // they do not independently suppress replies at this small correction scale.
+      return previewLow;
+    },
+  };
+}
+function armxFullCandidateResponseReport(
+  game,entry,book,previewReport,style='artemis',allowExtendedReplyScan=true,hostScore=0
+){
+  const contextFeatures=new Set(previewReport&&previewReport.features||[]);
+  for(const feature of armxFullPredictiveMoveFeatures(game,entry.raw))contextFeatures.add(feature);
+  for(const context of armxFullStateContextsAfterMove(game,entry.raw,book.perspective)){
+    contextFeatures.add(context);
+  }
+
+  const previewReplyFeatures=new Set(ARMX_PREVIEW_REPLY_FEATURES||[]);
+  const knownPreviewAvailable=new Set(previewReport&&previewReport.replyFeaturesAvailable||[]);
+  const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
+
+  const extendedOutcomeFeatures=ARMX_FULL_EXTENDED_REPLY_FEATURES.filter(feature=>{
+    if((book.opportunities[feature]||0)<ARMX_FULL.minChoiceEvidence)return false;
+    const effect=armxFullOutcomeEffect(book,feature);
+    if(effect.source==='preview')return effect.evidence>=ARMX_FULL.minEffectEvidence;
+    return effect.evidence>=ARMX_FULL.fullOnlyOutcomeMinEvidence
+      &&effect.consistency>=ARMX_FULL.fullOnlyOutcomeMinConsistency;
+  });
+  const needsCoreReplyScan=allowExtendedReplyScan&&extendedOutcomeFeatures.length>0;
+  const styleRange=Math.max(1,Number(styleProfile.advantageRange)||580);
+  const styleAhead=armxFullClamp(
+    (Number(hostScore)-(Number(styleProfile.aheadThreshold)||0))/styleRange,0,1
+  );
+  const styleBehind=armxFullClamp(
+    (-Number(hostScore)-(Number(styleProfile.behindThreshold)||0))/styleRange,0,1
+  );
+  const effectiveReplyCompression=(Number(styleProfile.replyCompressionWeight)||0)
+    +styleAhead*(Number(styleProfile.aheadReplyCompressionWeight)||0)
+    +styleBehind*(Number(styleProfile.behindReplyCompressionWeight)||0);
+  const needsReplyCount=Math.abs(effectiveReplyCompression)>=0.08;
+  const needsReplySafety=Boolean(
+    styleProfile.opponentForcingReplyWeight||styleProfile.behindForcingReplyWeight
+      ||styleProfile.opponentKingAttackReplyWeight||styleProfile.behindKingAttackReplyWeight
+      ||styleProfile.opponentCaptureReplyWeight||styleProfile.behindCaptureReplyWeight
+  );
+  const effectiveRepetitionWeight=(Number(styleProfile.repetitionWeight)||0)
+    +styleAhead*(Number(styleProfile.aheadRepetitionWeight)||0)
+    +styleBehind*(Number(styleProfile.behindRepetitionWeight)||0);
+  const needsRepetition=Math.abs(effectiveRepetitionWeight)>=0.08;
+
+  let repetitionPressure=0,replyCount=0;
+  let forcingReplyRate=0,kingAttackReplyRate=0,captureReplyRate=0;
+  let actualReplyAvailable=null,replyFeatureCounts=null;
+
+  if(needsCoreReplyScan||needsReplyCount||needsReplySafety||needsRepetition){
+    const historyDepth=game.historyStack.length;
+    try{
+      game.fastApply(entry.raw);
+      let replies=null;
+      if(needsCoreReplyScan||needsReplyCount||needsReplySafety){
+        replies=game.fastMoves();
+        replyCount=replies.length;
+      }
+      if(replies){
+        actualReplyAvailable=new Set();
+        replyFeatureCounts=Object.create(null);
+        let forcing=0,kingAttack=0,captures=0;
+        for(const reply of replies){
+          const replyFeatures=armxFullPredictiveMoveFeatures(game,reply);
+          for(const feature of replyFeatures){
+            if(!ARMX_FULL_NOTE_FEATURES.includes(feature))continue;
+            actualReplyAvailable.add(feature);
+            replyFeatureCounts[feature]=(replyFeatureCounts[feature]||0)+1;
+          }
+
+          if(needsReplySafety){
+            if(replyFeatures.has('forcing'))forcing++;
+            if(replyFeatures.has('kingAttack'))kingAttack++;
+            if(replyFeatures.has('capture'))captures++;
+          }
+        }
+        if(needsReplySafety&&replyCount){
+          forcingReplyRate=forcing/replyCount;
+          kingAttackReplyRate=kingAttack/replyCount;
+          captureReplyRate=captures/replyCount;
+        }
+      }
+      if(needsRepetition){
+        const key=game.fastPositionKey();
+        const count=game.positionCounts&&game.positionCounts.get(key)||0;
+        repetitionPressure=armxFullClamp(Math.max(0,count-1)/2,0,1);
+      }
+    }finally{
+      while(game.historyStack.length>historyDepth)game.fastUndo();
+    }
+  }
+
+  let contextualOutcome=0,preferenceSignal=0,evidence=0;
+  const independentObservations=new Set();
+  const recordObservations=observations=>{
+    for(const observation of observations||[])independentObservations.add(observation);
+  };
+  const usefulReplyFeatures=ARMX_FULL_NOTE_FEATURES.filter(feature=>{
+    if((book.opportunities[feature]||0)<ARMX_FULL.minChoiceEvidence)return false;
+    if(actualReplyAvailable)return actualReplyAvailable.has(feature);
+    return previewReplyFeatures.has(feature)&&knownPreviewAvailable.has(feature);
+  });
+
+  // Full ARMX extends Preview's candidate model to broader reply behaviors.
+  // This term is still entirely opponent-derived: tendency when available ×
+  // observed outcome when this opponent actually chose that behavior.
+  if(actualReplyAvailable&&replyCount){
+    for(const feature of extendedOutcomeFeatures){
+      if(!actualReplyAvailable.has(feature))continue;
+      const choice=armxFullChoiceRate(book,feature);
+      const effect=armxFullOutcomeEffect(book,feature);
+      if(choice.evidence<ARMX_FULL.minChoiceEvidence
+          ||effect.evidence<ARMX_FULL.minEffectEvidence)continue;
+      const choiceConfidence=armxFullClamp(choice.evidence/8,0,1);
+      const effectConfidence=armxFullClamp(effect.evidence/6,0,1);
+      const share=armxFullClamp((replyFeatureCounts[feature]||0)/replyCount,0,1);
+      const availabilityWeight=0.55+0.45*armxFullClamp(share*2.5,0,1);
+      const sourceScale=effect.source==='full'
+        ?ARMX_FULL.fullOnlyOutcomeScale*Math.max(0,effect.consistency||0):1;
+      const contribution=choice.rate*choice.rate*effect.value
+        *choiceConfidence*effectConfidence*availabilityWeight
+        *ARMX_FULL.extendedReplyOutcomeScale*sourceScale;
+      contextualOutcome+=contribution;
+      recordObservations(effect.observations);
+      evidence+=Math.min(1.5,(choice.evidence*0.12+effect.evidence*0.18))
+        *Math.max(0.25,choice.rate)*availabilityWeight;
+    }
+  }
+
+  // Context-specific response notes answer a different question: after *this
+  // kind of move / in this phase*, does this opponent choose the reply behavior
+  // more or less often than its own normal baseline?
+  for(const contextFeature of contextFeatures){
+    if(!ARMX_FULL_CONTEXT_FEATURES.includes(contextFeature))continue;
+    for(const replyFeature of usefulReplyFeatures){
+      const conditional=armxFullConditionalRate(book,contextFeature,replyFeature);
+      const stateContext=ARMX_FULL_STATE_CONTEXTS.includes(contextFeature);
+      const richContext=ARMX_FULL_RICH_CONTEXTS.includes(contextFeature);
+      const minimumEvidence=stateContext
+        ?ARMX_FULL.stateContextMinEvidence
+        :(richContext?ARMX_FULL.richContextMinEvidence:ARMX_FULL.minChoiceEvidence);
+      if(conditional.evidence<minimumEvidence)continue;
+      const baseline=armxFullChoiceRate(book,replyFeature);
+      const delta=conditional.rate-baseline.rate;
+      const confidence=armxFullClamp(conditional.evidence/8,0,1);
+      const contextScale=stateContext
+        ?ARMX_FULL.stateContextScale:(richContext?ARMX_FULL.richContextScale:1);
+      if(Math.abs(delta)<0.025)continue;
+
+      preferenceSignal+=delta*confidence*contextScale;
+      evidence+=confidence*contextScale;
+
+      const contextEffect=armxFullResponseEffect(book,contextFeature,replyFeature);
+      if(contextEffect.evidence>=ARMX_FULL.responseEffectMinEvidence
+          &&contextEffect.consistency>=ARMX_FULL.responseEffectMinConsistency){
+        const globalEffect=armxFullOutcomeEffect(book,replyFeature);
+        const effectConfidence=armxFullClamp(
+          (contextEffect.evidence-ARMX_FULL.responseEffectMinEvidence+1)/6,0,1
+        )*armxFullClamp(contextEffect.consistency,0,1);
+        const baselineExpected=globalEffect.evidence>=ARMX_FULL.minEffectEvidence
+          ?baseline.rate*baseline.rate*globalEffect.value:0;
+        const contextExpected=conditional.rate*conditional.rate*contextEffect.value;
+        // Context-specific outcomes are powerful but noisy. They only earn a
+        // bounded incremental vote after repeated independent observations.
+        contextualOutcome+=(contextExpected-baselineExpected)
+          *confidence*effectConfidence*contextScale*ARMX_FULL.responseEffectScale;
+        recordObservations(contextEffect.observations);
+        evidence+=0.35*effectConfidence*contextScale;
+      }
+    }
+  }
+
+  let ownOutcome=0,ownOutcomeWeight=0;
+  for(const feature of contextFeatures){
+    if(!ARMX_FULL_NOTE_FEATURES.includes(feature))continue;
+    const effect=armxFullOwnOutcomeEffect(book,feature);
+    const enough=effect.evidence>=ARMX_FULL.ownOutcomeMinEvidence
+      &&effect.consistency>=ARMX_FULL.ownOutcomeMinConsistency;
+    if(!enough)continue;
+    const sourceScale=ARMX_FULL.fullOnlyOutcomeScale*Math.max(0,effect.consistency||0);
+    const confidence=armxFullClamp(effect.evidence/6,0,1)*sourceScale;
+    if(confidence<=0)continue;
+    ownOutcome+=effect.value*confidence;
+    ownOutcomeWeight+=confidence;
+    recordObservations(effect.observations);
+  }
+  if(ownOutcomeWeight){
+    ownOutcome/=ownOutcomeWeight;
+    evidence+=Math.min(1.5,0.45*ownOutcomeWeight);
+  }
+
+  let ownContextOutcome=0,ownContextWeight=0;
+  const stateContexts=Array.from(contextFeatures).filter(
+    feature=>ARMX_FULL_STATE_CONTEXTS.includes(feature)
+  );
+  const moveContexts=Array.from(contextFeatures).filter(
+    feature=>ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature)
+  );
+  for(const stateContext of stateContexts){
+    for(const moveFeature of moveContexts){
+      const effect=armxFullOwnContextEffect(book,stateContext,moveFeature);
+      if(effect.evidence<ARMX_FULL.ownContextOutcomeMinEvidence
+          ||effect.consistency<ARMX_FULL.ownContextOutcomeMinConsistency)continue;
+      const confidence=armxFullClamp(effect.evidence/5,0,1)
+        *armxFullClamp(effect.consistency,0,1);
+      ownContextOutcome+=effect.value*confidence;
+      ownContextWeight+=confidence;
+      recordObservations(effect.observations);
+    }
+  }
+  if(ownContextWeight){
+    ownContextOutcome/=ownContextWeight;
+    evidence+=Math.min(1.25,0.40*ownContextWeight);
+  }
+
+  return {
+    contextFeatures:Array.from(contextFeatures),
+    expectedOpponentOutcome:contextualOutcome,
+    opponentPreferenceSignal:preferenceSignal,
+    ownOutcome,
+    ownContextOutcome,
+    evidence:Math.min(book.opponentMoves,evidence,independentObservations.size),
+    replyCount,
+    forcingReplyRate,
+    kingAttackReplyRate,
+    captureReplyRate,
+    repetitionPressure,
+    actualReplyFeatures:actualReplyAvailable?Array.from(actualReplyAvailable):[],
+  };
+}
+function armxFullOpponentTendencies(book){
+  // Specialist classification uses the opponent's observed voluntary move mix.
+  // The core prediction model remains opportunity-conditioned; this classifier
+  // answers the narrower question "what kind of opponent have they actually
+  // been in this game?" and is much less distorted by rare move categories.
+  const observations=Math.max(0,Number(book&&book.voluntaryOpponentMoves)||0);
+  const observed=feature=>observations
+    ?(Number(book.choices&&book.choices[feature])||0)/observations:0;
+  const confidence=armxFullClamp(observations/8,0,1);
+
+  const quiet=observed('quiet');
+  const retreat=observed('retreat');
+  const capture=observed('capture');
+  const trade=observed('trade');
+  const simplify=observed('simplify');
+  const check=observed('check');
+  const kingAttack=observed('kingAttack');
+
+  // A defensive/patient signature is not merely "quiet": it also avoids
+  // forcing moves and simplification while preserving retreating flexibility.
+  const patientRaw=
+    0.90*quiet+0.45*retreat
+      -0.55*capture-0.35*trade-0.40*simplify
+      -0.70*check-0.55*kingAttack-0.30;
+  const aggressiveRaw=
+    0.55*capture+0.35*trade+0.40*simplify
+      +0.70*check+0.55*kingAttack
+      -0.70*quiet-0.20*retreat+0.10;
+  return {
+    patient:armxFullClamp(patientRaw*confidence,-1,1),
+    aggressive:armxFullClamp(aggressiveRaw*confidence,-1,1),
+  };
+}
+function armxFullStyleAdjustment(game,entry,response,style,hostBest,book){
+  const profile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
+  if(!profile.baseScale)return {signal:0,scale:0,adjustment:0};
+  const features=response.contextFeatures||[];
+  const hostScore=Number(hostBest&&hostBest.score)||0;
+  // Same style mechanism for every sibling; personality lives only in numbers.
+  const advantageRange=Math.max(1,Number(profile.advantageRange)||580);
+  const ahead=armxFullClamp(
+    (hostScore-(Number(profile.aheadThreshold)||0))/advantageRange,0,1
+  );
+  const behind=armxFullClamp(
+    (-hostScore-(Number(profile.behindThreshold)||0))/advantageRange,0,1
+  );
+
+  let signal=0;
+  for(const feature of features){
+    signal+=(profile.weights[feature]||0)
+      +ahead*(profile.aheadWeights[feature]||0)
+      +behind*(profile.behindWeights[feature]||0);
+  }
+
+  const replyCount=Number(response.replyCount)||0;
+  const compression=replyCount?armxFullClamp((24-replyCount)/18,-1,1):0;
+  const effectiveCompressionWeight=(Number(profile.replyCompressionWeight)||0)
+    +ahead*(Number(profile.aheadReplyCompressionWeight)||0)
+    +behind*(Number(profile.behindReplyCompressionWeight)||0);
+  signal+=effectiveCompressionWeight*compression;
+  signal+=((profile.opponentForcingReplyWeight||0)
+      +behind*(profile.behindForcingReplyWeight||0))
+    *(Number(response.forcingReplyRate)||0);
+  signal+=((profile.opponentKingAttackReplyWeight||0)
+      +behind*(profile.behindKingAttackReplyWeight||0))
+    *(Number(response.kingAttackReplyRate)||0);
+  signal+=((profile.opponentCaptureReplyWeight||0)
+      +behind*(profile.behindCaptureReplyWeight||0))
+    *(Number(response.captureReplyRate)||0);
+  const captured=entry&&entry.raw?(ARMX_PREVIEW_PIECE_VALUES[entry.raw.captured||0]||0)/500:0;
+  signal+=profile.capturedValueWeight*captured;
+  const repetitionPressure=Number(response.repetitionPressure)||0;
+  signal+=repetitionPressure*(profile.repetitionWeight
+    +ahead*profile.aheadRepetitionWeight+behind*profile.behindRepetitionWeight);
+  const halfmovePressure=armxFullClamp(((Number(game.halfmove)||0)-18)/62,0,1);
+  if(features.includes('pawnMove')){
+    signal+=halfmovePressure*(profile.pawnClockResetWeight||0);
+  }
+  const entryScore=entry&&Number.isFinite(entry.score)?entry.score:hostScore;
+  const candidateHostGap=Math.max(0,hostScore-entryScore);
+  signal+=ahead*(profile.advantageDelayWeight||0)*armxFullClamp(candidateHostGap/180,0,1);
+
+  const observedPlies=Math.max(0,(game.historyStack?game.historyStack.length:0)
+    -Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)));
+  const target=Math.max(1,profile.paceTargetPlies);
+  const phase=observedPlies/target;
+  const paceMultiplier=1
+    +profile.earlyBoost*Math.max(0,1-phase)
+    +profile.lateBoost*Math.max(0,phase-1);
+
+  const tendencies=armxFullOpponentTendencies(book);
+  const patient=Math.max(0,tendencies.patient);
+  const aggressive=Math.max(0,tendencies.aggressive);
+  const patientThreshold=Number(profile.patientPressureThreshold)||0;
+  const patientRange=Math.max(0.01,Number(profile.patientPressureRange)||1);
+  const activatedPatient=armxFullClamp((patient-patientThreshold)/patientRange,0,1);
+  const forcingCandidate=(features.includes('forcing')?1:0)
+    +(features.includes('check')?0.65:0)
+    +(features.includes('kingAttack')?0.45:0);
+  const defensiveCandidate=(features.includes('quiet')?0.75:0)
+    +(features.includes('retreat')?0.55:0)
+    +(features.includes('castle')?0.70:0)
+    -(features.includes('forcing')?0.35:0);
+  signal+=activatedPatient*(profile.patientPressureWeight||0)*forcingCandidate;
+  signal+=aggressive*(profile.aggressiveDefenseWeight||0)*defensiveCandidate;
+
+  const opponentMultiplier=1
+    +profile.patientOpponentScale*patient
+    +profile.aggressiveOpponentScale*aggressive;
+  const positionMultiplier=1+profile.aheadScale*ahead+profile.behindScale*behind;
+  const scale=profile.baseScale*Math.max(0.15,paceMultiplier)*positionMultiplier*opponentMultiplier;
+  const max=ARMX_FULL.maxStyleAdjustment[style]||0;
+  return {
+    signal,scale,adjustment:armxFullClamp(signal*scale,-max,max),
+    tendencies,activatedPatient,compression,effectiveCompressionWeight,repetitionPressure,
+    forcingReplyRate:Number(response.forcingReplyRate)||0,
+    kingAttackReplyRate:Number(response.kingAttackReplyRate)||0,
+    captureReplyRate:Number(response.captureReplyRate)||0,
+  };
+}
+function armxFullMateScale(entry){
+  if(!entry)return false;
+  const mate=typeof STONEFISH_V5_PRO_MATE==='number'?STONEFISH_V5_PRO_MATE
+    :(typeof STONEFISH_V5_MATE==='number'?STONEFISH_V5_MATE:20000000);
+  return (Number.isFinite(entry.deep)&&Math.abs(entry.deep)>=mate*0.9)
+    ||(Number.isFinite(entry.score)&&Math.abs(entry.score)>=mate*0.9);
+}
+function armxFullReview(game,finished,style='artemis',perspective=game.side){
+  let book=armxFullSyncNotebook(game,perspective);
+  let previewProfile=book.previewProfile;
+  if(!previewProfile){
+    previewProfile=armxPreviewSyncProfile(game,perspective);
+    book=armxFullSyncNotebook(game,perspective,previewProfile);
+  }
+  const maturity=armxFullNotebookMaturity(book);
+  const candidates=(finished||[]).filter(entry=>entry&&Number.isFinite(entry.score))
+    .slice(0,ARMX_FULL.candidateLimit);
+  if(!candidates.length)return {reports:[],winner:null,book,maturity};
+
+  const hostBest=candidates[0];
+  const extendedScanStride=Math.max(1,ARMX_FULL.extendedReplyScanStride||1);
+  const scanExtendedThisMove=(book.opponentMoves%extendedScanStride)===0;
+  const reports=candidates.map((entry,index)=>{
+    const previewReport=armxPreviewCandidateReport(game,entry,previewProfile);
+    const allowExtendedReplyScan=scanExtendedThisMove
+      &&index<ARMX_FULL.extendedReplyScanCandidates;
+    const response=armxFullCandidateResponseReport(
+      game,entry,book,previewReport,style,allowExtendedReplyScan,hostBest.score
+    );
+
+    // Preview is the proven subset. Full ARMX adds only contextual information
+    // that Preview does not already encode, avoiding double-counted evidence.
+    const previewAdjustment=(Number(previewReport.adjustment)||0)*ARMX_FULL.previewDecisionGain;
+    const noteConfidence=armxFullClamp(response.evidence/ARMX_FULL.fullConfidenceEvidence,0,1);
+    const learnedSignal=response.expectedOpponentOutcome
+      +ARMX_FULL.ownOutcomeScale*(Number(response.ownOutcome)||0)
+      +ARMX_FULL.ownContextOutcomeScale*(Number(response.ownContextOutcome)||0);
+    const noteAdjustment=armxFullClamp(
+      learnedSignal*ARMX_FULL.fullNoteScale*noteConfidence*maturity,
+      -ARMX_FULL.maxNoteAdjustment,ARMX_FULL.maxNoteAdjustment
+    );
+    const adaptiveAdjustment=previewAdjustment+noteAdjustment;
+
+    const styleResult=armxFullStyleAdjustment(game,entry,response,style,hostBest,book);
+    const hostGap=hostBest.score-entry.score;
+    const deepSacrifice=Number.isFinite(hostBest.deep)&&Number.isFinite(entry.deep)
+      ?hostBest.deep-entry.deep:hostGap;
+    const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
+    const hostScore=Number(hostBest&&hostBest.score)||0;
+    const advantageRange=Math.max(1,Number(styleProfile.advantageRange)||580);
+    const ahead=armxFullClamp(
+      (hostScore-(Number(styleProfile.aheadThreshold)||0))/advantageRange,0,1
+    );
+    const behind=armxFullClamp(
+      (-hostScore-(Number(styleProfile.behindThreshold)||0))/advantageRange,0,1
+    );
+    const allowedHostGap=styleProfile.maxHostGap
+      +ahead*(styleProfile.aheadHostGapBonus||0)
+      +behind*(styleProfile.behindHostGapBonus||0);
+    const allowedDeepSacrifice=styleProfile.maxDeepSacrifice
+      +ahead*(styleProfile.aheadDeepGapBonus||0)
+      +behind*(styleProfile.behindDeepGapBonus||0);
+    const protectedTruth=armxFullMateScale(hostBest)||armxFullMateScale(entry);
+    const aheadSafetyFloor=Number.isFinite(styleProfile.aheadCandidateFloor)
+      ?styleProfile.aheadCandidateFloor:-Infinity;
+    const keepsWinningMargin=!ahead||Number(entry.score)>=aheadSafetyFloor;
+    const objectiveEligible=entry===hostBest||(!protectedTruth&&keepsWinningMargin
+      &&hostGap<=allowedHostGap&&deepSacrifice<=allowedDeepSacrifice);
+
+    return {
+      raw:entry.raw,
+      hostScore:entry.score,
+      hostDeep:entry.deep,
+      adjustment:adaptiveAdjustment,
+      signal:Number(previewReport.signal)||0,
+      confidence:Number(previewReport.confidence)||0,
+      evidence:Number(previewReport.evidence)||0,
+      previewReport,
+      entry,style,
+      notebookResponse:response,
+      maturity,
+      previewAdjustment,
+      noteAdjustment,
+      noteConfidence,
+      learnedSignal,
+      adaptiveAdjustment,
+      styleSignal:styleResult.signal,
+      styleScale:styleResult.scale,
+      styleAdjustment:styleResult.adjustment,
+      styleTendencies:styleResult.tendencies||null,
+      styleActivatedPatient:Number(styleResult.activatedPatient)||0,
+      styleCompression:styleResult.compression||0,
+      styleCompressionWeight:styleResult.effectiveCompressionWeight||0,
+      styleRepetitionPressure:styleResult.repetitionPressure||0,
+      hostGap,deepSacrifice,allowedHostGap,allowedDeepSacrifice,
+      objectiveEligible,eligible:objectiveEligible,fullScore:-Infinity,
+    };
+  });
+
+  const provisionalReport=reports.find(report=>report.entry===hostBest)||reports[0];
+  const observedPlies=Math.max(0,(game.historyStack?game.historyStack.length:0)
+    -Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)));
+  const gateHost=Object.assign({},hostBest,{armxOriginalScore:hostBest.score});
+  const gateStyleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
+
+  for(const report of reports){
+    if(report===provisionalReport){
+      report.eligible=true;
+      report.previewGate={allowed:true,reason:'provisional'};
+      report.fullNoteGate={allowed:true,reason:'provisional'};
+      report.styleGate={allowed:true,reason:'provisional'};
+      report.previewLead=0;
+      report.noteLead=0;
+      report.styleLead=0;
+      report.decisionLead=0;
+      // Anchor the ranking on the native provisional score. Every adaptive
+      // contribution below is a pairwise lead relative to this same move.
+      report.fullScore=report.entry.score;
+      continue;
+    }
+
+    let previewGate={allowed:false,reason:'preview-gate-unavailable'};
+    if(typeof stonefishV55ARMXChangeDecision==='function'){
+      const gateEntry=Object.assign({},report.entry,{armxOriginalScore:report.entry.score});
+      previewGate=stonefishV55ARMXChangeDecision(
+        gateHost,gateEntry,provisionalReport.previewReport,report.previewReport,observedPlies
+      );
+    }
+
+    const responseEvidence=Number(report.notebookResponse&&report.notebookResponse.evidence)||0;
+    const noteConfidence=Number(report.noteConfidence)||0;
+    const notebookDecisionLead=(Number(report.entry.score)||0)+(Number(report.noteAdjustment)||0)
+      -((Number(provisionalReport.entry.score)||0)+(Number(provisionalReport.noteAdjustment)||0));
+    const signalQuality=(Number(report.learnedSignal)||0)>=ARMX_FULL.fullNoteMinPositiveSignal
+      ||(Number(provisionalReport.learnedSignal)||0)<=ARMX_FULL.fullNoteStrongAvoidSignal;
+    const matureEvidence=responseEvidence>=ARMX_FULL.fullNoteMinEvidence
+      &&noteConfidence>=ARMX_FULL.fullNoteMinConfidence;
+    const earlyEvidence=observedPlies>=ARMX_FULL.fullNoteEarlyPlies
+      ||(responseEvidence>=ARMX_FULL.fullNoteEarlyEvidence
+        &&noteConfidence>=ARMX_FULL.fullNoteEarlyConfidence);
+    const fullNoteAllowed=matureEvidence&&earlyEvidence&&signalQuality
+      &&notebookDecisionLead>=ARMX_FULL.fullNoteMinDecisionLead;
+
+    const styleLead=(Number(report.styleAdjustment)||0)
+      -(Number(provisionalReport.styleAdjustment)||0);
+    const minStyleLead=Number(gateStyleProfile.minStyleLead);
+    const styleAllowed=Number.isFinite(minStyleLead)&&styleLead>=minStyleLead;
+
+    // Preserve frozen Preview's exact pairwise vote. Preview itself chooses the
+    // gain (normally 1.25x, 1.60x only for mature contrastive evidence).
+    const previewGain=previewGate.allowed&&Number.isFinite(previewGate.decisionGain)
+      ?previewGate.decisionGain:STONEFISH_V5_5_ARMX_DECISION_GAIN;
+    const previewLead=previewGate.allowed
+      ?stonefishV55ARMXDecisionScore(report.previewReport,previewGain)
+        -stonefishV55ARMXDecisionScore(provisionalReport.previewReport,previewGain)
+      :0;
+    const noteLead=fullNoteAllowed
+      ?(Number(report.noteAdjustment)||0)-(Number(provisionalReport.noteAdjustment)||0)
+      :0;
+    const appliedStyleLead=styleAllowed?styleLead:0;
+    const hostLead=(Number(report.entry.score)||0)-(Number(provisionalReport.entry.score)||0);
+    // previewLead already contains the native host-score difference. If Preview
+    // is not voting, Full notes/style must carry the native gap themselves.
+    const effectiveLead=previewGate.allowed
+      ?previewLead+noteLead+appliedStyleLead
+      :hostLead+noteLead+appliedStyleLead;
+
+    report.previewGate=previewGate;
+    report.fullNoteGate={
+      allowed:fullNoteAllowed,
+      responseEvidence,noteConfidence,notebookDecisionLead,signalQuality,earlyEvidence,
+    };
+    report.styleGate={allowed:styleAllowed,styleLead};
+    report.previewLead=previewLead;
+    report.noteLead=noteLead;
+    report.styleLead=appliedStyleLead;
+    report.decisionLead=effectiveLead;
+    report.eligible=Boolean(report.objectiveEligible
+      &&(previewGate.allowed||fullNoteAllowed||styleAllowed)
+      &&effectiveLead>0);
+    report.fullScore=report.eligible
+      ?provisionalReport.entry.score+effectiveLead
+      :-Infinity;
+  }
+
+  reports.sort((a,b)=>b.fullScore-a.fullScore
+    ||b.hostScore-a.hostScore
+    ||String(a.entry.uci).localeCompare(String(b.entry.uci)));
+
+  return {
+    model:ARMX_FULL.name,
+    version:ARMX_FULL.version,
+    style,
+    reset:ARMX_FULL.reset,
+    opponentMoves:book.opponentMoves,
+    voluntaryOpponentMoves:book.voluntaryOpponentMoves,
+    maturity,
+    noteUsefulness:Number(book.lastPolicyTelemetry&&book.lastPolicyTelemetry.noteUsefulness)||0,
+    learnedStrength:Number(book.lastPolicyTelemetry&&book.lastPolicyTelemetry.learnedStrength)||0,
+    predictionSurprise:Number(book.lastPolicyTelemetry&&book.lastPolicyTelemetry.surprise)||0,
+    notes:armxFullNotebookSummary(book),
+    reports,
+    winner:reports.length?reports[0].entry:hostBest,
+  };
+}
+function armxFullRankHost(game,host,style='artemis'){
+  const finished=host&&Array.isArray(host.finished)?host.finished:[];
+  if(!finished.length){ARMX_FULL_LAST[style]=null;return finished;}
+  const original=finished[0];
+  const review=armxFullReview(game,finished,style,game.side);
+  const winner=review.winner||original;
+  const index=finished.indexOf(winner);
+  if(index>0){finished.splice(index,1);finished.unshift(winner);}
+  ARMX_FULL_LAST[style]={
+    ...review,
+    searchBudget:host.searchBudget,
+    searchDepth:host.depth,
+    depthLimit:host.depthLimit,
+    rootWidth:host.rootWidth||ARMX_FULL.baseRootWidth,
+    changedMove:Boolean(original&&winner&&!stonefishV5SameMove(original.raw,winner.raw)),
+    provisionalRaw:original&&original.raw,
+    recommendedRaw:winner&&winner.raw,
+  };
+  return finished;
+}
+function armxFullLast(style='artemis'){
+  return ARMX_FULL_LAST[style]||null;
+}
+
+if(typeof globalThis!=='undefined'){
+  globalThis.ARMX_FULL=ARMX_FULL;
+  globalThis.armxFullSyncNotebook=armxFullSyncNotebook;
+  globalThis.armxFullOpponentPolicy=armxFullOpponentPolicy;
+  globalThis.armxFullReview=armxFullReview;
+  globalThis.armxFullRankHost=armxFullRankHost;
+  globalThis.armxFullLast=armxFullLast;
+}
+// END SOURCE: ARMX.js

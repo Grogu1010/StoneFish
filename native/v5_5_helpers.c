@@ -1045,3 +1045,54 @@ int search_all(int side,int castling,int ep,int wk,int bk,int halfmove,
   for(int i=0;i<current_count;i++){output[i]=current_moves[i];root_scores[i]=current_scores[i];root_exact[i]=current_exact[i];}
   return current_count;
 }
+
+int search_all_width(int side,int castling,int ep,int wk,int bk,int halfmove,
+                     int max_depth,int node_limit,int qdepth,int policy_enabled,
+                     int public_history_count,int root_width){
+  SearchState s={0};
+  s.side=side;s.castling=castling;s.ep=ep;s.wk=wk;s.bk=bk;s.halfmove=halfmove;
+  search_initial_state(&s);search_init_eval_masks();search_init_attack_tables();
+  search_nodes_count=0;search_node_limit=node_limit;search_qdepth=qdepth;
+  if(root_width<3)root_width=3;if(root_width>12)root_width=12;
+  search_abort=0;search_depth_done=0;search_policy_enabled=policy_enabled;
+  search_policy_side=-side;
+  search_generation++;if(!search_generation)search_generation=1;
+  search_public_build(public_history_count);
+  search_position_count=0;search_signature_count=0;search_path_signature=0;search_path_top=0;
+  for(int i=0;i<32;i++)search_killers[i]=0;
+  int king=side>0?wk:bk,n=search_generate(&s,0);
+  if(!n)return 0;
+  u32 current_moves[512],next_moves[512];int current_scores[512],next_scores[512],current_exact[512],next_exact[512];
+  for(int i=0;i<n;i++){
+    current_moves[i]=output[i];current_exact[i]=0;SearchState child;SearchBoardUndo u;
+    search_apply_child(&s,&child,current_moves[i],&u);
+    current_scores[i]=-search_evaluate_state(&child);search_undo_board(s.side,current_moves[i],&u);
+  }
+  for(int i=1;i<n;i++){
+    u32 m=current_moves[i];int sc=current_scores[i],j=i-1;
+    while(j>=0&&(current_scores[j]<sc||(current_scores[j]==sc&&root_uci_compare(current_moves[j],m)>0))){
+      current_moves[j+1]=current_moves[j];current_scores[j+1]=current_scores[j];current_exact[j+1]=current_exact[j];j--;
+    }
+    current_moves[j+1]=m;current_scores[j+1]=sc;current_exact[j+1]=0;
+  }
+  int current_count=n;
+  for(int depth=1;depth<=max_depth;depth++){
+    search_iter_depth=depth;search_abort=0;int next_count=0,threshold=-SEARCH_MATE;
+    for(int i=0;i<current_count;i++){
+      u32 m=current_moves[i];SearchState child;SearchBoardUndo u;search_apply_child(&s,&child,m,&u);
+      int score=-search_ab(&child,depth-1,-SEARCH_MATE,-threshold,1,m);
+      search_undo_board(s.side,m,&u);
+      if(search_abort)break;
+      int is_exact=threshold==-SEARCH_MATE||score>threshold;
+      root_insert(next_moves,next_scores,next_exact,&next_count,m,score,is_exact);
+      if(next_count>=root_width)threshold=next_scores[root_width-1];
+    }
+    if(search_abort)break;
+    current_count=next_count;
+    for(int i=0;i<current_count;i++){current_moves[i]=next_moves[i];current_scores[i]=next_scores[i];current_exact[i]=next_exact[i];}
+    search_depth_done=depth;
+    if(current_count&&absolute(current_scores[0])>SEARCH_MATE-100)break;
+  }
+  for(int i=0;i<current_count;i++){output[i]=current_moves[i];root_scores[i]=current_scores[i];root_exact[i]=current_exact[i];}
+  return current_count;
+}
