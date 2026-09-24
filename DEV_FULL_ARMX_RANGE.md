@@ -229,3 +229,18 @@ removes a required Full ARMX capability and barely changes style identity.
 It is not a viable release setting. Records and exact zero-scale configuration
 are archived in `note-scale-zero-screen-20-2026-09-24.json.gz`. A low, nonzero
 scale is the remaining useful check of this hypothesis.
+
+## Low nonzero Full-note scale screen: September 24
+
+The full range was screened at `fullNoteScale=20` to retain a Full-only learned
+vote while staying near the zero-vote diagnostic. The first 20-game set gave
+Athena 9-8-3 (52.5%), Ares 8-8-4 (50%), and Artemis 7-11-2 (40%) against
+current v5.5. Sibling field scores were 51.7% Athena, 50% Ares, and 45.8%
+Artemis. Average played moves were 59.02, 54.32, and 52.18, for ratios of
+**1.131x** Athena and **1.041x** Ares. Attributed overhead was **1.47x**,
+**1.39x**, and **1.30x** Preview, respectively.
+
+This failed strength, pace, and sibling gates, and raised Athena's overhead
+closer to the 2x limit. It shows that low note scale is not a reliable smooth
+compromise between zero and the committed 320. Archive:
+`note-scale-20-screen-20-2026-09-24.json.gz`. Do not promote.
