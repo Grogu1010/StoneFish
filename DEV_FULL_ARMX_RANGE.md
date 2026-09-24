@@ -139,3 +139,29 @@ in `response-attributed-range-20-2026-09-24.json.gz` and
 benchmark, reset contract, reply-policy contract, and compiled-kernel contract
 pass with the correction. Keep the change on the draft for further work; no
 release gate is satisfied yet.
+
+## Numeric finalist-style profile screens: September 24
+
+The style-only constraint remains in force: all three engines use the same
+Full policy, reply priority, reductions, and native search behavior; Athena and
+Ares vary only numeric style-profile values. The moderate-profile screen
+(minimum style lead 2; Athena host-gap/deep limits 32/20; Ares 24/16) produced
+Athena 7-11-2, Ares 8-10-2, and Artemis 7-9-4 against current v5.5, with 54.3,
+55.9, and 56.2 average played moves respectively. These first-set ratios were
+0.965x Athena and 0.994x Ares. Overhead was 1.41x, 1.39x, and 1.34x Preview.
+
+An intentionally extreme numeric-only screen (minimum style lead 0, broader
+score/deep eligibility, and larger style weights) produced Athena 7-12-1,
+Ares 9-10-1, and Artemis 7-9-4 against current v5.5. Sibling results were
+Ares 11-8-1 vs Athena, Artemis 14-6-0 vs Athena, and Artemis 9-10-1 vs Ares.
+Average played moves were 51.8 Athena, 66.4 Ares, and 56.2 Artemis, or 0.921x
+and 1.182x: making Ares more aggressive by score weighting actually lengthened
+its games in this sample. Changed-move rates were 0.40 Athena and 0.33 Ares.
+Overhead remained within the cap at 1.39x, 1.36x, and 1.28x Preview.
+
+Neither screen meets strength or identity gates. The compressed per-game records
+are `numeric-style-experiment-20-2026-09-24.json.gz` and
+`extreme-style-experiment-20-2026-09-24.json.gz`. These reject simple finalist
+weight/eligibility scaling as a sufficient style control; the next adjustment
+needs to target measurable behavior that changes game pace, while retaining
+identical Artemis and v5.5 behavior outside Full ARMX.
