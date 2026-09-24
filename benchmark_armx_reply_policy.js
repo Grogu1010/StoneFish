@@ -1,15 +1,7 @@
 // Contracts for learned reply guidance and unchanged No-ARMX behavior.
 const fs = require('node:fs'), vm = require('node:vm');
 const assert = require('node:assert/strict'), zlib = require('node:zlib');
-const files = [
-  'StonefishChess.js', 'Stonefish_v3.js', 'Stonefish_v4.js', 'Stonefish_v4_5.js',
-  'Stonefish_v4_5_opening_overrides.js', 'Stonefish_v4_5_safety_patch.js',
-  'Stonefish_v4_5_balance_patch.js', 'Stonefish_v5.js', 'Stonefish_v5_pro.js',
-  'Stonefish_v5_pro_speed_patch.js', 'Stonefish_v5_pro_geometry_patch.js',
-  'Stonefish_runtime_speed_patch.js', 'Stonefish_fast_moves_experiment.js',
-  'Stonefish_v5_5_search.js', 'Stonefish_v5_5_refutation_guard.js',
-  'Stonefish_v5_5_native.js', 'ARMX-preview.js', 'Stonefish_v5_5.js'
-];
+const files = ['StonefishChess.js', 'models/models.js', 'ARMX/ARMX.js'];
 vm.runInThisContext(files.map(file => fs.readFileSync(file, 'utf8')).join('\n'));
 // This contract exercises the JavaScript reply-policy callbacks and exact fallback parity.
 // Compiled ARMX has its own parity/strength benchmarks and intentionally consumes frozen weights directly.

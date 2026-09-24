@@ -20,7 +20,7 @@ try {
  const lines=[];for(let i=0;i<bytes.length;i+=64)lines.push('  '+[...bytes.subarray(i,i+64)].join(','));
  const block='// BEGIN GENERATED V55 WASM\n// Zig 0.14.1; SHA-256 '+hash+'\n'
   +'const SF55C_WASM_BYTES=new Uint8Array([\n'+lines.join(',\n')+'\n]);\n// END GENERATED V55 WASM';
- const target=path.join(root,'Stonefish_v5_5_native.js'),before=fs.readFileSync(target,'utf8');
+ const target=path.join(root,'models','models.js'),before=fs.readFileSync(target,'utf8');
  const after=before.replace(/\/\/ BEGIN GENERATED V55 WASM[\s\S]*?\/\/ END GENERATED V55 WASM/,block);
  if(after===before&&!before.includes(hash))throw Error('Generated marker missing');
  fs.writeFileSync(target,after);

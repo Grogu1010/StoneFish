@@ -42,3 +42,24 @@ models.v55artemis = {
   ],
   getMove: getStonefishV55ArtemisMove
 };
+
+// Rolling best-known test units. Keep these on the current saved range version;
+// when a stronger version is promoted, update the model getter and this label
+// together so Dev Test always runs the latest best-known Athena/Ares/Artemis.
+models.v55athenatestunit = {
+  ...models.v55athena,
+  name: 'v5.5 Athena (testunit)',
+  trait: 'Rolling best-known Full ARMX · Athena'
+};
+
+models.v55arestestunit = {
+  ...models.v55ares,
+  name: 'v5.5 Ares (testunit)',
+  trait: 'Rolling best-known Full ARMX · Ares'
+};
+
+models.v55artemistestunit = {
+  ...models.v55artemis,
+  name: 'v5.5 Artemis (testunit)',
+  trait: 'Rolling best-known Full ARMX · Artemis'
+};

@@ -6,19 +6,7 @@
 const fs=require('fs');
 const vm=require('vm');
 
-const engineFiles=[
-  'StonefishChess.js','Stonefish_v3.js','Stonefish_v4.js','Stonefish_v4_5.js',
-  'Stonefish_v4_5_opening_overrides.js','Stonefish_v4_5_safety_patch.js',
-  'Stonefish_v4_5_balance_patch.js','Stonefish_v5.js','Stonefish_v5_pro.js',
-  'Stonefish_v5_pro_speed_patch.js'
-];
-for(const optional of ['Stonefish_v5_pro_geometry_patch.js','Stonefish_runtime_speed_patch.js','Stonefish_fast_moves_experiment.js']){
-  if(fs.existsSync(optional))engineFiles.push(optional);
-}
-engineFiles.push(
-  'Stonefish_v5_5_search.js','Stonefish_v5_5_refutation_guard.js','Stonefish_v5_5_native.js',
-  'ARMX-preview.js','Stonefish_v5_5.js','ARMX.js','Stonefish_v5_5_range.js'
-);
+const engineFiles=['StonefishChess.js','models/models.js','ARMX/ARMX.js'];
 vm.runInThisContext(engineFiles.map(file=>fs.readFileSync(file,'utf8')).join('\n\n'),{
   filename:'stonefish-v55-armx-decomposition-bundle.js'
 });

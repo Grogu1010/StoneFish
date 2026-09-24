@@ -9,30 +9,29 @@ const vm=require('vm');
 const crypto=require('crypto');
 const {performance}=require('perf_hooks');
 
-const engineFiles=[
-  'StonefishChess.js','Stonefish_v3.js','Stonefish_v4.js','Stonefish_v4_5.js',
-  'Stonefish_v4_5_opening_overrides.js','Stonefish_v4_5_safety_patch.js',
-  'Stonefish_v4_5_balance_patch.js','Stonefish_v5.js','Stonefish_v5_pro.js',
-  'Stonefish_v5_pro_speed_patch.js'
-];
-for(const optional of ['Stonefish_v5_pro_geometry_patch.js','Stonefish_runtime_speed_patch.js','Stonefish_fast_moves_experiment.js']){
-  if(fs.existsSync(optional))engineFiles.push(optional);
-}
-engineFiles.push(
-  'Stonefish_v5_5_search.js','Stonefish_v5_5_refutation_guard.js','Stonefish_v5_5_native.js',
-  'ARMX-preview.js','Stonefish_v5_5.js','ARMX.js','Stonefish_v5_5_range.js'
-);
+const engineFiles=['StonefishChess.js','models/models.js','ARMX/ARMX.js'];
 const loadedSources=engineFiles.map(file=>({file,source:fs.readFileSync(file,'utf8')}));
 const sourceHashes=Object.fromEntries(
   loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])
 );
+function bundledSource(bundle,file){
+  const escaped=file.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const match=bundle.match(new RegExp('// BEGIN SOURCE: '+escaped+'\\n([\\s\\S]*?)// END SOURCE: '+escaped));
+  if(!match)throw new Error('Missing bundled source segment: '+file);
+  return match[1];
+}
 const FROZEN_CURRENT_V55_HASHES=Object.freeze({
   'ARMX-preview.js':'9d4acb55d047d7424ce4186c31e661bdfc1c9c6c692c2326ff85a01aab645656',
   'Stonefish_v5_5.js':'be3b78a61e79ff164ca5e9d60f9c191190ac0306a1f3da384cbd747864ea9a55',
 });
+const frozenSources={
+  'ARMX-preview.js':bundledSource(loadedSources[2].source,'ARMX-preview.js'),
+  'Stonefish_v5_5.js':bundledSource(loadedSources[1].source,'Stonefish_v5_5.js'),
+};
 for(const [file,expected] of Object.entries(FROZEN_CURRENT_V55_HASHES)){
-  if(sourceHashes[file]!==expected){
-    throw new Error('Frozen current v5.5 source changed: '+file+' '+sourceHashes[file]+' != '+expected);
+  const actual=crypto.createHash('sha256').update(frozenSources[file]).digest('hex');
+  if(actual!==expected){
+    throw new Error('Frozen current v5.5 source changed: '+file+' '+actual+' != '+expected);
   }
 }
 vm.runInThisContext(loadedSources.map(row=>row.source).join('\n\n'),{filename:'stonefish-v55-range-bundle.js'});

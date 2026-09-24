@@ -3,27 +3,8 @@ const stonefishWorkerAsset = path => `${path}${stonefishWorkerAssetSuffix}`;
 
 importScripts(
   stonefishWorkerAsset('./StonefishChess.js'),
-  stonefishWorkerAsset('./Stonefish_v1.js'),
-  stonefishWorkerAsset('./Stonefish_v2.js'),
-  stonefishWorkerAsset('./Stonefish_v3.js'),
-  stonefishWorkerAsset('./Stonefish_v4.js'),
-  stonefishWorkerAsset('./Stonefish_v4_5.js'),
-  stonefishWorkerAsset('./Stonefish_v4_5_opening_overrides.js'),
-  stonefishWorkerAsset('./Stonefish_v4_5_safety_patch.js'),
-  stonefishWorkerAsset('./Stonefish_v4_5_balance_patch.js'),
-  stonefishWorkerAsset('./Stonefish_v5.js'),
-  stonefishWorkerAsset('./Stonefish_v5_pro.js'),
-  stonefishWorkerAsset('./Stonefish_v5_pro_speed_patch.js'),
-  stonefishWorkerAsset('./Stonefish_v5_pro_geometry_patch.js'),
-  stonefishWorkerAsset('./Stonefish_runtime_speed_patch.js'),
-  stonefishWorkerAsset('./Stonefish_fast_moves_experiment.js'),
-  stonefishWorkerAsset('./Stonefish_v5_5_search.js'),
-  stonefishWorkerAsset('./Stonefish_v5_5_refutation_guard.js'),
-  stonefishWorkerAsset('./Stonefish_v5_5_native.js'),
-  stonefishWorkerAsset('./ARMX-preview.js'),
-  stonefishWorkerAsset('./Stonefish_v5_5.js'),
-  stonefishWorkerAsset('./ARMX.js'),
-  stonefishWorkerAsset('./Stonefish_v5_5_range.js')
+  stonefishWorkerAsset('./models/models.js'),
+  stonefishWorkerAsset('./ARMX/ARMX.js')
 );
 
 const workerModels = {
@@ -38,6 +19,9 @@ const workerModels = {
   v55athena: getStonefishV55AthenaMove,
   v55ares: getStonefishV55AresMove,
   v55artemis: getStonefishV55ArtemisMove,
+  v55athenatestunit: getStonefishV55AthenaMove,
+  v55arestestunit: getStonefishV55AresMove,
+  v55artemistestunit: getStonefishV55ArtemisMove,
   v5pro: getStonefishV5ProMove
 };
 
