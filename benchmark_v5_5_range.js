@@ -486,12 +486,11 @@ const definitions={
   artemisVsAres:['Artemis-vs-Ares',getStonefishV55ArtemisMove,getStonefishV55AresMove],
 };
 const targets={
-  // All three are peers. Current v5.5 is a common baseline, not a ladder:
-  // each Full-ARMX model must score strongly while keeping losses bounded.
-  // Draws are always preferable to losses and count normally toward score.
-  athenaVsCurrent:{minScore:0.75,maxScore:0.85,maxLossRate:0.20},
-  aresVsCurrent:{minScore:0.75,maxScore:0.85,maxLossRate:0.20},
-  artemisVsCurrent:{minScore:0.80,maxScore:0.90,maxLossRate:0.20},
+  // All three are peers. Every Full-ARMX model must score above 85% across
+  // its 100-game current-v5.5 pairing; draws count as half a point.
+  athenaVsCurrent:{minScore:0.85,scoreFloorExclusive:true,maxScore:1.0,maxLossRate:0.20},
+  aresVsCurrent:{minScore:0.85,scoreFloorExclusive:true,maxScore:1.0,maxLossRate:0.20},
+  artemisVsCurrent:{minScore:0.85,scoreFloorExclusive:true,maxScore:1.0,maxLossRate:0.20},
 
   // Sibling matchups are intentionally close. These are hard relationship
   // bounds, not quotas: each intended winner must clear 50%, but a large edge
@@ -509,9 +508,9 @@ const targets={
   }),
   // Soft centres only: Artemis should be the best default, but not by much.
   preferredCurrentScore:Object.freeze({
-    athena:0.79,
-    ares:0.78,
-    artemis:0.82,
+    athena:0.86,
+    ares:0.86,
+    artemis:0.88,
   }),
 
   relationships:Object.freeze({
@@ -535,6 +534,19 @@ const targets={
   aresPlayedMoveRatioToArtemisCurrent:0.5,
   moveRatioTolerance:0.25,
 };
+function scoreFloorSatisfied(score,target){
+  return target.scoreFloorExclusive
+    ?score>target.minScore:score+1e-12>=target.minScore;
+}
+for(const key of ['athenaVsCurrent','aresVsCurrent','artemisVsCurrent']){
+  const target=targets[key];
+  if(target.minScore!==0.85||target.scoreFloorExclusive!==true||target.maxScore!==1.0){
+    throw new Error(key+' must require a score strictly above 85% against current v5.5');
+  }
+  if(scoreFloorSatisfied(0.85,target)||!scoreFloorSatisfied(0.855,target)){
+    throw new Error(key+' must reject exactly 85% and accept scores above 85%');
+  }
+}
 const games=Math.max(0,Number.parseInt(process.env.GAMES||'12',10)||0);
 const armxTimingSamples=Math.max(12,Number.parseInt(process.env.ARMX_TIMING_SAMPLES||'40',10)||40);
 const startIndex=Math.max(0,Number.parseInt(process.env.START_INDEX||'0',10)||0);
@@ -667,8 +679,10 @@ function matchupGate(key,target){
       key+' failed loss ceiling: '+row.win+'W-'+row.loss+'L-'+row.draw+'D; need loss rate <='+(target.maxLossRate*100)+'%');
   }
   if(Number.isFinite(target.minScore)){
-    requireGate(row.score+1e-12>=target.minScore,
-      key+' failed score floor: '+row.win+'W-'+row.loss+'L-'+row.draw+'D; need score >='+(target.minScore*100)+'%');
+    const passesScoreFloor=scoreFloorSatisfied(row.score,target);
+    const comparator=target.scoreFloorExclusive?'>':'>=';
+    requireGate(passesScoreFloor,
+      key+' failed score floor: '+row.win+'W-'+row.loss+'L-'+row.draw+'D; need score '+comparator+(target.minScore*100)+'%');
   }
   if(Number.isFinite(target.maxScore)){
     requireGate(row.score-1e-12<=target.maxScore,

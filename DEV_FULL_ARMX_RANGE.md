@@ -6,6 +6,17 @@ in place of ARMX Preview. Athena and Ares use the same Full ARMX policy and
 host, with only numeric finalist-style profiles changed. No range model is
 ready for the public opponent selector.
 
+## Release gates
+
+Each model must score **above 85%** in its own 100-game, color-balanced pairing
+against current v5.5, with draws worth half a point. The existing six-pairing
+range gate runs 100 games for each of Athena/current, Ares/current,
+Artemis/current, and all three sibling pairs. In addition, Athena and Ares must
+meet the defensive/aggressive pace targets of 3x and 0.5x Artemis respectively
+(±25%), peer-relationship bounds, and attributed Full ARMX overhead no greater
+than 2x Preview. All thresholds apply together. Earlier tables in this note are
+diagnostics under the previous score floors and do not qualify as release proof.
+
 ## Controlled 20-game diagnostic
 
 `GAMES=20 node benchmark_v5_5_range.js` ran all six pairings from start index
