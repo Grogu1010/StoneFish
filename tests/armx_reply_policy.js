@@ -107,7 +107,7 @@ assert.equal(learningModel.qualityWeight, 1);
 // Golden results were generated before integration, with the old native host
 // and the separately tested prototype. Scores, ordering, depths, node counts,
 // learned weights, and board restoration must all agree exactly.
-const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('benchmarks/v5_5/evidence-effort-golden.json.gz')));
+const golden = JSON.parse(zlib.gunzipSync(fs.readFileSync('tests/fixtures/evidence-effort-golden.json.gz')));
 for (const row of golden.positions) {
   const game = play(new Chess(), ...row.history);
   game.armxObservationStartPly = row.observationStartPly;

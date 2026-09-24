@@ -27,4 +27,4 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 
 ## Active verification
 
-Use `node benchmark_v5_5_range.js` for the six-pairing screen, `node benchmark_v5_5_armx_decomposition.js` for the diagnostic decomposition, and the retained kernel/ARMX contract scripts for regressions. CI runs these checks. Temporary raw result bundles are removed after each diagnostic; reproducible harnesses and concise findings remain.
+Use `node tests/v5_5_range.js` for the six-pairing screen and the checks under `tests/` for regressions. CI runs these checks. Temporary raw result bundles and the one-off decomposition harness were removed after preserving their concise findings here.

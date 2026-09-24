@@ -1,5 +1,5 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const contract=fs.readFileSync('benchmark_v5_5_native_contract.js','utf8');
+const contract=fs.readFileSync('tests/native_contract.js','utf8');
 const files=vm.runInNewContext(contract.match(/const files=(\[[^;]+\]);/)[1]);
 vm.runInThisContext(files.map(f=>fs.readFileSync(f,'utf8')).join('\n'));
 const key=m=>[m.from,m.to,m.piece,m.captured,m.promotion||0,m.flags].join(':');
@@ -58,7 +58,7 @@ sf55cDraw=function(g,ctx,key){
  }
  return originalDraw(g,ctx,key);
 };
-const fixtures=JSON.parse(require('node:zlib').gunzipSync(fs.readFileSync('benchmarks/v5_5/evidence-effort-golden.json.gz'))).positions;
+const fixtures=JSON.parse(require('node:zlib').gunzipSync(fs.readFileSync('tests/fixtures/evidence-effort-golden.json.gz'))).positions;
 const compiled=SF55C_KERNEL;
 const summarize=entries=>({depth:SF55C_LAST.depth,nodes:SF55C_LAST.nodes,entries:entries.map(row=>({uci:row.uci,score:Number.isFinite(row.score)?row.score||0:null,deep:Number.isFinite(row.deep)?row.deep||0:null,exact:!!row.exact}))});
 const strengthSummary=result=>({depth:result.depth,entries:[...result.entries].sort((a,b)=>a.uci.localeCompare(b.uci))});

@@ -12,7 +12,7 @@ Rebuild with Zig 0.14.1: set `ZIG` to its executable, then run
 module has no imports, and updates only the marked generated section. Runtime
 tables come from the shared JavaScript configuration, refreshed at each search.
 
-`node benchmark_v5_5_kernel_contract.js` checks 5,524 varied and special-rule
+`node tests/kernel_contract.js` checks 5,524 varied and special-rule
 positions, exact evaluation and move ordering, all 2,080 metadata combinations,
 material-counter restoration, and 128 complete search fixtures with both the
 compiled module and JavaScript fallback. Search scores, nodes and decisions

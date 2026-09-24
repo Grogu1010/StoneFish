@@ -9,12 +9,7 @@ on:
       - 'index.html'
       - 'test-worker.js'
       - 'build_v5_5_kernel.cjs'
-      - 'benchmark_v5_5_range.js'
-      - 'benchmark_v5_5_armx_decomposition.js'
-      - 'benchmark_armx_contract.js'
-      - 'benchmark_armx_reply_policy.js'
-      - 'benchmark_v5_5_kernel_contract.js'
-      - 'benchmark_v5_5_native_contract.js'
+      - 'tests/**'
       - 'build_v5_5_kernel.cjs'
       - 'native/**'
       - '.github/workflows/v5-5-range.yml'
@@ -44,20 +39,15 @@ jobs:
           for f in models/*.js; do node --check "$f"; done
           node --check app.js
           node --check test-worker.js
-          node --check benchmark_v5_5_range.js
-          node --check benchmark_v5_5_armx_decomposition.js
+          for f in tests/*.js; do node --check "$f"; done
       - name: Verify v5.5 kernel contract
-        run: node benchmark_v5_5_kernel_contract.js
+        run: node tests/kernel_contract.js
       - name: Verify Full ARMX contracts
         run: |
-          node benchmark_armx_contract.js
-          node benchmark_armx_reply_policy.js
-          node benchmark_v5_5_native_contract.js
+          node tests/armx_contract.js
+          node tests/armx_reply_policy.js
+          node tests/native_contract.js
       - name: Run saved-best range screen
         env:
           GAMES: '20'
-        run: node benchmark_v5_5_range.js
-      - name: Run Full ARMX decomposition diagnostic
-        env:
-          GAMES: '8'
-        run: node benchmark_v5_5_armx_decomposition.js
+        run: node tests/v5_5_range.js
