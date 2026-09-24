@@ -190,3 +190,25 @@ archive is `pace-control-style-screen-20-2026-09-24.json.gz`; it stores the
 complete records and exact candidate profile. The candidate was not promoted.
 This screen reinforces that isolated repetition/tactical weights do not control
 pace reliably, and can create a large Artemis-over-Ares sibling edge.
+
+## Reduced Full-note scale confirmation: September 24
+
+The earlier one-matchup screens suggested reducing `fullNoteScale` from 320 to
+80 could improve Artemis. With response attribution corrected and Athena/Ares
+back on their committed profiles, a complete 20-game six-pairing screen at 80
+did not confirm that result:
+
+| Pairing | W-L-D | Score | Played moves/game |
+| --- | ---: | ---: | ---: |
+| Athena vs current v5.5 | 7-11-2 | 40.0% | 52.22 |
+| Ares vs current v5.5 | 7-10-3 | 42.5% | 55.18 |
+| Artemis vs current v5.5 | 7-9-4 | 45.0% | 52.78 |
+| Ares vs Athena | 6-13-1 | 32.5% | 47.48 |
+| Artemis vs Athena | 8-10-2 | 45.0% | 45.45 |
+| Artemis vs Ares | 8-12-0 | 40.0% | 45.20 |
+
+Pace ratios were **0.990x** Athena and **1.045x** Ares. Attributed overhead
+was 1.40x, 1.35x, and 1.25x Preview (Athena/Ares/Artemis), but all strength,
+pace, and sibling-identity goals failed. The full records and exact profile are
+in `note-scale-80-screen-20-2026-09-24.json.gz`. Keep the 320 baseline; the
+prior small Artemis-only gains at 80 did not generalize to the full range.
