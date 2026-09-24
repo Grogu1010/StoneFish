@@ -103,6 +103,44 @@ function buildOverheadPositions(count){
   }
   return rows;
 }
+
+// Full-only outcome notes measure the opponent's move or response directly.
+// The value of our initiating move must not leak into the recorded response.
+{
+  const game=new Chess();
+  game.armxObservationStartPly=0;
+  armxFullSyncNotebook(game,1);
+  const ourMove=game.fastMoves().find(move=>move.from===game._sq('e2')&&move.to===game._sq('e4'));
+  if(!ourMove)throw new Error('Missing Full ARMX attribution fixture move e2e4');
+  game.fastApply(ourMove);
+  armxFullSyncNotebook(game,1);
+  const afterOurMove=armxPreviewStateSnapshot(game,1).score;
+  const reply=game.fastMoves().find(move=>move.from===game._sq('e7')&&move.to===game._sq('e5'));
+  if(!reply)throw new Error('Missing Full ARMX attribution fixture reply e7e5');
+  game.fastApply(reply);
+  const afterReply=armxPreviewStateSnapshot(game,1).score;
+  const expectedImpact=armxFullClamp(
+    (afterReply-afterOurMove)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1
+  );
+  const book=armxFullSyncNotebook(game,1);
+  const opponentMoveEffect=book.extendedEffects.pawnMove;
+  if(!opponentMoveEffect||opponentMoveEffect.weight!==1
+    ||Math.abs(opponentMoveEffect.impact/opponentMoveEffect.weight-expectedImpact)>1e-12){
+    throw new Error('Full ARMX opponent notes must attribute only the opponent move');
+  }
+  const ownReplyEffects=Object.entries(book.ourContextEffects)
+    .filter(([key])=>key.endsWith('>pawnMove')).map(([,row])=>row);
+  if(!ownReplyEffects.length||ownReplyEffects.some(row=>row.weight!==1
+    ||Math.abs(row.impact/row.weight-expectedImpact)>1e-12)){
+    throw new Error('Full ARMX context notes must attribute only the opponent reply');
+  }
+  const responseEffects=Object.values(book.responseEffects);
+  if(!responseEffects.length||responseEffects.some(row=>row.weight!==1
+    ||Math.abs(row.impact/row.weight-expectedImpact)>1e-12)){
+    throw new Error('Full ARMX response notes must attribute only the opponent reply');
+  }
+}
+
 function timeComponent(fn){
   const started=performance.now();
   const value=fn();

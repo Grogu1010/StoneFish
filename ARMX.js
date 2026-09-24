@@ -40,7 +40,7 @@ const ARMX_FULL_EXTENDED_REPLY_FEATURES = Object.freeze([
 
 const ARMX_FULL = Object.freeze({
   name: 'ARMX',
-  version: '2.0-full-notebook',
+  version: '2.1-response-attributed',
   kind: 'opponent-adaptation',
   reset: 'per-game',
 
@@ -661,6 +661,7 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
     if(!move)break;
 
     const actor=book.replay.side;
+    const startedOwnEffects=[];
     if(index>=observationStartPly){
       const features=armxFullMoveFeatures(book.replay,move);
       if(actor===-perspective){
@@ -670,11 +671,7 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
         if(extendedChosen.length){
           book.pendingExtendedEffects.push({
             features:extendedChosen,before:book.currentScore,observationId:index,
-            resolveAt:index+2,weight:0.65,
-          });
-          book.pendingExtendedEffects.push({
-            features:extendedChosen,before:book.currentScore,observationId:index,
-            resolveAt:index+4,weight:0.35,
+            resolveAt:index+1,weight:1,
           });
         }
         const stride=Math.max(1,ARMX_FULL.opportunityScanStride||1);
@@ -694,11 +691,7 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
           if(pairKeys.length){
             book.pendingResponseEffects.push({
               pairKeys,before:book.currentScore,observationId:index,
-              resolveAt:index+2,weight:0.65,
-            });
-            book.pendingResponseEffects.push({
-              pairKeys,before:book.currentScore,observationId:index,
-              resolveAt:index+4,weight:0.35,
+              resolveAt:index+1,weight:1,
             });
           }
         }else{
@@ -712,14 +705,12 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
           feature=>ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature)
         );
         if(ownExtended.length){
-          book.pendingOurExtendedEffects.push({
-            features:ownExtended,before:book.currentScore,observationId:index,
-            resolveAt:index+2,weight:0.65,
-          });
-          book.pendingOurExtendedEffects.push({
-            features:ownExtended,before:book.currentScore,observationId:index,
-            resolveAt:index+4,weight:0.35,
-          });
+          const ownEffect={
+            features:ownExtended,before:null,observationId:index,
+            resolveAt:index+2,weight:1,
+          };
+          book.pendingOurExtendedEffects.push(ownEffect);
+          startedOwnEffects.push(ownEffect);
 
           const afterContexts=armxFullStateContextsAfterMove(
             book.replay,move,book.perspective
@@ -732,14 +723,12 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
             }
           }
           if(contextPairs.length){
-            book.pendingOurContextEffects.push({
-              pairKeys:contextPairs,before:book.currentScore,observationId:index,
-              resolveAt:index+2,weight:0.65,
-            });
-            book.pendingOurContextEffects.push({
-              pairKeys:contextPairs,before:book.currentScore,observationId:index,
-              resolveAt:index+4,weight:0.35,
-            });
+            const contextEffect={
+              pairKeys:contextPairs,before:null,observationId:index,
+              resolveAt:index+2,weight:1,
+            };
+            book.pendingOurContextEffects.push(contextEffect);
+            startedOwnEffects.push(contextEffect);
           }
         }
         book.lastOurFeatures=new Set(features);
@@ -748,6 +737,7 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
 
     book.replay.fastApply(move);
     book.currentScore=armxPreviewStateSnapshot(book.replay,perspective).score;
+    for(const event of startedOwnEffects)event.before=book.currentScore;
     book.processedPlies++;
     book.lastHistoryState=state;
     armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);

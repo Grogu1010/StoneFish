@@ -98,3 +98,44 @@ finalists scored 8-12-0. Adding up to 2,000 note-earned search nodes to the
 80-scale candidate scored 8-7-5 and raised Artemis's attributed overhead to
 1.662x Preview, worse than 11-6-3 without extra nodes. All used 20 games on
 the first opening set. No behavioral experiment in this section was promoted.
+
+## Response attribution correction: September 24
+
+Full's old outcome notebook mixed the score change from our initiating move
+with the opponent's reply. Full-only effects now attribute an opponent move at
+the position immediately after that move. When learning how the opponent
+handled one of our moves, the baseline is the position immediately after our
+move, and the outcome is measured after their reply. This leaves ARMX Preview
+and the shared v5.5 evaluator untouched. The range benchmark now has a direct
+e2e4/e7e5 attribution contract for all three Full-only effect tables.
+
+Two color-balanced 20-game sets (40 games per pairing, 20 distinct openings)
+produced:
+
+| Pairing | Combined W-L-D | Score |
+| --- | ---: | ---: |
+| Athena vs current v5.5 | 13-18-9 | 43.75% |
+| Ares vs current v5.5 | 15-18-7 | 46.25% |
+| Artemis vs current v5.5 | 16-18-6 | 47.50% |
+| Ares vs Athena | 18-17-5 | 51.25% |
+| Artemis vs Athena | 19-19-2 | 50.00% |
+| Artemis vs Ares | 16-18-6 | 47.50% |
+
+The average played moves per game against current v5.5 were 56.0 Athena,
+53.05 Ares, and 53.6 Artemis. That gives pace ratios of **1.045x** and
+**0.990x**, still far from the requested 3x and 0.5x. The sibling score and
+identity gates also remain unmet. Attributed overhead was below 1.4x Preview
+for every model in each set, within the 2x cap.
+
+Compared with the first 20-game set before this correction, Artemis improved
+from 7-12-1 to 7-9-4 against current v5.5; sibling results shifted closer to
+even. On the second set, Artemis improved from 4-14-2 to 9-9-2. Athena and
+Ares lost more often to current v5.5 in the combined corrected results. These
+40-game totals are diagnostics, not release evidence.
+
+The corrected result records, source hashes, and per-game records are archived
+in `response-attributed-range-20-2026-09-24.json.gz` and
+`response-attributed-holdout-range-20-2026-09-24.json.gz`. The range
+benchmark, reset contract, reply-policy contract, and compiled-kernel contract
+pass with the correction. Keep the change on the draft for further work; no
+release gate is satisfied yet.
