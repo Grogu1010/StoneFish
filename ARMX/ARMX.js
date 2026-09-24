@@ -142,7 +142,7 @@ const ARMX_FULL = Object.freeze({
         capture:0.90,trade:1.45,rookTrade:1.10,queenTrade:2.10,minorTrade:0.95,
         simplify:1.35,check:-0.15,kingAttack:-0.35,quiet:0.85,retreat:1.45,castle:1.70,
       }),
-      baseScale:3, earlyBoost:0.00, lateBoost:-0.05, paceTargetPlies:260,
+      baseScale:3, earlyBoost:2.00, lateBoost:-0.05, paceTargetPlies:260,
       aheadThreshold:120, behindThreshold:100, advantageRange:260, minStyleLead:11,
       aheadScale:4.20, behindScale:4.60, replyCompressionWeight:0,
       aheadReplyCompressionWeight:-10.00, behindReplyCompressionWeight:-5.80, capturedValueWeight:-0.15,
