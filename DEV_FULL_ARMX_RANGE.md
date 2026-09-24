@@ -212,3 +212,20 @@ was 1.40x, 1.35x, and 1.25x Preview (Athena/Ares/Artemis), but all strength,
 pace, and sibling-identity goals failed. The full records and exact profile are
 in `note-scale-80-screen-20-2026-09-24.json.gz`. Keep the 320 baseline; the
 prior small Artemis-only gains at 80 did not generalize to the full range.
+
+## Zero Full-note vote diagnostic: September 24
+
+As a boundary diagnostic only, setting `fullNoteScale` to zero removes the
+Full-only learned-outcome vote while retaining the Full policy, response
+collection, and numeric Athena/Ares style scoring. On the same 20-game first
+opening set, this scored 10-8-2 Athena, 9-8-3 Ares, and 10-7-3 Artemis against
+current v5.5 (55%, 52.5%, and 57.5%). Sibling field scores were tightly grouped
+at 51.7% Athena, 50.8% Ares, and 52.5% Artemis. Average played moves were 53.78,
+53.30, and 54.15; ratios 0.993x Athena and 0.984x Ares. Attributed overhead
+was 1.27x, 1.19x, and 1.12x Preview.
+
+This suggests Full-only outcome voting may be reducing strength, but zero
+removes a required Full ARMX capability and barely changes style identity.
+It is not a viable release setting. Records and exact zero-scale configuration
+are archived in `note-scale-zero-screen-20-2026-09-24.json.gz`. A low, nonzero
+scale is the remaining useful check of this hypothesis.
