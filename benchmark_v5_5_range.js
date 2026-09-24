@@ -16,20 +16,23 @@ const sourceHashes=Object.fromEntries(
 );
 function bundledSource(bundle,file){
   const escaped=file.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  const match=bundle.match(new RegExp('// BEGIN SOURCE: '+escaped+'\\n([\\s\\S]*?)// END SOURCE: '+escaped));
+  const match=bundle.match(new RegExp('// BEGIN SOURCE: '+escaped+'\\r?\\n([\\s\\S]*?)// END SOURCE: '+escaped));
   if(!match)throw new Error('Missing bundled source segment: '+file);
   return match[1];
 }
 const FROZEN_CURRENT_V55_HASHES=Object.freeze({
-  'ARMX-preview.js':'9d4acb55d047d7424ce4186c31e661bdfc1c9c6c692c2326ff85a01aab645656',
-  'Stonefish_v5_5.js':'be3b78a61e79ff164ca5e9d60f9c191190ac0306a1f3da384cbd747864ea9a55',
+  'ARMX-preview.js':'15ce780a0c38c3363b27e2eee40b5ed0c32962b74a074af7d5e4ae87a3d6143f',
+  'Stonefish_v5_5.js':'ce867135cdd2462c5793565d4e310fd893763809f75cee8e8bea6814d1e66b40',
 });
 const frozenSources={
   'ARMX-preview.js':bundledSource(loadedSources[2].source,'ARMX-preview.js'),
   'Stonefish_v5_5.js':bundledSource(loadedSources[1].source,'Stonefish_v5_5.js'),
 };
 for(const [file,expected] of Object.entries(FROZEN_CURRENT_V55_HASHES)){
-  const actual=crypto.createHash('sha256').update(frozenSources[file]).digest('hex');
+  // Git checks out text with platform-specific newlines; hash canonical LF so
+  // Windows and Linux verify the same frozen source bytes.
+  const canonicalSource=frozenSources[file].replace(/\r\n/g,'\n');
+  const actual=crypto.createHash('sha256').update(canonicalSource).digest('hex');
   if(actual!==expected){
     throw new Error('Frozen current v5.5 source changed: '+file+' '+actual+' != '+expected);
   }
