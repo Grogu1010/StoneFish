@@ -165,3 +165,28 @@ are `numeric-style-experiment-20-2026-09-24.json.gz` and
 weight/eligibility scaling as a sufficient style control; the next adjustment
 needs to target measurable behavior that changes game pace, while retaining
 identical Artemis and v5.5 behavior outside Full ARMX.
+
+## Pace-control profile screen: September 24
+
+A second numeric-only experiment changed Athena's repetition/survival weights
+and opponent-tendency response, and made Ares favor forcing/capture features
+and avoid repetition more strongly. Shared search and Full policy were held
+fixed, and Artemis remained the zero-style baseline. The 20-game first-set
+screen produced:
+
+| Pairing | W-L-D | Score | Played moves/game |
+| --- | ---: | ---: | ---: |
+| Athena vs current v5.5 | 8-10-2 | 45.0% | 44.35 |
+| Ares vs current v5.5 | 8-11-1 | 42.5% | 55.15 |
+| Artemis vs current v5.5 | 7-9-4 | 45.0% | 56.23 |
+| Ares vs Athena | 9-10-1 | 47.5% | 48.98 |
+| Artemis vs Athena | 10-9-1 | 52.5% | 61.08 |
+| Artemis vs Ares | 14-5-1 | 72.5% | 52.75 |
+
+Athena's ratio fell to **0.789x** Artemis, farther from its 3x target. Ares
+remained at **0.981x**, far from 0.5x, and current-v5.5 strength and sibling
+identity gates failed. Attributed overhead remained under 1.4x Preview. The
+archive is `pace-control-style-screen-20-2026-09-24.json.gz`; it stores the
+complete records and exact candidate profile. The candidate was not promoted.
+This screen reinforces that isolated repetition/tactical weights do not control
+pace reliably, and can create a large Artemis-over-Ares sibling edge.
