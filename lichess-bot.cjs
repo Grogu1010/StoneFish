@@ -181,6 +181,20 @@ async function* ndjson(stream) {
   }
 }
 
+function challengerName(challenge) {
+  return String(
+    challenge?.challenger?.id ||
+    challenge?.challenger?.name ||
+    challenge?.challenger?.username ||
+    ''
+  ).toLowerCase();
+}
+
+function challengeIsOurs(challenge) {
+  const me = String(accountInfo?.username || accountInfo?.id || '').toLowerCase();
+  return Boolean(me && challengerName(challenge) === me);
+}
+
 function challengerIsBot(challenge) {
   return Boolean(
     challenge?.challenger?.title === 'BOT' ||
@@ -204,7 +218,13 @@ function challengeAllowed(challenge) {
 }
 
 async function acceptChallenge(challenge) {
-  if (challenge?.id && outgoingChallengeIds.has(challenge.id)) {
+  // Lichess echoes our own outgoing challenge through /api/stream/event.
+  // That echo can arrive before the POST response returns, so checking only
+  // outgoingChallengeIds is racy. Ignore any challenge whose challenger is us.
+  if (
+    challengeIsOurs(challenge) ||
+    (challenge?.id && outgoingChallengeIds.has(challenge.id))
+  ) {
     return;
   }
 
