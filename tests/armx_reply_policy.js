@@ -64,6 +64,22 @@ const forcedProfile = armxPreviewNewProfile(1);
 armxPreviewObserveQuietChoice(forcedProfile, checked, checked.fastMoves()[0]);
 assert.equal(forcedProfile.quietPolicy, null);
 
+// Candidate-specific reply metadata is published from Preview's existing
+// candidate scan. Reading it must not mutate the board or require a second scan.
+const metadataGame = play(new Chess(), 'e2e4', 'e7e5', 'g1f3', 'b8c6');
+const metadataProfile = armxPreviewNewProfile(metadataGame.side, metadataGame, 0);
+metadataProfile.opponentOpportunities.capture = 3;
+metadataProfile.opponentEffects.capture.weight = ARMX_PREVIEW.minEvidence;
+const metadataBefore = snapshot(metadataGame);
+const metadataRaw = metadataGame.fastMoves()[0];
+const metadataReport = armxPreviewCandidateReport(
+  metadataGame, { raw: metadataRaw, score: 0, deep: 0 }, metadataProfile
+);
+assert.ok(Array.isArray(metadataReport.replyFeaturesAvailable));
+assert.ok(Array.isArray(metadataReport.replyFeaturesOffered));
+assert.ok(metadataReport.replyCount > 0);
+assert.equal(snapshot(metadataGame), metadataBefore);
+
 // Callback failures unwind the board and do not leave a policy active for the
 // next call. The No-ARMX search uses the same unmodified evaluation and budget.
 const clean = new Chess(), before = snapshot(clean);

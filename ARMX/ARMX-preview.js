@@ -570,7 +570,8 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
   const features = new Set();
   const available = new Set();
   const offered = new Set();
-  if (!raw) return { features, replyOptions: { available, offered } };
+  let count = 0;
+  if (!raw) return { features, replyOptions: { available, offered, count } };
 
   const historyDepth = game.historyStack.length;
   const actor = game.side;
@@ -603,7 +604,9 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
     if (!captured && !givesCheck && !raw.promotion && !(raw.flags & (4 | 8))) features.add('quiet');
 
     if (includeReplyOptions) {
-      for (const reply of game.fastMoves()) {
+      const replies = game.fastMoves();
+      count = replies.length;
+      for (const reply of replies) {
         const replyMask = armxPreviewCheapFeatureMask(reply);
         armxPreviewAddCheapFeatureMask(available, replyMask);
         if (armxPreviewCapturedSquare(reply, game.side) === raw.to) {
@@ -615,7 +618,7 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
     while (game.historyStack.length > historyDepth) game.fastUndo();
   }
 
-  return { features, replyOptions: { available, offered } };
+  return { features, replyOptions: { available, offered, count } };
 }
 
 function armxPreviewCandidateReplyOpportunities(game, raw) {
@@ -626,7 +629,7 @@ function armxPreviewCandidateReport(game, entry, profile) {
   const includeReplyOptions = armxPreviewHasUsefulReplyEvidence(profile);
   const context = includeReplyOptions
     ? armxPreviewCandidateContext(game, entry.raw, true)
-    : { features: armxPreviewFeatureSet(game, entry.raw), replyOptions: { available: new Set(), offered: new Set() } };
+    : { features: armxPreviewFeatureSet(game, entry.raw), replyOptions: { available: new Set(), offered: new Set(), count: 0 } };
   const features = context.features;
   const replyOptions = context.replyOptions;
   let signal = 0;
@@ -710,6 +713,12 @@ function armxPreviewCandidateReport(game, entry, profile) {
     independentObservations: independentObservations.size,
     features: Array.from(features),
     reasons,
+    // Publish reply information Preview already computed so Full ARMX can
+    // condition causal decisions on candidate-specific opponent responses
+    // without performing another legal-reply scan.
+    replyFeaturesAvailable: Array.from(replyOptions.available),
+    replyFeaturesOffered: Array.from(replyOptions.offered),
+    replyCount: Number(replyOptions.count) || 0,
   };
 }
 
