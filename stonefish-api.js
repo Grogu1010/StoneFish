@@ -71,7 +71,7 @@
   async function loadDependencies() {
     for (const path of dependencies) await loadScript(path);
 
-    if (typeof global.Chess !== 'function') {
+    if (typeof Chess !== 'function') {
       throw new Error('StoneFish rules engine did not load correctly.');
     }
 
@@ -147,7 +147,7 @@
 
   async function createGame(moves) {
     await ready;
-    const game = new global.Chess();
+    const game = new Chess();
     if (moves != null) {
       if (!Array.isArray(moves)) throw new Error('createGame(moves) expects an array of moves.');
       for (const move of moves) applyMoveOrThrow(game, move);
@@ -157,8 +157,8 @@
 
   async function coerceGame(state) {
     await ready;
-    if (state instanceof global.Chess) return state;
-    if (state == null) return new global.Chess();
+    if (state instanceof Chess) return state;
+    if (state == null) return new Chess();
     if (Array.isArray(state)) return createGame(state);
     if (state && Array.isArray(state.moves)) return createGame(state.moves);
     throw new Error('State must be a Chess game returned by createGame(), an array of moves, or { moves: [...] }.');
@@ -183,7 +183,7 @@
 
   async function playMove(game, move) {
     await ready;
-    if (!(game instanceof global.Chess)) {
+    if (!(game instanceof Chess)) {
       throw new Error('playMove() expects a game returned by StonefishAPI.createGame().');
     }
     const played = applyMoveOrThrow(game, move);
@@ -198,7 +198,7 @@
 
   async function playBestMove(modelId, game) {
     await ready;
-    if (!(game instanceof global.Chess)) {
+    if (!(game instanceof Chess)) {
       throw new Error('playBestMove() expects a game returned by StonefishAPI.createGame().');
     }
     const choice = await getMove(modelId, game);
