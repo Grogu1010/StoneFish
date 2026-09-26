@@ -100,7 +100,7 @@ const ARMX_FULL = Object.freeze({
   // pay to relearn the same history a second time.
   previewDecisionGain: 1.25,
   fullDecisionGain: 1.00,
-  fullNoteScale: 320,
+  fullNoteScale: 0,
   maxNoteAdjustment: 190,
   maxHostGap: 40,
   maxDeepSacrifice: 32,
