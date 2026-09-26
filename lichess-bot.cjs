@@ -19,9 +19,10 @@ const BASE = 'https://lichess.org';
 const TOKEN = process.env.LICHESS_TOKEN;
 const MODEL = (process.env.STONEFISH_MODEL || 'v55').toLowerCase();
 
-const RATED_ONLY = /^(1|true|yes)$/i.test(process.env.RATED_ONLY || 'true');
+const RATED_ONLY = /^(1|true|yes)$/i.test(process.env.RATED_ONLY || 'false');
 const MIN_INITIAL_SECONDS = Number(process.env.MIN_INITIAL_SECONDS || 15);
 const MIN_INCREMENT_SECONDS = Number(process.env.MIN_INCREMENT_SECONDS || 0);
+const MAX_CONCURRENT_GAMES = Math.max(1, Number(process.env.MAX_CONCURRENT_GAMES || 5));
 
 // Auto-matchmaking is ON by default. StoneFish rotates through rated Standard
 // Bullet, Blitz, and Rapid games so it can establish all three Lichess ratings.
@@ -32,6 +33,7 @@ const AUTO_MATCH_RETRY_MS = Number(process.env.AUTO_MATCH_RETRY_MS || 12_000);
 
 // This does NOT terminate a long game. It only logs a warning if a game stream
 // has produced no events for a long time. Lichess's clocks still decide the game.
+// Each live game keeps its own StoneFish game object and ARMX state.
 const GAME_INACTIVITY_WARNING_MS = Number(process.env.GAME_INACTIVITY_WARNING_MS || 15 * 60_000);
 
 const AUTO_TIME_CONTROLS = [
@@ -58,7 +60,7 @@ const runningGames = new Set();
 const recentOpponents = new Map();
 
 let pendingOutgoingChallenge = null;
-let pendingIncomingChallengeId = null;
+const pendingIncomingChallenges = new Set();
 let accountInfo = null;
 let apiCooldownUntil = 0;
 
@@ -71,6 +73,14 @@ async function waitForApiCooldown() {
   if (remaining > 0) {
     await sleep(remaining);
   }
+}
+
+function occupiedGameSlots() {
+  return runningGames.size + pendingIncomingChallenges.size;
+}
+
+function hasGameCapacity() {
+  return occupiedGameSlots() < MAX_CONCURRENT_GAMES;
 }
 
 function authHeaders(extra = {}) {
@@ -203,8 +213,8 @@ async function acceptChallenge(challenge) {
     return;
   }
 
-  if (runningGames.size > 0 || pendingOutgoingChallenge || pendingIncomingChallengeId) {
-    console.log(`Declining challenge ${challenge.id}: already busy`);
+  if (!hasGameCapacity()) {
+    console.log(`Declining challenge ${challenge.id}: already at ${MAX_CONCURRENT_GAMES} games`);
     await queuedPost(
       `/api/challenge/${challenge.id}/decline`,
       new URLSearchParams({ reason: 'later' })
@@ -212,14 +222,15 @@ async function acceptChallenge(challenge) {
     return;
   }
 
-  pendingIncomingChallengeId = challenge.id;
+  pendingIncomingChallenges.add(challenge.id);
   console.log(
-    `Accepting ${challengerIsBot(challenge) ? 'bot' : 'human'} challenge ${challenge.id}`
+    `Accepting ${challenge.rated ? 'rated' : 'casual'} ${challengerIsBot(challenge) ? 'bot' : 'human'} challenge ${challenge.id} ` +
+    `(slots ${occupiedGameSlots()}/${MAX_CONCURRENT_GAMES})`
   );
   try {
     await queuedPost(`/api/challenge/${challenge.id}/accept`);
   } catch (error) {
-    pendingIncomingChallengeId = null;
+    pendingIncomingChallenges.delete(challenge.id);
     throw error;
   }
 }
@@ -240,8 +251,6 @@ async function submitMove(gameId, uci) {
 async function playGame(gameId, username) {
   if (runningGames.has(gameId)) return;
 
-  pendingOutgoingChallenge = null;
-  pendingIncomingChallengeId = null;
   runningGames.add(gameId);
 
   let game = null;
@@ -509,7 +518,7 @@ async function autoMatchLoop(username) {
     try {
       await waitForApiCooldown();
 
-      if (runningGames.size > 0 || pendingIncomingChallengeId) {
+      if (!hasGameCapacity()) {
         await sleep(3_000);
         continue;
       }
@@ -552,7 +561,7 @@ async function run() {
   console.log(`StoneFish bridge connected as ${accountInfo.username} using ${MODEL}.`);
 
   if (AUTO_MATCH) {
-    console.log('StoneFish will automatically seek rated eligible bot games and accept rated human challenges.');
+    console.log(`StoneFish will auto-seek eligible rated bot games and accept rated or casual human challenges, up to ${MAX_CONCURRENT_GAMES} games at once.`);
     autoMatchLoop(accountInfo.username).catch(error => console.error('Auto-match loop stopped:', error));
   } else {
     console.log('Auto-match disabled. Waiting for Lichess challenges...');
@@ -576,16 +585,22 @@ async function run() {
             );
             pendingOutgoingChallenge = null;
           }
-          if (pendingIncomingChallengeId && (!id || pendingIncomingChallengeId === id)) {
-            pendingIncomingChallengeId = null;
+          if (id) {
+            pendingIncomingChallenges.delete(id);
           }
           continue;
         }
 
         if (event.type === 'gameStart' && event.game?.id) {
           pendingOutgoingChallenge = null;
-          pendingIncomingChallengeId = null;
-          playGame(event.game.id, accountInfo.username).catch(error => console.error('Game runner failed:', error));
+
+          if (pendingIncomingChallenges.size > 0) {
+            const firstPending = pendingIncomingChallenges.values().next().value;
+            pendingIncomingChallenges.delete(firstPending);
+          }
+
+          playGame(event.game.id, accountInfo.username)
+            .catch(error => console.error('Game runner failed:', error));
         }
       }
     } catch (error) {
