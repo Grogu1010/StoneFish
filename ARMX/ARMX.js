@@ -416,18 +416,9 @@ function armxCausalRecordPrediction(book,legal,chosen,map){
   book.lastPredictionRank=rank;
 }
 function armxCausalAlternativeBaseline(game,legal,perspective){
-  const after=[];
-  const depth=game.historyStack.length;
-  try{
-    for(const move of legal){
-      game.fastApply(move);
-      after.push(armxPreviewStateSnapshot(game,perspective).score);
-      game.fastUndo();
-    }
-  }finally{
-    while(game.historyStack.length>depth)game.fastUndo();
-  }
-  return armxCausalMedian(after);
+  // Profiling ablation: use the pre-move state as the local expectation and
+  // rely on matched treatment/control contexts for causal separation.
+  return armxPreviewStateSnapshot(game,perspective).score;
 }
 function armxCausalUpdateRows(map,available,chosen,residual,observationId){
   for(const key of available){
