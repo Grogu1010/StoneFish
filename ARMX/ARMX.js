@@ -361,13 +361,18 @@ function armxCausalChoiceRate(row){
   return {rate:(row.choices+1)/(row.opportunities+2),evidence:row.opportunities};
 }
 function armxCausalRawEffect(row,prefix=''){
-  const cap=prefix?prefix[0].toUpperCase()+prefix.slice(1):'';
-  const tw=row?row[prefix+'TreatedWeight']:0;
-  const ti=row?row[prefix+'TreatedImpact']:0;
-  const ts=row?row[prefix+'TreatedImpactSq']:0;
-  const cw=row?row[prefix+'ControlWeight']:0;
-  const ci=row?row[prefix+'ControlImpact']:0;
-  const cs=row?row[prefix+'ControlImpactSq']:0;
+  const treatedWeightKey=prefix?prefix+'TreatedWeight':'treatedWeight';
+  const treatedImpactKey=prefix?prefix+'TreatedImpact':'treatedImpact';
+  const treatedImpactSqKey=prefix?prefix+'TreatedImpactSq':'treatedImpactSq';
+  const controlWeightKey=prefix?prefix+'ControlWeight':'controlWeight';
+  const controlImpactKey=prefix?prefix+'ControlImpact':'controlImpact';
+  const controlImpactSqKey=prefix?prefix+'ControlImpactSq':'controlImpactSq';
+  const tw=row?row[treatedWeightKey]:0;
+  const ti=row?row[treatedImpactKey]:0;
+  const ts=row?row[treatedImpactSqKey]:0;
+  const cw=row?row[controlWeightKey]:0;
+  const ci=row?row[controlImpactKey]:0;
+  const cs=row?row[controlImpactSqKey]:0;
   if(!row||tw<=0||cw<=0){
     return {value:0,evidence:0,confidence:0,treated:tw||0,control:cw||0};
   }
