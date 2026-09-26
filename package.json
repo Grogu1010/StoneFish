@@ -1,0 +1,12 @@
+{
+  "name": "stonefish-chess",
+  "private": true,
+  "version": "1.0.0",
+  "description": "StoneFish chess models and Lichess Bot API bridge",
+  "scripts": {
+    "lichess": "node lichess-bot.cjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
