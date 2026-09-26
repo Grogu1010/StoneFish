@@ -60,6 +60,7 @@ const runningGames = new Set();
 const recentOpponents = new Map();
 
 let pendingOutgoingChallenge = null;
+const outgoingChallengeIds = new Set();
 const pendingIncomingChallenges = new Set();
 let accountInfo = null;
 let apiCooldownUntil = 0;
@@ -203,6 +204,10 @@ function challengeAllowed(challenge) {
 }
 
 async function acceptChallenge(challenge) {
+  if (challenge?.id && outgoingChallengeIds.has(challenge.id)) {
+    return;
+  }
+
   const allowed = challengeAllowed(challenge);
   if (!allowed.ok) {
     console.log(`Declining challenge ${challenge.id}: ${allowed.reason}`);
@@ -442,6 +447,7 @@ async function cancelPendingOutgoing(reason = 'timeout') {
   if (!pendingOutgoingChallenge) return;
   const pending = pendingOutgoingChallenge;
   pendingOutgoingChallenge = null;
+  outgoingChallengeIds.delete(pending.id);
 
   try {
     console.log(`Cancelling challenge ${pending.id} to ${pending.username}: ${reason}`);
@@ -486,6 +492,7 @@ async function sendRatedBotChallenge(opponent, timeControl) {
       username,
       createdAt: Date.now()
     };
+    outgoingChallengeIds.add(challenge.id);
     recentOpponents.set(username.toLowerCase(), Date.now());
     console.log(`Auto-match: challenge ${challenge.id} sent to ${username}.`);
     return true;
@@ -579,15 +586,20 @@ async function run() {
 
         if (event.type === 'challengeDeclined' || event.type === 'challengeCanceled') {
           const id = event.challenge?.id;
-          if (pendingOutgoingChallenge && (!id || pendingOutgoingChallenge.id === id)) {
-            console.log(
-              `Auto-match: challenge ${pendingOutgoingChallenge.id} to ${pendingOutgoingChallenge.username} was not accepted.`
-            );
-            pendingOutgoingChallenge = null;
-          }
-          if (id) {
+
+          if (id && outgoingChallengeIds.has(id)) {
+            outgoingChallengeIds.delete(id);
+
+            if (pendingOutgoingChallenge && pendingOutgoingChallenge.id === id) {
+              console.log(
+                `Auto-match: challenge ${pendingOutgoingChallenge.id} to ${pendingOutgoingChallenge.username} was not accepted.`
+              );
+              pendingOutgoingChallenge = null;
+            }
+          } else if (id) {
             pendingIncomingChallenges.delete(id);
           }
+
           continue;
         }
 
@@ -595,6 +607,7 @@ async function run() {
           const wasOutgoing = Boolean(pendingOutgoingChallenge);
 
           if (wasOutgoing) {
+            outgoingChallengeIds.delete(pendingOutgoingChallenge.id);
             pendingOutgoingChallenge = null;
           } else if (pendingIncomingChallenges.size > 0) {
             const firstPending = pendingIncomingChallenges.values().next().value;
