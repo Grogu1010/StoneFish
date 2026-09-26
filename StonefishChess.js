@@ -8,8 +8,9 @@ const SF_ORTH_DIRS = [1, 0, -1, 0, 0, 1, 0, -1];
 const SF_ALL_DIRS = [1, 1, 1, -1, -1, 1, -1, -1, 1, 0, -1, 0, 0, 1, 0, -1];
 
 class Chess {
-  constructor() {
+  constructor(fen = null) {
     this.reset();
+    if (fen) this.load(fen);
   }
 
   reset() {
