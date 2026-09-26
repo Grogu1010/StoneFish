@@ -232,6 +232,180 @@ function armxFullMoveFeatures(game, move) {
   if ((piece===2||piece===3) && fromRank===0) features.add('development');
   return features;
 }
+
+// Lightweight causal Full-ARMX notebook.
+//
+// Causality is estimated from repeated treatment/control opportunities in the
+// real game. If a behavior was available and chosen, that observation is
+// treatment; if available and declined, it is control. Context-specific rows
+// reduce confounding without evaluating hypothetical alternative positions.
+const ARMX_CAUSAL_LITE_GAME_NOTES=new WeakMap();
+const ARMX_CAUSAL_LITE_PIECES=Object.freeze(['','Pawn','Knight','Bishop','Rook','Queen','King']);
+const ARMX_CAUSAL_LITE_FEATURES=Object.freeze([
+  'capture','trade','rookTrade','queenTrade','minorTrade','simplify',
+  'pawnPush','castle','quiet','advance','retreat','promotion',
+  'center','kingside','queenside','centralize','development',
+  'pawnMove','knightMove','bishopMove','rookMove','queenMove','kingMove',
+  'capturePawn','captureKnight','captureBishop','captureRook','captureQueen',
+  'captureWithPawn','captureWithKnight','captureWithBishop','captureWithRook','captureWithQueen',
+  'winningCapture','equalCapture','sacrificeCapture','centralPawnPush','wingPawnPush'
+]);
+function armxCausalLiteFreshRow(){
+  return {opportunities:0,choices:0,treatedN:0,treatedSum:0,treatedSq:0,
+    controlN:0,controlSum:0,controlSq:0,treatedIds:new Set(),controlIds:new Set()};
+}
+function armxCausalLiteRow(map,key){
+  let row=map.get(key);
+  if(!row){row=armxCausalLiteFreshRow();map.set(key,row);}
+  return row;
+}
+function armxCausalLiteContexts(game,perspective,snapshot=null){
+  const state=snapshot||armxPreviewStateSnapshot(game,perspective);
+  let material=0,queens=0;
+  for(const piece of game.boardState){
+    if(!piece)continue;
+    const type=Math.abs(piece);
+    if(type!==6)material+=ARMX_PREVIEW_PIECE_VALUES[type]||0;
+    if(type===5)queens++;
+  }
+  const score=Number(state.score)||0;
+  return [
+    material>=5600?'phaseOpening':material>=3200?'phaseMiddle':'phaseEnd',
+    queens?'queensOn':'queenless',
+    score>=180?'weAhead':score<=-180?'weBehind':'roughlyEqual'
+  ];
+}
+function armxCausalLiteFeatures(game,move){
+  const features=new Set(armxFullCheapMoveFeatures(move,game.side));
+  if(!move)return features;
+  const piece=move.piece||Math.abs(game.boardState[move.from]||0);
+  const captured=move.captured||0;
+  const pieceName=ARMX_CAUSAL_LITE_PIECES[piece]||'';
+  const capturedName=ARMX_CAUSAL_LITE_PIECES[captured]||'';
+  if(pieceName)features.add(pieceName.toLowerCase()+'Move');
+  if(captured){
+    if(capturedName)features.add('capture'+capturedName);
+    if(pieceName)features.add('captureWith'+pieceName);
+    const pv=ARMX_PREVIEW_PIECE_VALUES[piece]||0,cv=ARMX_PREVIEW_PIECE_VALUES[captured]||0;
+    if(cv>=pv+90)features.add('winningCapture');
+    else if(pv>=cv+180)features.add('sacrificeCapture');
+    else features.add('equalCapture');
+  }
+  if(piece===1){
+    const file=move.to&7;
+    features.add(file>=2&&file<=5?'centralPawnPush':'wingPawnPush');
+  }
+  return features;
+}
+function armxCausalLiteKeys(game,move,perspective,contexts=null){
+  const base=[...armxCausalLiteFeatures(game,move)]
+    .filter(feature=>ARMX_CAUSAL_LITE_FEATURES.includes(feature));
+  const ctx=contexts||armxCausalLiteContexts(game,perspective);
+  const keys=new Set(base);
+  for(const feature of base)for(const context of ctx)keys.add(feature+'@'+context);
+  return keys;
+}
+function armxCausalLiteNewBook(game,perspective){
+  const replay=armxFullReplayFromGameStart(game);
+  return {perspective,replay,processedPlies:0,lastHistoryState:null,
+    observationStartPly:Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)),
+    initialPositionKey:replay.fastPositionKey(),our:new Map(),opponent:new Map()};
+}
+function armxCausalLiteRecord(map,available,chosen,impact,id){
+  for(const key of available){
+    const row=armxCausalLiteRow(map,key);
+    row.opportunities++;
+    if(chosen.has(key)){
+      row.choices++;row.treatedN++;row.treatedSum+=impact;row.treatedSq+=impact*impact;row.treatedIds.add(id);
+    }else{
+      row.controlN++;row.controlSum+=impact;row.controlSq+=impact*impact;row.controlIds.add(id);
+    }
+  }
+}
+function armxCausalLiteSync(game,perspective=game.side){
+  let books=ARMX_CAUSAL_LITE_GAME_NOTES.get(game);
+  if(!books){books=new Map();ARMX_CAUSAL_LITE_GAME_NOTES.set(game,books);}
+  const history=game.historyStack||[];
+  const observationStartPly=Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0));
+  let book=books.get(perspective);
+  const changed=book&&book.processedPlies>0&&history[book.processedPlies-1]!==book.lastHistoryState;
+  const emptyChanged=book&&!history.length&&game.fastPositionKey()!==book.initialPositionKey;
+  if(!book||history.length<book.processedPlies||changed||emptyChanged||book.observationStartPly!==observationStartPly){
+    book=armxCausalLiteNewBook(game,perspective);books.set(perspective,book);
+  }
+  while(book.processedPlies<history.length){
+    const index=book.processedPlies,state=history[index],move=state&&state.move;
+    if(!move)break;
+    if(index>=observationStartPly){
+      const legal=book.replay.fastMoves();
+      if(legal.length>1){
+        const before=armxPreviewStateSnapshot(book.replay,perspective);
+        const contexts=armxCausalLiteContexts(book.replay,perspective,before);
+        const chosen=armxCausalLiteKeys(book.replay,move,perspective,contexts);
+        const available=new Set();
+        for(const option of legal){
+          for(const key of armxCausalLiteKeys(book.replay,option,perspective,contexts))available.add(key);
+        }
+        book.replay.fastApply(move);
+        const after=armxPreviewStateSnapshot(book.replay,perspective);
+        book.replay.fastUndo();
+        const impact=armxFullClamp((after.score-before.score)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
+        armxCausalLiteRecord(
+          book.replay.side===perspective?book.our:book.opponent,
+          available,chosen,impact,index
+        );
+      }
+    }
+    book.replay.fastApply(move);
+    book.processedPlies++;
+    book.lastHistoryState=state;
+  }
+  return book;
+}
+function armxCausalLiteEffect(row){
+  if(!row||row.treatedN<1||row.controlN<1)return {value:0,confidence:0,evidence:0};
+  const mt=row.treatedSum/row.treatedN,mc=row.controlSum/row.controlN;
+  const vt=Math.max(0,row.treatedSq/row.treatedN-mt*mt);
+  const vc=Math.max(0,row.controlSq/row.controlN-mc*mc);
+  const se=Math.sqrt(vt/row.treatedN+vc/row.controlN);
+  const balanced=2*row.treatedN*row.controlN/(row.treatedN+row.controlN);
+  const independent=Math.min(row.treatedIds.size,row.controlIds.size);
+  const evidence=Math.min(balanced,independent);
+  const shrink=evidence/(evidence+3);
+  const separation=Math.abs(mt-mc);
+  const confidence=armxFullClamp(shrink*separation/(separation+se+0.10),0,1);
+  return {value:armxFullClamp((mt-mc)*shrink,-1,1),confidence,evidence,
+    treated:row.treatedN,control:row.controlN,treatedMean:mt,controlMean:mc,se};
+}
+function armxCausalLiteCandidate(game,entry,book){
+  const contexts=armxCausalLiteContexts(game,book.perspective);
+  const keys=armxCausalLiteKeys(game,entry.raw,book.perspective,contexts);
+  const rows=[];
+  for(const key of keys){
+    const effect=armxCausalLiteEffect(book.our.get(key));
+    if(effect.confidence>0)rows.push({key,...effect});
+  }
+  rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
+  const best=rows.slice(0,4);
+  let sum=0,w=0;
+  for(const row of best){sum+=row.value*row.confidence;w+=row.confidence;}
+  return {signal:w?sum/w:0,confidence:w?Math.min(1,w/best.length):0,
+    evidence:best.reduce((s,r)=>s+r.evidence,0),effects:best};
+}
+function armxCausalLiteSummary(book){
+  const rows=[];
+  for(const [key,row] of book.our){
+    const e=armxCausalLiteEffect(row);
+    if(e.confidence>0)rows.push({actor:'our',key,...e});
+  }
+  for(const [key,row] of book.opponent){
+    const e=armxCausalLiteEffect(row);
+    if(e.confidence>0)rows.push({actor:'opponent',key,...e});
+  }
+  rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
+  return rows.slice(0,16);
+}
+
 function armxFullCheapMoveFeatures(move, side) {
   const features = new Set(armxPreviewCheapFeatureSet(move));
   if (!move) return features;
@@ -1575,11 +1749,13 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
   const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
   const baseReports=candidates.map(entry=>armxPreviewCandidateReport(game,entry,profile));
+  const causalLite=armxCausalLiteSync(game,perspective);
   const hostBest=candidates[0];
   const legacyStyleBook=style==='artemis'?null:armxFullSyncNotebook(game,perspective,profile);
   const reports=baseReports.map((base,index)=>{
     const entry=candidates[index];
     const adjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
+    const causal=armxCausalLiteCandidate(game,entry,causalLite);
     const response={
       contextFeatures:Array.isArray(base.features)?base.features:[],
       evidence:Number(base.evidence)||0,
@@ -1609,7 +1785,9 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       independentObservations:Number(base.independentObservations)||0,
       previewReport:base,
       previewAdjustment:adjustment,
-      noteAdjustment:0,noteConfidence:0,learnedSignal:0,
+      causal,
+      noteAdjustment:0,noteConfidence:Number(causal.confidence)||0,
+      learnedSignal:Number(causal.signal)||0,
       adaptiveAdjustment:adjustment,
       styleSignal:Number(styleResult.signal)||0,
       styleScale:Number(styleResult.scale)||0,
@@ -1670,6 +1848,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     predictionSurprise:profile.quietPolicy&&profile.quietPolicy.qualityWeight
       ?Math.max(0,-profile.quietPolicy.qualitySum/profile.quietPolicy.qualityWeight):0,
     notes:armxPreviewProfileNotes(profile),
+    causal:armxCausalLiteSummary(causalLite),
     reports,
     winner:winner.entry,
   };
