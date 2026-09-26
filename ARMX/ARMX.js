@@ -332,6 +332,10 @@ function armxCausalFreshRow(){
     opportunities:0,choices:0,
     treatedWeight:0,treatedImpact:0,treatedImpactSq:0,
     controlWeight:0,controlImpact:0,controlImpactSq:0,
+    shortTreatedWeight:0,shortTreatedImpact:0,shortTreatedImpactSq:0,
+    shortControlWeight:0,shortControlImpact:0,shortControlImpactSq:0,
+    longTreatedWeight:0,longTreatedImpact:0,longTreatedImpactSq:0,
+    longControlWeight:0,longControlImpact:0,longControlImpactSq:0,
     treatedObservations:new Set(),controlObservations:new Set()
   };
 }
@@ -344,6 +348,7 @@ function armxCausalNewBook(perspective,game){
     our:new Map(),opponent:new Map(),
     predictionQualitySum:0,predictionQualityWeight:0,predictionCount:0,
     lastPredictionProbability:0,lastPredictionRank:0,
+    pendingTrajectories:[],
   };
 }
 function armxCausalRow(map,key){
@@ -355,15 +360,27 @@ function armxCausalChoiceRate(row){
   if(!row||!row.opportunities)return {rate:0.5,evidence:0};
   return {rate:(row.choices+1)/(row.opportunities+2),evidence:row.opportunities};
 }
-function armxCausalEffect(row){
-  if(!row||row.treatedWeight<=0||row.controlWeight<=0){
-    return {value:0,evidence:0,confidence:0,treated:row?row.treatedWeight:0,control:row?row.controlWeight:0};
+function armxCausalRawEffect(row,prefix=''){
+  const treatedWeightKey=prefix?prefix+'TreatedWeight':'treatedWeight';
+  const treatedImpactKey=prefix?prefix+'TreatedImpact':'treatedImpact';
+  const treatedImpactSqKey=prefix?prefix+'TreatedImpactSq':'treatedImpactSq';
+  const controlWeightKey=prefix?prefix+'ControlWeight':'controlWeight';
+  const controlImpactKey=prefix?prefix+'ControlImpact':'controlImpact';
+  const controlImpactSqKey=prefix?prefix+'ControlImpactSq':'controlImpactSq';
+  const tw=row?row[treatedWeightKey]:0;
+  const ti=row?row[treatedImpactKey]:0;
+  const ts=row?row[treatedImpactSqKey]:0;
+  const cw=row?row[controlWeightKey]:0;
+  const ci=row?row[controlImpactKey]:0;
+  const cs=row?row[controlImpactSqKey]:0;
+  if(!row||tw<=0||cw<=0){
+    return {value:0,evidence:0,confidence:0,treated:tw||0,control:cw||0};
   }
-  const mt=row.treatedImpact/row.treatedWeight,mc=row.controlImpact/row.controlWeight;
-  const vt=Math.max(0,row.treatedImpactSq/row.treatedWeight-mt*mt);
-  const vc=Math.max(0,row.controlImpactSq/row.controlWeight-mc*mc);
-  const se=Math.sqrt(vt/Math.max(1,row.treatedWeight)+vc/Math.max(1,row.controlWeight));
-  const evidence=2*row.treatedWeight*row.controlWeight/(row.treatedWeight+row.controlWeight);
+  const mt=ti/tw,mc=ci/cw;
+  const vt=Math.max(0,ts/tw-mt*mt);
+  const vc=Math.max(0,cs/cw-mc*mc);
+  const se=Math.sqrt(vt/Math.max(1,tw)+vc/Math.max(1,cw));
+  const evidence=2*tw*cw/(tw+cw);
   const independent=Math.min(row.treatedObservations.size,row.controlObservations.size);
   const evidenceConfidence=armxFullClamp(evidence/(evidence+4),0,1)
     *armxFullClamp(independent/4,0,1);
@@ -372,8 +389,38 @@ function armxCausalEffect(row){
   return {
     value:armxFullClamp(mt-mc,-1,1),evidence,
     confidence:armxFullClamp(evidenceConfidence*signalConfidence,0,1),
-    treated:row.treatedWeight,control:row.controlWeight,
-    treatedMean:mt,controlMean:mc,se
+    treated:tw,control:cw,treatedMean:mt,controlMean:mc,se
+  };
+}
+function armxCausalEffect(row){
+  const immediate=armxCausalRawEffect(row,'');
+  if(!immediate.evidence)return {...immediate,delayedEvidence:0,immediate,short:null,long:null};
+  const short=armxCausalRawEffect(row,'short');
+  const long=armxCausalRawEffect(row,'long');
+  const parts=[{row:immediate,weight:0.25}];
+  if(short.evidence>0)parts.push({row:short,weight:0.45});
+  if(long.evidence>0)parts.push({row:long,weight:0.30});
+  const totalWeight=parts.reduce((s,p)=>s+p.weight,0)||1;
+  const value=parts.reduce((s,p)=>s+p.row.value*p.weight,0)/totalWeight;
+  const baseConfidence=parts.reduce((s,p)=>s+p.row.confidence*p.weight,0)/totalWeight;
+  const delayedRows=[short,long].filter(r=>r.evidence>0);
+  const delayedValue=delayedRows.length
+    ?delayedRows.reduce((s,r)=>s+r.value*r.evidence,0)
+      /delayedRows.reduce((s,r)=>s+r.evidence,0):0;
+  const agreement=!delayedRows.length||Math.abs(immediate.value)<0.02||Math.abs(delayedValue)<0.02
+    ?0.65:(Math.sign(immediate.value)===Math.sign(delayedValue)?1:0.30);
+  const delayedEvidence=short.evidence+long.evidence;
+  // Until a pattern survives at least one future horizon it is descriptive,
+  // not causal enough to receive normal trust.
+  const horizonMaturity=delayedEvidence>0?1:0.15;
+  return {
+    value:armxFullClamp(value,-1,1),
+    evidence:immediate.evidence,
+    delayedEvidence,
+    confidence:armxFullClamp(baseConfidence*agreement*horizonMaturity,0,1),
+    treated:immediate.treated,control:immediate.control,
+    treatedMean:immediate.treatedMean,controlMean:immediate.controlMean,se:immediate.se,
+    immediate,short,long,delayedValue,agreement
   };
 }
 function armxCausalPredictionReliability(book){
@@ -448,6 +495,61 @@ function armxCausalUpdateRows(map,available,chosen,residual,observationId){
     }
   }
 }
+const ARMX_CAUSAL_SHORT_PLIES=2;
+const ARMX_CAUSAL_LONG_PLIES=4;
+function armxCausalRecordHorizon(map,available,chosen,impact,weight,observationId,prefix){
+  const normalized=armxFullClamp(impact/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
+  for(const key of available){
+    const row=armxCausalRow(map,key);
+    const selected=chosen.has(key);
+    const side=selected?'Treated':'Control';
+    const wKey=prefix+side+'Weight';
+    const iKey=prefix+side+'Impact';
+    const qKey=prefix+side+'ImpactSq';
+    row[wKey]+=weight;
+    row[iKey]+=normalized*weight;
+    row[qKey]+=normalized*normalized*weight;
+  }
+}
+function armxCausalTrajectoryWeight(maxStep){
+  // A very large intervening jump is more likely to contain an independent
+  // tactic/blunder, so it gets less causal credit without being discarded.
+  if(maxStep<=120)return 1;
+  return armxFullClamp(1/(1+(maxStep-120)/400),0.25,1);
+}
+function armxCausalQueueTrajectory(book,map,available,chosen,afterScore,index){
+  book.pendingTrajectories.push({
+    map,available:[...available],chosen:new Set(chosen),
+    afterScore,lastScore:afterScore,maxStep:0,
+    observationId:index,shortAt:index+ARMX_CAUSAL_SHORT_PLIES,
+    longAt:index+ARMX_CAUSAL_LONG_PLIES,shortDone:false,
+  });
+}
+function armxCausalResolveTrajectories(book,currentPly,currentScore){
+  if(!book.pendingTrajectories.length)return;
+  const keep=[];
+  for(const event of book.pendingTrajectories){
+    event.maxStep=Math.max(event.maxStep,Math.abs(currentScore-event.lastScore));
+    event.lastScore=currentScore;
+    if(!event.shortDone&&currentPly>=event.shortAt){
+      armxCausalRecordHorizon(
+        event.map,event.available,event.chosen,currentScore-event.afterScore,
+        armxCausalTrajectoryWeight(event.maxStep),event.observationId,'short'
+      );
+      event.shortDone=true;
+    }
+    if(currentPly>=event.longAt){
+      armxCausalRecordHorizon(
+        event.map,event.available,event.chosen,currentScore-event.afterScore,
+        armxCausalTrajectoryWeight(event.maxStep),event.observationId,'long'
+      );
+      continue;
+    }
+    keep.push(event);
+  }
+  book.pendingTrajectories=keep;
+}
+
 function armxCausalSync(game,perspective=game.side){
   let books=ARMX_CAUSAL_GAME_NOTES.get(game);
   if(!books){books=new Map();ARMX_CAUSAL_GAME_NOTES.set(game,books);}
@@ -462,6 +564,8 @@ function armxCausalSync(game,perspective=game.side){
   }
   while(book.processedPlies<history.length){
     const index=book.processedPlies,state=history[index],move=state&&state.move;
+    const trajectoryScore=armxPreviewStateSnapshot(book.replay,perspective).score;
+    armxCausalResolveTrajectories(book,index,trajectoryScore);
     if(!move)break;
     const actor=book.replay.side;
     if(index>=observationStartPly){
@@ -481,6 +585,7 @@ function armxCausalSync(game,perspective=game.side){
         if(book.replay.historyStack.length!==beforeDepth)throw new Error('ARMX causal replay leak');
         const residual=armxFullClamp((actualAfter-baselineAfter)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
         armxCausalUpdateRows(map,available,chosen,residual,index);
+        armxCausalQueueTrajectory(book,map,available,chosen,actualAfter,index);
       }
     }
     book.replay.fastApply(move);
@@ -514,10 +619,11 @@ function armxCausalCandidateReport(game,entry,book){
   if(ownWeight)ownValue/=ownWeight;
   const ownConfidence=ownRows.length
     ?Math.min(1,ownRows.reduce((s,r)=>s+r.confidence,0)/ownRows.length):0;
+  const delayedEvidence=ownRows.reduce((s,r)=>s+(Number(r.delayedEvidence)||0),0);
   return {
     signal:ownValue,confidence:ownConfidence,reliability:armxCausalPredictionReliability(book),
     ownValue,replyValue:0,ownConfidence,replyConfidence:0,replyTrustedConfidence:0,
-    evidence:ownRows.reduce((s,r)=>s+r.evidence,0),
+    evidence:ownRows.reduce((s,r)=>s+r.evidence,0),delayedEvidence,
     ownEffects:ownRows,predictedReplies:[],
     predictionCount:book.predictionCount,
     predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
@@ -1979,15 +2085,20 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       Number(report.causal&&report.causal.evidence)||0,
       Number(provisional.causal&&provisional.causal.evidence)||0
     );
+    const causalDelayedEvidence=Math.max(
+      Number(report.causal&&report.causal.delayedEvidence)||0,
+      Number(provisional.causal&&provisional.causal.delayedEvidence)||0
+    );
     const causalAllowed=observedPlies>=ARMX_CAUSAL_MIN_OBSERVED_PLIES
       &&causalConfidence>=ARMX_CAUSAL_MIN_CONFIDENCE
       &&causalSignal>=ARMX_CAUSAL_MIN_SIGNAL
-      &&causalEvidence>=0.8;
+      &&causalEvidence>=0.8&&causalDelayedEvidence>=0.5;
     const causalLead=causalAllowed
       ?(Number(report.noteAdjustment)||0)-(Number(provisional.noteAdjustment)||0):0;
     report.fullNoteGate={
       allowed:causalAllowed,
       confidence:causalConfidence,signal:causalSignal,evidence:causalEvidence,
+      delayedEvidence:causalDelayedEvidence,
     };
     report.noteLead=causalLead;
 
