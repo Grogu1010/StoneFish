@@ -1,3 +1,4 @@
+// Benchmark-only current-main baseline marker (2026-09-26).
 // ARMX — full per-game opponent adaptation for the Stonefish v5.5 range.
 //
 // Full ARMX has one job: observe this opponent, keep better notes than Preview,
