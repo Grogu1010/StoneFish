@@ -204,12 +204,33 @@ function review(game) {
 // The causal notebook must also reset with the game independently of v5.5.
 {
   assert.equal(armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 0 }), 0);
-  assert.equal(armxCausalDecisionScale({ reliability: 0 }), ARMX_CAUSAL_DECISION_SCALE);
-  assert.equal(armxCausalDecisionScale({ reliability: 1 }), ARMX_CAUSAL_DECISION_SCALE_MAX);
-  const mediumScale = armxCausalDecisionScale({ reliability: 0.5 });
-  assert.ok(mediumScale > ARMX_CAUSAL_DECISION_SCALE && mediumScale < ARMX_CAUSAL_DECISION_SCALE_MAX);
   const trusted = armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 1 });
   assert.ok(trusted > 0 && trusted <= 70);
+
+  // Tactical/exchange prediction is scored before learning the observed move
+  // and counts correlated reply labels as one quality observation per ply.
+  const broadBook = armxCausalNewBook(1, new Chess());
+  const capturePlies = new Set(Array.from({ length: 12 }, (_, i) => i));
+  const broadProfile = {
+    opponentOpportunityPlies: {
+      capture: capturePlies,
+      trade: new Set(),
+      rookTrade: new Set(),
+      queenTrade: new Set(),
+      simplify: new Set(),
+    },
+  };
+  const captureMove = { from: 1, to: 18, piece: 2, captured: 1, flags: 0, promotion: 0 };
+  const firstBroad = armxCausalRecordBroadPrediction(broadBook, broadProfile, captureMove, 0);
+  assert.equal(firstBroad.featureCount, 1);
+  assert.ok(Math.abs(firstBroad.gain) < 1e-12);
+  for (let i = 1; i < 12; i++) {
+    armxCausalRecordBroadPrediction(broadBook, broadProfile, captureMove, i);
+  }
+  assert.equal(broadBook.broadPredictionCount, 12);
+  assert.ok(armxCausalBroadPredictionReliability(broadBook) > 0);
+  assert.equal(broadBook.broadPredictionRows.capture.opportunities, 12);
+  assert.equal(broadBook.broadPredictionRows.capture.choices, 12);
 
   const game = play(new Chess(),
     'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
@@ -223,6 +244,8 @@ function review(game) {
   assert.ok(learned.our.size > 0);
   assert.equal(learned.opponent.size, 0);
   assert.equal(learned.predictionCount, 0);
+  assert.ok(Number.isFinite(learned.broadPredictionQualitySum));
+  assert.ok(learned.broadPredictionCount >= 0);
   assert.equal(
     armxCausalPredictionReliability(learned, { quietPolicy: { qualityWeight: 8, qualitySum: -8 } }),
     0
@@ -237,6 +260,8 @@ function review(game) {
   assert.notEqual(fresh, learned);
   assert.equal(fresh.processedPlies, 0);
   assert.equal(fresh.predictionCount, 0);
+  assert.equal(fresh.broadPredictionCount, 0);
+  assert.equal(fresh.broadPredictionQualityWeight, 0);
 }
 
 console.log('ARMX_CONTRACT passed: per-round reset, side isolation, undo, opening exclusion, attribution, evidence, board purity');

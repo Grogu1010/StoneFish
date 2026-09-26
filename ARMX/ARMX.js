@@ -350,6 +350,9 @@ function armxCausalNewBook(perspective,game){
     our:new Map(),opponent:new Map(),
     predictionQualitySum:0,predictionQualityWeight:0,predictionCount:0,
     lastPredictionProbability:0,lastPredictionRank:0,
+    broadPredictionRows:Object.create(null),
+    broadPredictionQualitySum:0,broadPredictionQualityWeight:0,broadPredictionCount:0,
+    lastBroadPredictionGain:0,
     pendingTrajectories:[],
   };
 }
@@ -425,22 +428,70 @@ function armxCausalEffect(row){
     immediate,short,long,delayedValue,agreement
   };
 }
+function armxCausalReliabilityFromQuality(total,n){
+  if(!(Number(n)>0))return 0;
+  const mean=(Number(total)||0)/Number(n);
+  const maturity=armxFullClamp(Number(n)/8,0,1);
+  // Zero means the reference prior. Positive log gain earns trust; negative
+  // prediction quality actively suppresses Full-only influence.
+  return maturity*armxFullClamp((mean+0.05)/0.65,0,1);
+}
 function armxCausalPredictionReliability(book,previewProfile=null){
   // Preview is the live opponent-prediction substrate. Reuse its strictly
-  // pre-move quality ledger instead of rebuilding a second opponent predictor
-  // inside Full's causal notebook.
+  // pre-move quiet-choice quality ledger for the live Full trust gate.
   const previewModel=previewProfile&&previewProfile.quietPolicy;
   const n=previewModel&&Number(previewModel.qualityWeight)>0
     ?Number(previewModel.qualityWeight)
     :Number(book&&book.predictionQualityWeight)||0;
-  if(!n)return 0;
   const total=previewModel&&Number(previewModel.qualityWeight)>0
     ?Number(previewModel.qualitySum)||0:Number(book&&book.predictionQualitySum)||0;
-  const mean=total/n;
-  const maturity=armxFullClamp(n/8,0,1);
-  // Zero means uniform prediction. Positive log gain earns trust; negative
-  // prediction quality actively suppresses Full-only influence.
-  return maturity*armxFullClamp((mean+0.05)/0.65,0,1);
+  return armxCausalReliabilityFromQuality(total,n);
+}
+function armxCausalBroadPredictionReliability(book){
+  return armxCausalReliabilityFromQuality(
+    book&&book.broadPredictionQualitySum,
+    book&&book.broadPredictionQualityWeight
+  );
+}
+function armxCausalRecordBroadPrediction(book,previewProfile,move,plyIndex){
+  if(!book||!previewProfile||!move)return null;
+  const opportunityPlies=previewProfile.opponentOpportunityPlies||{};
+  const chosen=armxPreviewCheapFeatureSet(move);
+  const pending=[];
+  let gain=0,featureCount=0;
+  for(const feature of ARMX_PREVIEW_REPLY_FEATURES){
+    const plies=opportunityPlies[feature];
+    if(!plies||typeof plies.has!=='function'||!plies.has(plyIndex))continue;
+    let row=book.broadPredictionRows[feature];
+    if(!row){
+      row={opportunities:0,choices:0};
+      book.broadPredictionRows[feature]=row;
+    }
+    const probability=(row.choices+1)/(row.opportunities+2);
+    const selected=chosen.has(feature);
+    const outcomeProbability=selected?probability:1-probability;
+    gain+=Math.log(Math.max(1e-9,2*outcomeProbability));
+    featureCount++;
+    pending.push({row,selected});
+  }
+  if(!featureCount)return null;
+
+  // One quality sample per opponent ply prevents capture + trade + simplify
+  // labels on the same move from manufacturing extra prediction confidence.
+  const meanGain=gain/featureCount;
+  const decay=armxFullClamp(Number(ARMX_PREVIEW.predictionQualityDecay)||0.9,0,1);
+  book.broadPredictionQualitySum=book.broadPredictionQualitySum*decay+meanGain;
+  book.broadPredictionQualityWeight=book.broadPredictionQualityWeight*decay+1;
+  book.broadPredictionCount++;
+  book.lastBroadPredictionGain=meanGain;
+
+  // Update only after scoring the observed choice: no current/future choice is
+  // allowed to improve the probability assigned to itself.
+  for(const item of pending){
+    item.row.opportunities++;
+    if(item.selected)item.row.choices++;
+  }
+  return {gain:meanGain,featureCount};
 }
 function armxCausalMovePreference(book,map,game,move,knownKeys=null){
   const keys=knownKeys||armxCausalKeys(game,move,book.perspective);
@@ -595,7 +646,7 @@ function armxCausalResolveTrajectories(book,currentPly,currentScore){
   book.pendingTrajectories=keep;
 }
 
-function armxCausalSync(game,perspective=game.side){
+function armxCausalSync(game,perspective=game.side,previewProfile=null){
   let books=ARMX_CAUSAL_GAME_NOTES.get(game);
   if(!books){books=new Map();ARMX_CAUSAL_GAME_NOTES.set(game,books);}
   const history=game.historyStack||[];
@@ -616,8 +667,14 @@ function armxCausalSync(game,perspective=game.side){
     const trajectoryScore=needsTrajectoryScore
       ?armxPreviewStateSnapshot(book.replay,perspective).score:0;
     if(book.pendingTrajectories.length)armxCausalResolveTrajectories(book,index,trajectoryScore);
-    // Preview already owns opponent prediction/opportunity learning. Full's
-    // causal ledger only needs treatment/control outcomes for our candidate
+    // Reuse Preview's already-recorded legal opportunity plies to score
+    // opponent tactical/exchange choices without generating legal moves again.
+    // This broader prediction ledger is diagnostic-only until it demonstrates
+    // better calibration than the live quiet-choice reliability.
+    if(index>=observationStartPly&&actor===-perspective&&previewProfile){
+      armxCausalRecordBroadPrediction(book,previewProfile,move,index);
+    }
+    // Full's causal treatment/control ledger still only needs our candidate
     // plan types, avoiding a second full legal-move scan on opponent plies.
     if(index>=observationStartPly&&actor===perspective){
       const legal=book.replay.fastMoves();
@@ -692,11 +749,15 @@ function armxCausalCandidateReport(
   return {
     signal:ownValue,confidence:ownConfidence,
     reliability:armxCausalPredictionReliability(book,previewProfile),
+    broadPredictionReliability:armxCausalBroadPredictionReliability(book),
     ownValue,replyValue:0,ownConfidence,replyConfidence:0,replyTrustedConfidence:0,
     evidence:ownRows.reduce((s,r)=>s+r.evidence,0),delayedEvidence,
     ownEffects:ownRows,predictedReplies:[],
     predictionCount:book.predictionCount,
     predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
+    broadPredictionCount:book.broadPredictionCount,
+    broadPredictionMeanGain:book.broadPredictionQualityWeight
+      ?book.broadPredictionQualitySum/book.broadPredictionQualityWeight:0,
   };
 }
 function armxCausalSummary(book,previewProfile=null,includeEffects=false,effectCache=null){
@@ -722,8 +783,13 @@ function armxCausalSummary(book,previewProfile=null,includeEffects=false,effectC
   return {
     version:ARMX_CAUSAL_FEATURE_VERSION,
     reliability:armxCausalPredictionReliability(book,previewProfile),
+    broadPredictionReliability:armxCausalBroadPredictionReliability(book),
     predictionCount:book.predictionCount,
     predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
+    broadPredictionCount:book.broadPredictionCount,
+    broadPredictionMeanGain:book.broadPredictionQualityWeight
+      ?book.broadPredictionQualitySum/book.broadPredictionQualityWeight:0,
+    lastBroadPredictionGain:book.lastBroadPredictionGain,
     lastPredictionProbability:book.lastPredictionProbability,
     lastPredictionRank:book.lastPredictionRank,
     effects,
@@ -2055,7 +2121,6 @@ function armxFullLast(style='artemis'){
 // ---------------------------------------------------------------------------
 const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
 const ARMX_CAUSAL_DECISION_SCALE=202;
-const ARMX_CAUSAL_DECISION_SCALE_MAX=320;
 const ARMX_CAUSAL_MIN_CONFIDENCE=0.04;
 const ARMX_CAUSAL_MIN_SIGNAL=0.15;
 // Prediction quality is part of Full ARMX's trust contract. A model that does
@@ -2069,17 +2134,9 @@ function armxCausalDecisionTrust(causal){
   const reliability=armxFullClamp(Number(causal&&causal.reliability)||0,0,1);
   return confidence*reliability;
 }
-function armxCausalDecisionScale(causal){
-  const reliability=armxFullClamp(Number(causal&&causal.reliability)||0,0,1);
-  // Keep the proven 202 scale when prediction quality is weak. Only highly
-  // reliable opponent models earn extra causal decisiveness, rising smoothly
-  // to the historical 320 ceiling instead of giving every note a blanket boost.
-  return ARMX_CAUSAL_DECISION_SCALE
-    +(ARMX_CAUSAL_DECISION_SCALE_MAX-ARMX_CAUSAL_DECISION_SCALE)*reliability*reliability;
-}
 function armxCausalDecisionAdjustment(causal){
   return armxFullClamp(
-    (Number(causal&&causal.signal)||0)*armxCausalDecisionTrust(causal)*armxCausalDecisionScale(causal),
+    (Number(causal&&causal.signal)||0)*armxCausalDecisionTrust(causal)*ARMX_CAUSAL_DECISION_SCALE,
     -70,70
   );
 }
@@ -2103,7 +2160,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
   const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
   const baseReports=candidates.map(entry=>armxPreviewCandidateReport(game,entry,profile));
-  const causalBook=armxCausalSync(game,perspective);
+  const causalBook=armxCausalSync(game,perspective,profile);
   const causalContexts=armxCausalContexts(game,perspective);
   const causalEffectCache=new Map();
   const hostBest=candidates[0];
