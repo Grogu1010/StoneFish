@@ -500,6 +500,8 @@ function armxCausalTopEffects(map,keys,limit=4){
   return rows.slice(0,limit);
 }
 function armxCausalCandidateReport(game,entry,book){
+  // Profiling ablation: retain causal evidence for our own plan type but skip
+  // candidate-specific opponent-reply enumeration. Zero voting power remains.
   const ownKeys=armxCausalKeys(game,entry.raw,book.perspective);
   const ownRows=armxCausalTopEffects(book.our,ownKeys,4);
   let ownValue=0,ownWeight=0;
@@ -507,46 +509,13 @@ function armxCausalCandidateReport(game,entry,book){
     ownValue+=row.value*row.confidence;ownWeight+=row.confidence;
   }
   if(ownWeight)ownValue/=ownWeight;
-
-  const depth=game.historyStack.length;
-  let replies=[],replyRows=[];
-  try{
-    game.fastApply(entry.raw);
-    replies=game.fastMoves();
-    if(replies.length){
-      const logits=replies.map(move=>armxCausalMovePreference(book,book.opponent,game,move));
-      const max=Math.max(...logits),weights=logits.map(x=>Math.exp(x-max));
-      const total=weights.reduce((a,b)=>a+b,0)||1;
-      replyRows=replies.map((move,i)=>{
-        const keys=armxCausalKeys(game,move,book.perspective);
-        const effects=armxCausalTopEffects(book.opponent,keys,3);
-        let value=0,w=0;
-        for(const row of effects){value+=row.value*row.confidence;w+=row.confidence;}
-        return {probability:weights[i]/total,value:w?value/w:0,confidence:w?Math.min(1,w/effects.length):0,effects};
-      });
-    }
-  }finally{
-    while(game.historyStack.length>depth)game.fastUndo();
-  }
-  let replyValue=0,replyConfidence=0;
-  for(const row of replyRows){
-    replyValue+=row.probability*row.value*row.confidence;
-    replyConfidence+=row.probability*row.confidence;
-  }
-  const ownConfidence=ownRows.length?Math.min(1,ownRows.reduce((s,r)=>s+r.confidence,0)/ownRows.length):0;
-  const reliability=armxCausalPredictionReliability(book);
-  // "What has worked for us" is causal evidence in its own right and must not
-  // disappear merely because exact-reply prediction is still immature. Reply
-  // exploitation, however, is explicitly gated by demonstrated prediction gain.
-  const replyTrustedConfidence=replyConfidence*reliability;
-  const confidence=armxFullClamp(0.65*ownConfidence+0.35*replyTrustedConfidence,0,1);
-  const signal=0.62*ownValue+0.38*replyValue*reliability;
+  const ownConfidence=ownRows.length
+    ?Math.min(1,ownRows.reduce((s,r)=>s+r.confidence,0)/ownRows.length):0;
   return {
-    signal,confidence,reliability,ownValue,replyValue,ownConfidence,replyConfidence,replyTrustedConfidence,
-    evidence:ownRows.reduce((s,r)=>s+r.evidence,0)
-      +replyRows.reduce((s,row)=>s+row.effects.reduce((a,e)=>a+e.evidence,0)*row.probability,0),
-    ownEffects:ownRows,
-    predictedReplies:replyRows,
+    signal:ownValue,confidence:ownConfidence,reliability:armxCausalPredictionReliability(book),
+    ownValue,replyValue:0,ownConfidence,replyConfidence:0,replyTrustedConfidence:0,
+    evidence:ownRows.reduce((s,r)=>s+r.evidence,0),
+    ownEffects:ownRows,predictedReplies:[],
     predictionCount:book.predictionCount,
     predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
   };
