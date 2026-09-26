@@ -165,6 +165,31 @@ function review(game) {
   assert.equal(snapshot(game), before);
 }
 
+// Cold-sync optimization must be mathematically transparent: cached
+// position contexts produce identical causal keys, and the baseline helper
+// returns the chosen move's already-computed score without disturbing the board.
+{
+  const game = play(new Chess(), 'e2e4', 'e7e5', 'g1f3', 'b8c6');
+  const before = snapshot(game);
+  const perspective = game.side;
+  const score = armxPreviewStateSnapshot(game, perspective).score;
+  const contexts = armxCausalContexts(game, perspective, score);
+  const legal = game.fastMoves();
+  for (const move of legal.slice(0, 8)) {
+    assert.deepEqual(
+      [...armxCausalKeys(game, move, perspective, contexts)].sort(),
+      [...armxCausalKeys(game, move, perspective)].sort()
+    );
+  }
+  const chosen = legal[0];
+  const baseline = armxCausalAlternativeBaseline(game, legal, perspective, chosen);
+  game.fastApply(chosen);
+  const chosenScore = armxPreviewStateSnapshot(game, perspective).score;
+  game.fastUndo();
+  assert.equal(baseline.actualAfter, chosenScore);
+  assert.equal(snapshot(game), before);
+}
+
 // Full ARMX causal voting is live again, but trust is explicitly gated by
 // measured opponent-prediction reliability. Zero predictive reliability must
 // contribute zero causal finalist adjustment; trusted evidence stays bounded.
