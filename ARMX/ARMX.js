@@ -2008,10 +2008,56 @@ function armxCausalQuickDeltas(game,moves,perspective){
   });
 }
 
+function armxCausalChoiceModelLogit(book,features,contexts){
+  let total=0,n=0;
+  for(const feature of features){
+    if(!ARMX_CAUSAL_FEATURES.includes(feature))continue;
+    const attribution=armxCausalAttributionWeight(feature,features);
+    total+=(Number(book.choiceWeights[feature])||0)*attribution;
+    n+=attribution;
+    for(const context of contexts||[]){
+      total+=0.55*(Number(book.contextChoiceWeights[context+'>'+feature])||0)*attribution;
+    }
+  }
+  // The online softmax model is the primary preference estimator. The
+  // opportunity-conditioned notebook is a conservative shrinkage term.
+  const countScore=armxCausalPreferenceScore(book,features,contexts);
+  return (n?total/Math.sqrt(n):0)+0.30*countScore;
+}
+function armxCausalUpdateChoiceModel(book,moves,prediction,chosen,contexts){
+  if(moves.length<=1)return;
+  const chosenIndex=moves.findIndex(move=>armxCausalMoveIdentity(move)===armxCausalMoveIdentity(chosen));
+  if(chosenIndex<0)return;
+  const selected=prediction.features[chosenIndex];
+  const union=new Set();
+  for(const row of prediction.features)for(const feature of row)union.add(feature);
+  const learningRate=0.62/Math.sqrt(1+0.055*(book.choiceModelCount||0));
+  for(const feature of union){
+    if(!ARMX_CAUSAL_FEATURES.includes(feature))continue;
+    let expected=0;
+    for(let i=0;i<prediction.features.length;i++){
+      if(prediction.features[i].has(feature))expected+=prediction.probabilities[i]||0;
+    }
+    const actual=selected.has(feature)?1:0;
+    const attribution=armxCausalAttributionWeight(feature,selected.has(feature)?selected:union);
+    const delta=learningRate*(actual-expected)*attribution;
+    book.choiceWeights[feature]=armxFullClamp(
+      (Number(book.choiceWeights[feature])||0)*0.997+delta,-4.5,4.5
+    );
+    for(const context of contexts||[]){
+      const key=context+'>'+feature;
+      book.contextChoiceWeights[key]=armxFullClamp(
+        (Number(book.contextChoiceWeights[key])||0)*0.998+delta*0.42,-3.5,3.5
+      );
+    }
+  }
+  book.choiceModelCount++;
+}
+
 function armxCausalPredictReplies(book,game,moves,perspective,contexts){
   if(!moves.length)return {probabilities:[],scores:[],features:[]};
   const featureRows=moves.map(move=>armxCausalCheapMoveFeatures(game,move));
-  const scores=featureRows.map(features=>armxCausalPreferenceScore(book,features,contexts));
+  const scores=featureRows.map(features=>armxCausalChoiceModelLogit(book,features,contexts));
   const max=Math.max(...scores);
   const exps=scores.map(score=>Math.exp((score-max)/0.72));
   const sum=exps.reduce((a,b)=>a+b,0)||1;
@@ -2064,6 +2110,7 @@ function armxCausalNewNotebook(perspective,game){
     opponentMoves:0,voluntaryOpponentMoves:0,
     opportunities:Object.create(null),choices:Object.create(null),
     contextOpportunities:Object.create(null),contextChoices:Object.create(null),
+    choiceWeights:Object.create(null),contextChoiceWeights:Object.create(null),choiceModelCount:0,
     opponentEffects:Object.create(null),ourEffects:Object.create(null),
     opponentContextEffects:Object.create(null),ourContextEffects:Object.create(null),
     pending:[],lastOurFeatures:new Set(),
@@ -2179,6 +2226,7 @@ function armxFullSyncNotebook(game,perspective=game.side,_previewProfile=null){
         for(const row of learned.features)for(const feature of row)available.add(feature);
         if(actor===-perspective){
           armxCausalRecordPrediction(book,legal,learned,move);
+          armxCausalUpdateChoiceModel(book,legal,learned,move,contexts);
           armxCausalRecordPreference(book,chosenFeatures,available,contexts);
           book.voluntaryOpponentMoves++;
         }
@@ -2318,13 +2366,39 @@ function armxFullNotebookSummary(book){
   return rows.slice(0,12);
 }
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
-  // Stage 1 of the causal rebuild deliberately preserves Preview's exact
-  // search policy. The richer Full notebook must earn strength in finalist
-  // selection before it is allowed to alter reply ordering.
-  armxFullSyncNotebook(game,perspective);
+  const book=armxFullSyncNotebook(game,perspective);
   const preview=armxPreviewOpponentPolicy(game,perspective);
   if(!preview)return null;
-  return {...preview,model:ARMX_FULL.name,version:ARMX_FULL.version,fullFoundation:'preview+causal-notebook'};
+
+  // Full's richer online choice model may refine Preview's 13 compiled quiet
+  // dimensions, but only after it has demonstrated prediction skill in this
+  // game. Search budget/depth remain exactly Preview's.
+  const trust=armxCausalPredictionTrust(book);
+  const weights=new Float64Array(preview.weights||13);
+  if(trust>0.04&&book.choiceModelCount>=3){
+    const add=(index,value,scale=1)=>{
+      weights[index]=armxFullClamp((weights[index]||0)+value*trust*scale,-6,6);
+    };
+    const w=feature=>Number(book.choiceWeights[feature])||0;
+    add(0,w('pawnMove'),0.72);
+    add(1,w('knightMove'),0.72);
+    add(2,w('bishopMove'),0.72);
+    add(3,w('rookMove'),0.62);
+    add(4,w('queenMove'),0.62);
+    add(5,w('kingMove'),0.55);
+    add(6,w('centralize')-0.35*w('decentralize'),0.62);
+    add(8,w('advance')-0.65*w('retreat'),0.72);
+    add(9,w('castle')+0.35*w('castleKing')+0.35*w('castleQueen'),0.62);
+    add(10,w('development')-0.30*w('repeatPiece'),0.72);
+    add(11,w('centerMove'),0.62);
+    add(12,w('advancedPawnPush')+0.35*w('pawnBreak'),0.62);
+  }
+  return {
+    ...preview,weights,
+    model:ARMX_FULL.name,version:ARMX_FULL.version,
+    fullFoundation:'preview+online-choice+causal',
+    fullPredictionTrust:trust,
+  };
 }
 function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const profile=armxPreviewSyncProfile(game,perspective);
