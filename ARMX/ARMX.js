@@ -1,6 +1,6 @@
 // ARMX — full per-game opponent adaptation for the Stonefish v5.5 range.
 //
-// Full ARMX has one job: observe this opponent, keep better notes than Preview,
+// Full ARMX has one job: observe this opponent, keep better notes than Preview, // baseline screen
 // and use those notes to make better decisions. It is not a second chess
 // evaluator and it does not contain generic conversion or matchup heuristics.
 //
