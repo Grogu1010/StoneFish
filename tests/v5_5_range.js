@@ -114,40 +114,52 @@ function buildOverheadPositions(count){
   return rows;
 }
 
-// Full-only outcome notes measure the opponent's move or response directly.
-// The value of our initiating move must not leak into the recorded response.
+// Full ARMX causal notebook contracts.
 {
-  const game=new Chess();
-  game.armxObservationStartPly=0;
-  armxFullSyncNotebook(game,1);
-  const ourMove=game.fastMoves().find(move=>move.from===game._sq('e2')&&move.to===game._sq('e4'));
-  if(!ourMove)throw new Error('Missing Full ARMX attribution fixture move e2e4');
-  game.fastApply(ourMove);
-  armxFullSyncNotebook(game,1);
-  const afterOurMove=armxPreviewStateSnapshot(game,1).score;
-  const reply=game.fastMoves().find(move=>move.from===game._sq('e7')&&move.to===game._sq('e5'));
-  if(!reply)throw new Error('Missing Full ARMX attribution fixture reply e7e5');
-  game.fastApply(reply);
-  const afterReply=armxPreviewStateSnapshot(game,1).score;
-  const expectedImpact=armxFullClamp(
-    (afterReply-afterOurMove)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1
-  );
-  const book=armxFullSyncNotebook(game,1);
-  const opponentMoveEffect=book.extendedEffects.pawnMove;
-  if(!opponentMoveEffect||opponentMoveEffect.weight!==1
-    ||Math.abs(opponentMoveEffect.impact/opponentMoveEffect.weight-expectedImpact)>1e-12){
-    throw new Error('Full ARMX opponent notes must attribute only the opponent move');
+  if(!Array.isArray(ARMX_CAUSAL_FEATURES)
+    ||ARMX_CAUSAL_FEATURES.length<ARMX_PREVIEW_FEATURES.length*4){
+    throw new Error('Full ARMX must track at least four times Preview feature resolution');
   }
-  const ownReplyEffects=Object.entries(book.ourContextEffects)
-    .filter(([key])=>key.endsWith('>pawnMove')).map(([,row])=>row);
-  if(!ownReplyEffects.length||ownReplyEffects.some(row=>row.weight!==1
-    ||Math.abs(row.impact/row.weight-expectedImpact)>1e-12)){
-    throw new Error('Full ARMX context notes must attribute only the opponent reply');
+
+  // Correlation is not causation: if treatment and matched-control trajectories
+  // decline equally, the learned causal effect must remain zero.
+  const coincidence=armxCausalNewEffectRow();
+  for(const id of [1,2,3]){
+    armxCausalRecordEffect(coincidence,'treatment',-0.35,1,id);
+    armxCausalRecordEffect(coincidence,'control',-0.35,1,id+10);
   }
-  const responseEffects=Object.values(book.responseEffects);
-  if(!responseEffects.length||responseEffects.some(row=>row.weight!==1
-    ||Math.abs(row.impact/row.weight-expectedImpact)>1e-12)){
-    throw new Error('Full ARMX response notes must attribute only the opponent reply');
+  const coincidenceEstimate=armxCausalEstimate(coincidence);
+  if(Math.abs(coincidenceEstimate.value)>1e-12){
+    throw new Error('Full ARMX must not blame a feature for a matched coincidental decline');
+  }
+
+  // When treatment repeatedly underperforms comparable controls, Full may
+  // attribute a negative causal effect.
+  const caused=armxCausalNewEffectRow();
+  for(const id of [1,2,3,4]){
+    armxCausalRecordEffect(caused,'treatment',-0.55,1,id);
+    armxCausalRecordEffect(caused,'control',-0.10,1,id+10);
+  }
+  const causedEstimate=armxCausalEstimate(caused);
+  if(!(causedEstimate.value<-0.40&&causedEstimate.confidence>0.35)){
+    throw new Error('Full ARMX causal treatment/control attribution is inactive');
+  }
+
+  // Treatment with no control must shrink to zero confidence rather than
+  // inventing causation from "this happened before the evaluation fell".
+  const uncontrolled=armxCausalNewEffectRow();
+  for(const id of [1,2,3,4])armxCausalRecordEffect(uncontrolled,'treatment',-0.8,1,id);
+  if(armxCausalEstimate(uncontrolled).confidence!==0){
+    throw new Error('Full ARMX must require matched controls for causal confidence');
+  }
+
+  // Multiple labels/horizon samples from one move remain one independent
+  // observation for confidence purposes.
+  const correlated=armxCausalNewEffectRow();
+  armxCausalRecordEffect(correlated,'treatment',-0.4,0.65,7);
+  armxCausalRecordEffect(correlated,'treatment',-0.4,0.35,7);
+  if(correlated.treatment.observations.size!==1){
+    throw new Error('Full ARMX correlated labels/horizons manufactured evidence');
   }
 }
 
@@ -269,8 +281,8 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   let contenderThinkMs=0,opponentThinkMs=0,contenderMoves=0,opponentMoves=0;
   const contenderStyle=emptyStyleCounts(),opponentStyle=emptyStyleCounts();
   const contenderFullStyle=fullArmxStyleFor(contenderFn),opponentFullStyle=fullArmxStyleFor(opponentFn);
-  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
-  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
+  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,predictionGainTotal:0,predictionTrustTotal:0,predictionTop1RateTotal:0,predictionRankTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
+  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,predictionGainTotal:0,predictionTrustTotal:0,predictionTop1RateTotal:0,predictionRankTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
   return withSeed(seed,()=>{
     while(!game.game_over()&&plies<maxPlies){
       const contenderTurn=(game.side===1)===contenderIsWhite;
@@ -293,6 +305,10 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
           bucket.noteUsefulnessTotal+=Number(last.noteUsefulness)||0;
           bucket.learnedStrengthTotal+=Number(last.learnedStrength)||0;
           bucket.surpriseTotal+=Number(last.predictionSurprise)||0;
+          bucket.predictionGainTotal=(bucket.predictionGainTotal||0)+(Number(last.predictionGain)||0);
+          bucket.predictionTrustTotal=(bucket.predictionTrustTotal||0)+(Number(last.predictionTrust)||0);
+          bucket.predictionTop1RateTotal=(bucket.predictionTop1RateTotal||0)+(Number(last.predictionTop1Rate)||0);
+          bucket.predictionRankTotal=(bucket.predictionRankTotal||0)+(Number(last.predictionAverageRank)||0);
           const reports=Array.isArray(last.reports)?last.reports:[];
           for(const report of reports){
             if(report&&report.fullNoteGate&&report.fullNoteGate.allowed)bucket.fullNoteAllowed++;
@@ -355,7 +371,7 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   });
 }
 function matchup(games,label,contenderFn,opponentFn,startIndex=0){
-  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0}};
+  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,predictionGainTotal:0,predictionTrustTotal:0,predictionTop1RateTotal:0,predictionRankTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,predictionGainTotal:0,predictionTrustTotal:0,predictionTop1RateTotal:0,predictionRankTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0}};
   for(let local=0;local<games;local++){
     const i=startIndex+local,pair=Math.floor(i/2);
     const opening=generateOpening(pair,10);
@@ -369,7 +385,7 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
       out.contenderStyle[feature]+=row.contenderStyle[feature]||0;
       out.opponentStyle[feature]+=row.opponentStyle[feature]||0;
     }
-    for(const key of ['moves','rootWidthTotal','changedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal','fullNoteAllowed','styleAllowed','previewAllowed','winnerFullNoteAllowed','winnerStyleAllowed','winnerPreviewAllowed','challengers','noteAllowedChallengers','positiveNoteLeadChallengers','noteLeadTotal','absoluteNoteLeadTotal','absoluteLearnedSignalTotal','patientTotal','activatedPatientTotal','patientSamples']){
+    for(const key of ['moves','rootWidthTotal','changedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal','predictionGainTotal','predictionTrustTotal','predictionTop1RateTotal','predictionRankTotal','fullNoteAllowed','styleAllowed','previewAllowed','winnerFullNoteAllowed','winnerStyleAllowed','winnerPreviewAllowed','challengers','noteAllowedChallengers','positiveNoteLeadChallengers','noteLeadTotal','absoluteNoteLeadTotal','absoluteLearnedSignalTotal','patientTotal','activatedPatientTotal','patientSamples']){
       out.contenderArmx[key]+=row.contenderArmx[key]||0;
       out.opponentArmx[key]+=row.opponentArmx[key]||0;
     }
@@ -400,6 +416,10 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.contenderArmx.averageNoteUsefulness=out.contenderArmx.moves?out.contenderArmx.noteUsefulnessTotal/out.contenderArmx.moves:0;
   out.contenderArmx.averageLearnedStrength=out.contenderArmx.moves?out.contenderArmx.learnedStrengthTotal/out.contenderArmx.moves:0;
   out.contenderArmx.averagePredictionSurprise=out.contenderArmx.moves?out.contenderArmx.surpriseTotal/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionGain=out.contenderArmx.moves?(out.contenderArmx.predictionGainTotal||0)/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionTrust=out.contenderArmx.moves?(out.contenderArmx.predictionTrustTotal||0)/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionTop1Rate=out.contenderArmx.moves?(out.contenderArmx.predictionTop1RateTotal||0)/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionRank=out.contenderArmx.moves?(out.contenderArmx.predictionRankTotal||0)/out.contenderArmx.moves:0;
   out.contenderArmx.fullNoteWinnerRate=out.contenderArmx.moves?out.contenderArmx.winnerFullNoteAllowed/out.contenderArmx.moves:0;
   out.contenderArmx.styleWinnerRate=out.contenderArmx.moves?out.contenderArmx.winnerStyleAllowed/out.contenderArmx.moves:0;
   out.contenderArmx.previewWinnerRate=out.contenderArmx.moves?out.contenderArmx.winnerPreviewAllowed/out.contenderArmx.moves:0;
@@ -419,6 +439,10 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.opponentArmx.averageNoteUsefulness=out.opponentArmx.moves?out.opponentArmx.noteUsefulnessTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averageLearnedStrength=out.opponentArmx.moves?out.opponentArmx.learnedStrengthTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averagePredictionSurprise=out.opponentArmx.moves?out.opponentArmx.surpriseTotal/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionGain=out.opponentArmx.moves?(out.opponentArmx.predictionGainTotal||0)/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionTrust=out.opponentArmx.moves?(out.opponentArmx.predictionTrustTotal||0)/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionTop1Rate=out.opponentArmx.moves?(out.opponentArmx.predictionTop1RateTotal||0)/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionRank=out.opponentArmx.moves?(out.opponentArmx.predictionRankTotal||0)/out.opponentArmx.moves:0;
   out.opponentArmx.fullNoteWinnerRate=out.opponentArmx.moves?out.opponentArmx.winnerFullNoteAllowed/out.opponentArmx.moves:0;
   out.opponentArmx.styleWinnerRate=out.opponentArmx.moves?out.opponentArmx.winnerStyleAllowed/out.opponentArmx.moves:0;
   out.opponentArmx.previewWinnerRate=out.opponentArmx.moves?out.opponentArmx.winnerPreviewAllowed/out.opponentArmx.moves:0;
