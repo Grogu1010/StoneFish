@@ -31,6 +31,14 @@ const AUTO_MATCH = !/^(0|false|no)$/i.test(process.env.AUTO_MATCH || 'true');
 const AUTO_CHALLENGE_TIMEOUT_MS = Number(process.env.AUTO_CHALLENGE_TIMEOUT_MS || 45_000);
 const AUTO_MATCH_RETRY_MS = Number(process.env.AUTO_MATCH_RETRY_MS || 12_000);
 
+// Matchmaking activity heuristic. Lichess does not expose the hidden daily
+// bot-vs-bot counter before a challenge, so we sample recent public game
+// activity and prefer less-active bots. This is only a bias, not a guarantee.
+const AUTO_ACTIVITY_LOOKBACK_MS = Number(process.env.AUTO_ACTIVITY_LOOKBACK_MS || 24 * 60 * 60_000);
+const AUTO_ACTIVITY_CACHE_MS = Number(process.env.AUTO_ACTIVITY_CACHE_MS || 15 * 60_000);
+const AUTO_ACTIVITY_SAMPLE_SIZE = Math.max(1, Number(process.env.AUTO_ACTIVITY_SAMPLE_SIZE || 4));
+const AUTO_ACTIVITY_MAX_GAMES = Math.max(1, Number(process.env.AUTO_ACTIVITY_MAX_GAMES || 100));
+
 // This does NOT terminate a long game. It only logs a warning if a game stream
 // has produced no events for a long time. Lichess's clocks still decide the game.
 // Each live game keeps its own StoneFish game object and ARMX state.
@@ -58,6 +66,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let postChain = Promise.resolve();
 const runningGames = new Set();
 const recentOpponents = new Map();
+const recentActivityCache = new Map();
 
 let pendingOutgoingChallenge = null;
 const outgoingChallengeIds = new Set();
@@ -412,7 +421,54 @@ function blitzRating(user) {
   return Number.isFinite(value) ? value : null;
 }
 
-function chooseOpponent(bots, ownUsername) {
+async function getRecentActivity(username) {
+  const key = String(username || '').toLowerCase();
+  if (!key) return null;
+
+  const cached = recentActivityCache.get(key);
+  if (cached && Date.now() - cached.checkedAt < AUTO_ACTIVITY_CACHE_MS) {
+    return cached.count;
+  }
+
+  await waitForApiCooldown();
+
+  const since = Date.now() - AUTO_ACTIVITY_LOOKBACK_MS;
+  const params = new URLSearchParams({
+    since: String(since),
+    max: String(AUTO_ACTIVITY_MAX_GAMES),
+    moves: 'false',
+    clocks: 'false',
+    evals: 'false',
+    opening: 'false'
+  });
+
+  try {
+    const response = await fetch(
+      `${BASE}/api/games/user/${encodeURIComponent(username)}?${params.toString()}`,
+      { headers: authHeaders({ Accept: 'application/x-ndjson' }) }
+    );
+
+    if (response.status === 429) {
+      console.warn('Lichess rate limit reached while checking bot activity; pausing ALL API activity for 60 seconds.');
+      startApiCooldown(60_000);
+      return null;
+    }
+
+    if (!response.ok) return null;
+
+    const text = await response.text();
+    const count = text.trim()
+      ? text.split(/\r?\n/).filter(line => line.trim()).length
+      : 0;
+
+    recentActivityCache.set(key, { count, checkedAt: Date.now() });
+    return count;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function chooseOpponent(bots, ownUsername) {
   const me = ownUsername.toLowerCase();
   const now = Date.now();
 
@@ -457,10 +513,50 @@ function chooseOpponent(bots, ownUsername) {
     // Pick from a small group near our current rating instead of always
     // challenging the exact same closest-rated bot.
     const pool = candidates.slice(0, Math.min(12, candidates.length));
-    return pool[Math.floor(Math.random() * pool.length)];
+
+    // Check a small sample so we do not hammer the API. Prefer the bot with
+    // fewer public games in the recent lookback window. A count of 100 means
+    // the export hit our sample ceiling and is treated as very active.
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const sample = shuffled.slice(0, Math.min(AUTO_ACTIVITY_SAMPLE_SIZE, shuffled.length));
+    const scored = [];
+
+    for (const bot of sample) {
+      const name = botUsername(bot);
+      const count = await getRecentActivity(name);
+      scored.push({ bot, count });
+    }
+
+    const known = scored
+      .filter(item => item.count !== null)
+      .sort((a, b) => a.count - b.count);
+
+    if (known.length) {
+      const best = known[0];
+      console.log(
+        `Auto-match: activity check prefers ${botUsername(best.bot)} (${best.count} public games in the recent lookback window).`
+      );
+      return best.bot;
+    }
+
+    return sample[0] || pool[0];
   }
 
-  return candidates[Math.floor(Math.random() * candidates.length)];
+  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+  const sample = shuffled.slice(0, Math.min(AUTO_ACTIVITY_SAMPLE_SIZE, shuffled.length));
+  const scored = [];
+
+  for (const bot of sample) {
+    const name = botUsername(bot);
+    const count = await getRecentActivity(name);
+    scored.push({ bot, count });
+  }
+
+  const known = scored
+    .filter(item => item.count !== null)
+    .sort((a, b) => a.count - b.count);
+
+  return known[0]?.bot || sample[0] || null;
 }
 
 async function cancelPendingOutgoing(reason = 'timeout') {
@@ -538,7 +634,7 @@ async function autoMatchLoop(username) {
   if (!AUTO_MATCH) return;
 
   console.log(
-    'Auto-match enabled: rotating rated Bullet 1+0, Blitz 3+2, and Rapid 10+0 against online bots.'
+    'Auto-match enabled: rotating rated Bullet 1+0, Blitz 3+2, and Rapid 10+0 against online bots, with a low-recent-activity preference.'
   );
 
   while (true) {
@@ -560,7 +656,7 @@ async function autoMatchLoop(username) {
       }
 
       const bots = await getOnlineBots();
-      const opponent = chooseOpponent(bots, username);
+      const opponent = await chooseOpponent(bots, username);
 
       if (!opponent) {
         console.log('Auto-match: no available online bot found; trying again soon.');
