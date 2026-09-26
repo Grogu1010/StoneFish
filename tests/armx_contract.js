@@ -232,6 +232,18 @@ function review(game) {
   assert.equal(broadBook.broadPredictionRows.capture.opportunities, 12);
   assert.equal(broadBook.broadPredictionRows.capture.choices, 12);
 
+  // Exercise the live handoff: Preview records which tactical features were
+  // legally available, then Full replays those same plies without another
+  // legal-move scan and scores the opponent's actual choice prequentially.
+  const tacticalGame = play(new Chess(),
+    'e2e4', 'd7d5', 'e4d5', 'd8d5', 'b1c3', 'd5d8');
+  tacticalGame.armxObservationStartPly = 0;
+  const tacticalProfile = armxPreviewSyncProfile(tacticalGame, tacticalGame.side);
+  const tacticalBook = armxCausalSync(tacticalGame, tacticalGame.side, tacticalProfile);
+  assert.ok(tacticalBook.broadPredictionCount > 0);
+  assert.ok(tacticalBook.broadPredictionRows.capture.opportunities > 0);
+  assert.ok(Number.isFinite(armxCausalBroadPredictionReliability(tacticalBook)));
+
   const game = play(new Chess(),
     'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
   game.armxObservationStartPly = 0;
