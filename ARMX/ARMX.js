@@ -240,7 +240,8 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-1';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-2-sampled-baseline';
+const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=8;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
 const ARMX_CAUSAL_CORE_FEATURES=Object.freeze([
@@ -469,12 +470,38 @@ function armxCausalSameMove(a,b){
   return !!a&&!!b&&a.from===b.from&&a.to===b.to
     &&(a.promotion||0)===(b.promotion||0);
 }
+function armxCausalMoveOrderKey(move){
+  if(!move)return 0;
+  return (move.from&63)|((move.to&63)<<6)|(((move.promotion||0)&7)<<12);
+}
+function armxCausalBaselineSample(legal,chosen,limit=ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT){
+  if(legal.length<=limit)return legal.slice();
+  const sorted=legal.slice().sort((a,b)=>armxCausalMoveOrderKey(a)-armxCausalMoveOrderKey(b));
+  const selected=[];
+  const add=move=>{
+    if(move&&!selected.some(existing=>armxCausalSameMove(existing,move)))selected.push(move);
+  };
+  // Quantiles make the sample independent of generator order and spread it
+  // across the complete legal-move set. The actually chosen move is included
+  // explicitly because the exhaustive median included it too.
+  for(let i=0;i<Math.max(1,limit-1);i++){
+    const index=Math.round(i*(sorted.length-1)/Math.max(1,limit-2));
+    add(sorted[index]);
+  }
+  add(sorted.find(move=>armxCausalSameMove(move,chosen)));
+  for(const move of sorted){
+    if(selected.length>=limit)break;
+    add(move);
+  }
+  return selected.slice(0,limit);
+}
 function armxCausalAlternativeBaseline(game,legal,perspective,chosen=null){
   const after=[];
   let actualAfter=NaN;
   const depth=game.historyStack.length;
+  const sample=armxCausalBaselineSample(legal,chosen);
   try{
-    for(const move of legal){
+    for(const move of sample){
       game.fastApply(move);
       const score=armxPreviewStateSnapshot(game,perspective).score;
       after.push(score);
@@ -484,7 +511,7 @@ function armxCausalAlternativeBaseline(game,legal,perspective,chosen=null){
   }finally{
     while(game.historyStack.length>depth)game.fastUndo();
   }
-  return {baselineAfter:armxCausalMedian(after),actualAfter};
+  return {baselineAfter:armxCausalMedian(after),actualAfter,sampleCount:sample.length};
 }
 function armxCausalUpdateRows(map,available,chosen,residual,observationId){
   for(const key of available){
