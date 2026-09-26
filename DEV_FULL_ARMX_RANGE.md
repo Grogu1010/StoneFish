@@ -10,6 +10,9 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 
 ## Preserved findings
 
+- Promoted corrected causal Full ARMX checkpoint: aligned 100-game Artemis-vs-current scored 53.5% (50W/43L/7D), improving the corrected 52% baseline. In the six-pair timing screen Artemis attributed overhead was 1.91x Preview, within the 2x ceiling. The causal layer was active (532 allowed challenger votes; 57 winning finalists). This is the saved best-known shared Full ARMX checkpoint on main, not a release pass; the >85% strength and style-pace gates remain unmet.
+- Causal-only winner attribution is now part of the range testunit. It records the finalist Full ARMX would choose without the causal term and reports causalChangedMoveRate, without altering move selection. On the saved 53.5% logic this diagnostic later measured only 15 causal final-move changes across 5,452 Artemis moves (~0.275%), identifying decisiveness as the immediate shared-ARMX bottleneck.
+
 - Corrected Full-only response attribution: an opponent move's effect is measured at the position after that move; our move's effect is measured from the position after our move through the opponent reply. Preview and the shared evaluator remain unchanged. Direct e2e4/e7e5 attribution fixtures cover all Full-only effect tables.
 - On two corrected 20-game sets combined (40 games per pairing), Athena scored 43.75%, Ares 46.25%, and Artemis 47.5% against current v5.5. Sibling scores were near even. Pace ratios were only 1.045x Athena and 0.990x Ares. Attributed overhead stayed below 1.4x Preview.
 - Earlier finalist-weight and eligibility changes did not reliably alter pace or improve strength. A stronger repetition/forcing profile made Ares games longer (1.182x Artemis), the opposite of its target. These experiments were reverted.
