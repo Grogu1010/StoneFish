@@ -1,0 +1,45 @@
+name: StoneFish Lichess bridge
+
+on:
+  push:
+    paths:
+      - 'stonefish-node.cjs'
+      - 'lichess-bot.cjs'
+      - 'package.json'
+      - 'LICHESS.md'
+      - '.github/workflows/lichess-bridge.yml'
+  pull_request:
+    paths:
+      - 'stonefish-node.cjs'
+      - 'lichess-bot.cjs'
+      - 'package.json'
+      - 'LICHESS.md'
+      - '.github/workflows/lichess-bridge.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Syntax check
+        run: |
+          node --check stonefish-node.cjs
+          node --check lichess-bot.cjs
+      - name: Load StoneFish and make a move
+        run: |
+          node - <<'NODE'
+          const sf = require('./stonefish-node.cjs');
+          const models = sf.listModels();
+          if (!models.some(m => m.id === 'v55')) throw new Error('v55 missing');
+          const game = sf.createGame(['e2e4']);
+          const result = sf.getMove('v1', game);
+          if (!result.move || !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(result.move.uci)) {
+            throw new Error('StoneFish did not return a valid UCI move');
+          }
+          console.log('Smoke move:', result.move.uci);
+          NODE
