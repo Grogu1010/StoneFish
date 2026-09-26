@@ -306,9 +306,9 @@ function armxCausalBaseFeatures(game,move){
   }
   return features;
 }
-function armxCausalKeys(game,move,perspective){
+function armxCausalKeys(game,move,perspective,precomputedContexts=null){
   const base=[...armxCausalBaseFeatures(game,move)].filter(feature=>ARMX_CAUSAL_CORE_FEATURES.includes(feature));
-  const contexts=armxCausalContexts(game,perspective);
+  const contexts=precomputedContexts||armxCausalContexts(game,perspective);
   const keys=new Set(base);
   for(const feature of base){
     for(const context of contexts)keys.add(feature+'@'+context);
@@ -385,8 +385,8 @@ function armxCausalPredictionReliability(book){
   // prediction quality actively suppresses Full-only influence.
   return maturity*armxFullClamp((mean+0.05)/0.65,0,1);
 }
-function armxCausalMovePreference(book,map,game,move){
-  const keys=armxCausalKeys(game,move,book.perspective);
+function armxCausalMovePreference(book,map,game,move,precomputedContexts=null){
+  const keys=armxCausalKeys(game,move,book.perspective,precomputedContexts);
   let sum=0,weight=0;
   for(const key of keys){
     const row=map.get(key);
@@ -399,9 +399,10 @@ function armxCausalMovePreference(book,map,game,move){
   }
   return weight?sum/Math.sqrt(weight):0;
 }
-function armxCausalRecordPrediction(book,legal,chosen,map){
+function armxCausalRecordPrediction(book,legal,chosen,map,precomputedContexts=null){
   if(legal.length<2)return;
-  const logits=legal.map(move=>armxCausalMovePreference(book,map,book.replay,move));
+  const contexts=precomputedContexts||armxCausalContexts(book.replay,book.perspective);
+  const logits=legal.map(move=>armxCausalMovePreference(book,map,book.replay,move,contexts));
   const max=Math.max(...logits),weights=logits.map(x=>Math.exp(x-max));
   const total=weights.reduce((a,b)=>a+b,0)||1;
   const chosenIndex=legal.findIndex(move=>move.from===chosen.from&&move.to===chosen.to
@@ -468,10 +469,11 @@ function armxCausalSync(game,perspective=game.side){
       const legal=book.replay.fastMoves();
       if(legal.length>1){
         const map=actor===perspective?book.our:book.opponent;
-        if(actor===-perspective)armxCausalRecordPrediction(book,legal,move,map);
-        const available=new Set(),chosen=armxCausalKeys(book.replay,move,perspective);
+        const contexts=armxCausalContexts(book.replay,perspective);
+        if(actor===-perspective)armxCausalRecordPrediction(book,legal,move,map,contexts);
+        const available=new Set(),chosen=armxCausalKeys(book.replay,move,perspective,contexts);
         for(const option of legal){
-          for(const key of armxCausalKeys(book.replay,option,perspective))available.add(key);
+          for(const key of armxCausalKeys(book.replay,option,perspective,contexts))available.add(key);
         }
         const baselineAfter=armxCausalAlternativeBaseline(book.replay,legal,perspective);
         const beforeDepth=book.replay.historyStack.length;
@@ -500,7 +502,8 @@ function armxCausalTopEffects(map,keys,limit=4){
   return rows.slice(0,limit);
 }
 function armxCausalCandidateReport(game,entry,book){
-  const ownKeys=armxCausalKeys(game,entry.raw,book.perspective);
+  const ownContexts=armxCausalContexts(game,book.perspective);
+  const ownKeys=armxCausalKeys(game,entry.raw,book.perspective,ownContexts);
   const ownRows=armxCausalTopEffects(book.our,ownKeys,4);
   let ownValue=0,ownWeight=0;
   for(const row of ownRows){
@@ -514,11 +517,12 @@ function armxCausalCandidateReport(game,entry,book){
     game.fastApply(entry.raw);
     replies=game.fastMoves();
     if(replies.length){
-      const logits=replies.map(move=>armxCausalMovePreference(book,book.opponent,game,move));
+      const replyContexts=armxCausalContexts(game,book.perspective);
+      const logits=replies.map(move=>armxCausalMovePreference(book,book.opponent,game,move,replyContexts));
       const max=Math.max(...logits),weights=logits.map(x=>Math.exp(x-max));
       const total=weights.reduce((a,b)=>a+b,0)||1;
       replyRows=replies.map((move,i)=>{
-        const keys=armxCausalKeys(game,move,book.perspective);
+        const keys=armxCausalKeys(game,move,book.perspective,replyContexts);
         const effects=armxCausalTopEffects(book.opponent,keys,3);
         let value=0,w=0;
         for(const row of effects){value+=row.value*row.confidence;w+=row.confidence;}
