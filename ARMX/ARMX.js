@@ -1554,7 +1554,7 @@ function armxFullLast(style='artemis'){
 // policy and the live finalist vote is Preview evidence with stronger, still
 // bounded influence. Rich causal notes are layered onto this foundation next.
 // ---------------------------------------------------------------------------
-const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
+const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.70;
 
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const preview=armxPreviewOpponentPolicy(game,perspective);
