@@ -1866,7 +1866,7 @@ function armxFullLast(style='artemis'){
 // bounded influence. Rich causal notes are layered onto this foundation next.
 // ---------------------------------------------------------------------------
 const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
-const ARMX_CAUSAL_DECISION_SCALE=220;
+const ARMX_CAUSAL_DECISION_SCALE=190;
 const ARMX_CAUSAL_MIN_CONFIDENCE=0.04;
 const ARMX_CAUSAL_MIN_SIGNAL=0.04;
 const ARMX_CAUSAL_MIN_OBSERVED_PLIES=8;
