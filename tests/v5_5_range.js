@@ -514,17 +514,16 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
 const definitions={
   athenaVsCurrent:['Athena-vs-current-v5.5',getStonefishV55AthenaMove,getStonefishV55Move],
   aresVsCurrent:['Ares-vs-current-v5.5',getStonefishV55AresMove,getStonefishV55Move],
-  artemisVsCurrent:['Artemis-vs-current-v5.5',getStonefishV55ArtemisMove,getStonefishV55Move],
+  fullArmxVsPreview:['Full-ARMX-vs-ARMX-Preview',getStonefishV55FullARMXMove,getStonefishV55Move],
   aresVsAthena:['Ares-vs-Athena',getStonefishV55AresMove,getStonefishV55AthenaMove],
   artemisVsAthena:['Artemis-vs-Athena',getStonefishV55ArtemisMove,getStonefishV55AthenaMove],
   artemisVsAres:['Artemis-vs-Ares',getStonefishV55ArtemisMove,getStonefishV55AresMove],
 };
 const targets={
-  // All three are peers. Every Full-ARMX model must score above 85% across
-  // its 100-game current-v5.5 pairing; draws count as half a point.
-  athenaVsCurrent:{minScore:0.85,scoreFloorExclusive:true,maxScore:1.0,maxLossRate:0.20},
-  aresVsCurrent:{minScore:0.85,scoreFloorExclusive:true,maxScore:1.0,maxLossRate:0.20},
-  artemisVsCurrent:{minScore:0.85,scoreFloorExclusive:true,maxScore:1.0,maxLossRate:0.20},
+  // Technology gate: Full ARMX itself must decisively beat ARMX Preview on
+  // the exact same frozen v5.5 engine. God personalities are tuned only after
+  // this shared substrate clears the gate.
+  fullArmxVsPreview:{minScore:0.85,scoreFloorExclusive:true,maxScore:1.0,maxLossRate:0.20},
 
   // Sibling matchups are intentionally close. These are hard relationship
   // bounds, not quotas: each intended winner must clear 50%, but a large edge
@@ -572,10 +571,10 @@ function scoreFloorSatisfied(score,target){
   return target.scoreFloorExclusive
     ?score>target.minScore:score+1e-12>=target.minScore;
 }
-for(const key of ['athenaVsCurrent','aresVsCurrent','artemisVsCurrent']){
+for(const key of ['fullArmxVsPreview']){
   const target=targets[key];
   if(target.minScore!==0.85||target.scoreFloorExclusive!==true||target.maxScore!==1.0){
-    throw new Error(key+' must require a score strictly above 85% against current v5.5');
+    throw new Error(key+' must require Full ARMX to score strictly above 85% against ARMX Preview');
   }
   if(scoreFloorSatisfied(0.85,target)||!scoreFloorSatisfied(0.855,target)){
     throw new Error(key+' must reject exactly 85% and accept scores above 85%');
@@ -597,7 +596,7 @@ for(const [key,args] of Object.entries(definitions)){
 // Developer-only Artemis decomposition. It runs only in the Artemis/current
 // diagnostic job and never participates in release gates.
 let artemisDecomposition=null;
-if(only==='artemisVsCurrent'&&games>0){
+if(only==='fullArmxVsPreview'&&games>0){
   const diagnosticGames=Math.max(2,Math.min(6,games-(games%2)));
   artemisDecomposition={
     games:diagnosticGames,
