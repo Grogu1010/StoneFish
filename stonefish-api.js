@@ -145,13 +145,26 @@
     return played;
   }
 
-  async function createGame(moves) {
+  async function createGame(input) {
     await ready;
     const game = new Chess();
-    if (moves != null) {
-      if (!Array.isArray(moves)) throw new Error('createGame(moves) expects an array of moves.');
-      for (const move of moves) applyMoveOrThrow(game, move);
+
+    let moves = null;
+    if (typeof input === 'string') {
+      game.load(input);
+    } else if (Array.isArray(input)) {
+      moves = input;
+    } else if (input && typeof input === 'object') {
+      if (input.fen != null) game.load(input.fen);
+      if (input.moves != null) {
+        if (!Array.isArray(input.moves)) throw new Error('createGame({ moves }) expects moves to be an array.');
+        moves = input.moves;
+      }
+    } else if (input != null) {
+      throw new Error('createGame() expects a FEN string, move array, or { fen, moves } object.');
     }
+
+    if (moves) for (const move of moves) applyMoveOrThrow(game, move);
     return game;
   }
 
@@ -159,9 +172,10 @@
     await ready;
     if (state instanceof Chess) return state;
     if (state == null) return new Chess();
+    if (typeof state === 'string') return createGame(state);
     if (Array.isArray(state)) return createGame(state);
-    if (state && Array.isArray(state.moves)) return createGame(state.moves);
-    throw new Error('State must be a Chess game returned by createGame(), an array of moves, or { moves: [...] }.');
+    if (state && typeof state === 'object' && (state.fen != null || state.moves != null)) return createGame(state);
+    throw new Error('State must be a Chess game, FEN string, move array, or { fen, moves } object.');
   }
 
   async function getMove(modelId, state) {

@@ -8,8 +8,9 @@ const SF_ORTH_DIRS = [1, 0, -1, 0, 0, 1, 0, -1];
 const SF_ALL_DIRS = [1, 1, 1, -1, -1, 1, -1, -1, 1, 0, -1, 0, 0, 1, 0, -1];
 
 class Chess {
-  constructor() {
+  constructor(fen = null) {
     this.reset();
+    if (fen) this.load(fen);
   }
 
   reset() {
@@ -31,6 +32,82 @@ class Chess {
     this.historyStack = [];
     this.positionCounts = new Map();
     this.positionCounts.set(this.fastPositionKey(), 1);
+  }
+
+  load(fen) {
+    if (typeof fen !== 'string') throw new Error('FEN must be a string.');
+    const fields = fen.trim().split(/\s+/);
+    if (fields.length !== 6) throw new Error('FEN must contain 6 space-separated fields.');
+
+    const [placement, active, castlingText, epText, halfmoveText, fullmoveText] = fields;
+    const ranks = placement.split('/');
+    if (ranks.length !== 8) throw new Error('FEN board must contain 8 ranks.');
+
+    const board = new Int8Array(64);
+    const pieceMap = { p: 1, n: 2, b: 3, r: 4, q: 5, k: 6 };
+    const kings = { 1: -1, '-1': -1 };
+
+    for (let fenRank = 0; fenRank < 8; fenRank += 1) {
+      const text = ranks[fenRank];
+      let file = 0;
+      for (const ch of text) {
+        if (/^[1-8]$/.test(ch)) {
+          file += Number(ch);
+          continue;
+        }
+        const type = pieceMap[ch.toLowerCase()];
+        if (!type || file >= 8) throw new Error('FEN contains an invalid board character.');
+        const side = ch === ch.toUpperCase() ? 1 : -1;
+        const sq = (7 - fenRank) * 8 + file;
+        board[sq] = side * type;
+        if (type === 6) {
+          if (kings[side] !== -1) throw new Error('FEN must contain exactly one king per side.');
+          kings[side] = sq;
+        }
+        file += 1;
+      }
+      if (file !== 8) throw new Error('Each FEN rank must describe exactly 8 squares.');
+    }
+
+    if (kings[1] < 0 || kings[-1] < 0) throw new Error('FEN must contain both kings.');
+    if (active !== 'w' && active !== 'b') throw new Error('FEN active color must be w or b.');
+
+    let castling = 0;
+    if (castlingText !== '-') {
+      if (!/^[KQkq]+$/.test(castlingText) || new Set(castlingText).size !== castlingText.length) {
+        throw new Error('Invalid FEN castling rights.');
+      }
+      if (castlingText.includes('K')) castling |= 1;
+      if (castlingText.includes('Q')) castling |= 2;
+      if (castlingText.includes('k')) castling |= 4;
+      if (castlingText.includes('q')) castling |= 8;
+    }
+
+    let ep = -1;
+    if (epText !== '-') {
+      if (!/^[a-h][36]$/.test(epText)) throw new Error('Invalid FEN en-passant square.');
+      ep = this._sq(epText);
+    }
+
+    const halfmove = Number.parseInt(halfmoveText, 10);
+    const fullmove = Number.parseInt(fullmoveText, 10);
+    if (!Number.isInteger(halfmove) || halfmove < 0) throw new Error('Invalid FEN halfmove clock.');
+    if (!Number.isInteger(fullmove) || fullmove < 1) throw new Error('Invalid FEN fullmove number.');
+
+    this.boardState = board;
+    this.side = active === 'w' ? 1 : -1;
+    this.castling = castling;
+    this.ep = ep;
+    this.halfmove = halfmove;
+    this.fullmove = fullmove;
+    this.kingSq = kings;
+    this.historyStack = [];
+    this.positionCounts = new Map();
+    this._stonefishRuntimePositionKey = null;
+    this._stonefishRuntimeMemo = null;
+    this._stonefishRuntimeCacheStack = [];
+    this.positionCounts.set(this.fastPositionKey(), 1);
+    return true;
   }
 
   _alg(sq) {

@@ -14,6 +14,7 @@
       <div class="nav-links">
         <a class="active" href="index.html">Lab</a>
         <a href="blog.html">Blog</a>
+        <a href="#settings">Settings</a>
       </div>
     </nav>
 
@@ -24,7 +25,45 @@
     </section>
 
     <section class="game-layout" aria-label="StoneFish chess lab">
-      <div class="board-panel"><div class="board-frame"><div id="board" class="board" role="grid" aria-label="Chess board"></div></div></div>
+      <div class="board-panel">
+        <div class="board-toolbar">
+          <div class="side-control" aria-label="Choose your side">
+            <span>Play as</span>
+            <div class="segmented-control">
+              <button class="side-button active" type="button" data-side="w" aria-pressed="true">White</button>
+              <button class="side-button" type="button" data-side="b" aria-pressed="false">Black</button>
+            </div>
+          </div>
+          <button id="flip-board" class="text-button" type="button">Flip board</button>
+        </div>
+
+        <div class="material-strip" aria-label="Captured material">
+          <div class="material-side">
+            <span class="material-label">White captured</span>
+            <strong id="white-captured" class="captured-pieces">—</strong>
+            <span id="white-advantage" class="material-advantage"></span>
+          </div>
+          <div class="material-side material-side-right">
+            <span class="material-label">Black captured</span>
+            <strong id="black-captured" class="captured-pieces">—</strong>
+            <span id="black-advantage" class="material-advantage"></span>
+          </div>
+        </div>
+
+        <div class="board-frame"><div id="board" class="board" role="grid" aria-label="Chess board"></div></div>
+
+        <div class="position-tools">
+          <label class="fen-field" for="fen-input">
+            <span>FEN position</span>
+            <input id="fen-input" type="text" spellcheck="false" autocomplete="off" aria-describedby="fen-message" />
+          </label>
+          <div class="position-actions">
+            <button id="copy-fen" class="secondary-button compact" type="button">Copy FEN</button>
+            <button id="load-fen" class="secondary-button compact" type="button">Start from FEN</button>
+          </div>
+          <p id="fen-message" class="helper-text" aria-live="polite">Paste any valid FEN to start from that position.</p>
+        </div>
+      </div>
 
       <aside class="game-panel">
         <div class="bot-card">
@@ -51,6 +90,16 @@
           <p class="section-label">GAME STATUS</p>
           <p id="status" class="status-text">Your move. You are White.</p>
           <p id="last-move" class="last-move">Stonefish_v5 Pro is waiting.</p>
+        </div>
+
+        <div class="history-card">
+          <div class="history-heading">
+            <p class="section-label">MOVE HISTORY</p>
+            <span id="move-count" class="move-count">0 moves</span>
+          </div>
+          <div id="move-history" class="move-history" aria-live="polite">
+            <p class="history-empty">Moves will appear here.</p>
+          </div>
         </div>
 
         <div class="legend-card">
@@ -195,8 +244,8 @@ console.log(reply.move.uci);</code></pre>
                 <h3>API reference</h3>
                 <p><code>StonefishAPI.ready</code> — Promise that resolves after all released engine dependencies are loaded.</p>
                 <p><code>StonefishAPI.listModels()</code> — returns the released model ids and display names.</p>
-                <p><code>StonefishAPI.createGame(moves?)</code> — creates a game and optionally replays a move array from the starting position.</p>
-                <p><code>StonefishAPI.getMove(modelId, state?)</code> — calculates a model move without applying it. State can be a StoneFish game, a move array, or <code>{ moves: [...] }</code>.</p>
+                <p><code>StonefishAPI.createGame(input?)</code> — creates a game from the starting position, a FEN string, a move array, or <code>{ fen, moves }</code>.</p>
+                <p><code>StonefishAPI.getMove(modelId, state?)</code> — calculates a model move without applying it. State can be a StoneFish game, FEN string, move array, or <code>{ fen, moves }</code>.</p>
                 <p><code>StonefishAPI.playMove(game, move)</code> — applies a legal UCI move or <code>{ from, to, promotion }</code> object.</p>
                 <p><code>StonefishAPI.playBestMove(modelId, game)</code> — calculates and applies the model’s move.</p>
               </div>
@@ -211,10 +260,26 @@ console.log(reply.move.uci);</code></pre>
           </details>
         </section>
 
-        <button id="new-game" class="new-game-button" type="button">New game</button>
+        <div class="game-actions">
+          <button id="resign-game" class="secondary-button danger-button" type="button">Resign</button>
+          <button id="new-game" class="new-game-button" type="button">New game</button>
+        </div>
       </aside>
     </section>
   </main>
+
+  <dialog id="promotion-dialog" class="promotion-dialog" aria-labelledby="promotion-title">
+    <form method="dialog">
+      <p id="promotion-title" class="section-label">PROMOTE PAWN</p>
+      <div class="promotion-options">
+        <button type="button" data-promotion="q" aria-label="Promote to queen">♛<span>Queen</span></button>
+        <button type="button" data-promotion="r" aria-label="Promote to rook">♜<span>Rook</span></button>
+        <button type="button" data-promotion="b" aria-label="Promote to bishop">♝<span>Bishop</span></button>
+        <button type="button" data-promotion="n" aria-label="Promote to knight">♞<span>Knight</span></button>
+      </div>
+      <button id="cancel-promotion" class="text-button promotion-cancel" type="button">Cancel</button>
+    </form>
+  </dialog>
 
   <script src="StonefishChess.js"></script>
   <script src="models/v1.js"></script>

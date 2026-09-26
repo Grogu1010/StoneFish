@@ -272,7 +272,7 @@ async function runRoundRobinTest() {
 }
 
 modelSelect.addEventListener('change', () => { selectedModel = modelSelect.value; updateModelUI(); resetGame(); });
-newGameButton.addEventListener('click', resetGame);
+newGameButton.addEventListener('click', () => resetGame());
 watchButton.addEventListener('click', startWatching);
 runTestButton.addEventListener('click', runRoundRobinTest);
 
@@ -728,3 +728,506 @@ async function stonefishParallelRoundRobinTest() {
 runTestButton.removeEventListener('click', stonefishSequentialRoundRobinTest);
 runRoundRobinTest = stonefishParallelRoundRobinTest;
 runTestButton.addEventListener('click', runRoundRobinTest);
+
+
+// --- StoneFish core play UX ---
+// Standard chess-site interaction layer: choose a side, flip/drag the board,
+// choose promotions, inspect material and move history, resign, and load/copy FEN.
+// Engine evaluation and search functions are left untouched.
+
+const sfSideButtons = [...document.querySelectorAll('.side-button')];
+const sfFlipBoardButton = document.getElementById('flip-board');
+const sfWhiteCaptured = document.getElementById('white-captured');
+const sfBlackCaptured = document.getElementById('black-captured');
+const sfWhiteAdvantage = document.getElementById('white-advantage');
+const sfBlackAdvantage = document.getElementById('black-advantage');
+const sfMoveHistory = document.getElementById('move-history');
+const sfMoveCount = document.getElementById('move-count');
+const sfFenInput = document.getElementById('fen-input');
+const sfFenMessage = document.getElementById('fen-message');
+const sfCopyFenButton = document.getElementById('copy-fen');
+const sfLoadFenButton = document.getElementById('load-fen');
+const sfResignButton = document.getElementById('resign-game');
+const sfPromotionDialog = document.getElementById('promotion-dialog');
+const sfPromotionButtons = [...document.querySelectorAll('[data-promotion]')];
+const sfCancelPromotion = document.getElementById('cancel-promotion');
+
+let sfPlayerColor = 'w';
+let sfBoardOrientation = 'w';
+let sfMoveLog = [];
+let sfResigned = false;
+let sfPendingPromotion = null;
+let sfDragFrom = null;
+let sfBotTimer = null;
+
+const sfStartingCounts = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+const sfPieceValue = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+const sfPromotionType = { q: 5, r: 4, b: 3, n: 2 };
+
+function sfHumanName() {
+  return sfPlayerColor === 'w' ? 'White' : 'Black';
+}
+
+function sfCanHumanMove() {
+  return !watchMode && !testing && !botThinking && !sfResigned && !stonefishUiGameEnded && game.turn() === sfPlayerColor;
+}
+
+function sfRenderCapturedSet(missing, capturedColor) {
+  const order = ['q', 'r', 'b', 'n', 'p'];
+  const text = [];
+  for (const type of order) {
+    const count = missing[type] || 0;
+    for (let i = 0; i < count; i += 1) text.push(pieceSymbols[`${capturedColor}${type}`]);
+  }
+  return text.length ? text.join(' ') : '—';
+}
+
+function sfMaterialSnapshot() {
+  const counts = {
+    w: { p: 0, n: 0, b: 0, r: 0, q: 0 },
+    b: { p: 0, n: 0, b: 0, r: 0, q: 0 }
+  };
+  for (let sq = 0; sq < 64; sq += 1) {
+    const value = game.boardState[sq];
+    if (!value) continue;
+    const type = game._typeChar(Math.abs(value));
+    if (!Object.prototype.hasOwnProperty.call(sfStartingCounts, type)) continue;
+    counts[value > 0 ? 'w' : 'b'][type] += 1;
+  }
+
+  const missingFor = color => {
+    const missing = {};
+    for (const type of Object.keys(sfStartingCounts)) {
+      missing[type] = Math.max(0, sfStartingCounts[type] - counts[color][type]);
+    }
+    const promotionExtras = ['n','b','r','q'].reduce(
+      (sum, type) => sum + Math.max(0, counts[color][type] - sfStartingCounts[type]),
+      0
+    );
+    missing.p = Math.max(0, missing.p - promotionExtras);
+    return missing;
+  };
+
+  const whiteCaptured = missingFor('b');
+  const blackCaptured = missingFor('w');
+  const materialTotal = color => Object.keys(sfPieceValue).reduce(
+    (sum, type) => sum + counts[color][type] * sfPieceValue[type],
+    0
+  );
+  return {
+    whiteCaptured,
+    blackCaptured,
+    whitePoints: materialTotal('w'),
+    blackPoints: materialTotal('b')
+  };
+}
+
+function sfRenderMaterial() {
+  const material = sfMaterialSnapshot();
+  sfWhiteCaptured.textContent = sfRenderCapturedSet(material.whiteCaptured, 'b');
+  sfBlackCaptured.textContent = sfRenderCapturedSet(material.blackCaptured, 'w');
+  const difference = material.whitePoints - material.blackPoints;
+  sfWhiteAdvantage.textContent = difference > 0 ? `+${difference}` : '';
+  sfBlackAdvantage.textContent = difference < 0 ? `+${Math.abs(difference)}` : '';
+}
+
+function sfRenderMoveHistory() {
+  sfMoveCount.textContent = `${sfMoveLog.length} move${sfMoveLog.length === 1 ? '' : 's'}`;
+  if (!sfMoveLog.length) {
+    sfMoveHistory.innerHTML = '<p class="history-empty">Moves will appear here.</p>';
+    return;
+  }
+
+  const rows = new Map();
+  for (const entry of sfMoveLog) {
+    if (!rows.has(entry.number)) rows.set(entry.number, { white: '', black: '' });
+    rows.get(entry.number)[entry.color === 'w' ? 'white' : 'black'] = entry.san;
+  }
+
+  sfMoveHistory.innerHTML = [...rows.entries()].map(([number, row]) =>
+    `<div class="move-row"><span class="move-number">${number}.</span><span class="move-san">${row.white || '…'}</span><span class="move-san">${row.black || ''}</span></div>`
+  ).join('');
+  sfMoveHistory.scrollTop = sfMoveHistory.scrollHeight;
+}
+
+function sfRefreshPositionUi() {
+  sfFenInput.value = game.fen();
+  sfRenderMaterial();
+  sfRenderMoveHistory();
+  sfResignButton.disabled = sfResigned || stonefishUiGameEnded || watchMode || testing;
+}
+
+function sfRecordMove(playedMove, color, moveNumber) {
+  if (!playedMove) return;
+  sfMoveLog.push({ color, number: moveNumber, san: playedMove.san || `${playedMove.from}${playedMove.to}` });
+}
+
+function sfBoardFiles() {
+  return sfBoardOrientation === 'w'
+    ? ['a','b','c','d','e','f','g','h']
+    : ['h','g','f','e','d','c','b','a'];
+}
+
+function sfBoardRanks() {
+  return sfBoardOrientation === 'w'
+    ? [8,7,6,5,4,3,2,1]
+    : [1,2,3,4,5,6,7,8];
+}
+
+renderBoard = function() {
+  boardElement.innerHTML = '';
+  const files = sfBoardFiles();
+  const ranks = sfBoardRanks();
+  const bottomRank = sfBoardOrientation === 'w' ? 1 : 8;
+  const leftFile = sfBoardOrientation === 'w' ? 'a' : 'h';
+
+  for (const rank of ranks) {
+    for (const file of files) {
+      const fileIndex = file.charCodeAt(0) - 97;
+      const square = `${file}${rank}`;
+      const piece = game.get(square);
+      const squareButton = document.createElement('button');
+      squareButton.type = 'button';
+      squareButton.className = `square ${(rank + fileIndex) % 2 === 0 ? 'light' : 'dark'}`;
+      squareButton.dataset.square = square;
+      squareButton.setAttribute('role', 'gridcell');
+      squareButton.setAttribute('aria-label', describeSquare(square, piece));
+
+      if (selectedSquare === square) squareButton.classList.add('selected');
+      if (legalTargets.includes(square)) squareButton.classList.add('legal-target');
+      if (lastMoveSquares.includes(square)) squareButton.classList.add('last-move-square');
+
+      if (rank === bottomRank) {
+        const fileLabel = document.createElement('span');
+        fileLabel.className = 'coord-file';
+        fileLabel.textContent = file;
+        squareButton.appendChild(fileLabel);
+      }
+      if (file === leftFile) {
+        const rankLabel = document.createElement('span');
+        rankLabel.className = 'coord-rank';
+        rankLabel.textContent = String(rank);
+        squareButton.appendChild(rankLabel);
+      }
+
+      if (piece) {
+        const pieceSpan = document.createElement('span');
+        pieceSpan.className = `piece ${piece.color === 'w' ? 'white-piece' : 'black-piece'}`;
+        pieceSpan.textContent = pieceSymbols[`${piece.color}${piece.type}`];
+        pieceSpan.draggable = piece.color === sfPlayerColor;
+        pieceSpan.addEventListener('dragstart', event => {
+          if (!sfCanHumanMove() || piece.color !== sfPlayerColor) {
+            event.preventDefault();
+            return;
+          }
+          sfDragFrom = square;
+          squareButton.classList.add('drag-source');
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', square);
+        });
+        pieceSpan.addEventListener('dragend', () => {
+          sfDragFrom = null;
+          boardElement.querySelectorAll('.drag-source, .drag-target').forEach(node => node.classList.remove('drag-source', 'drag-target'));
+        });
+        squareButton.appendChild(pieceSpan);
+      }
+
+      squareButton.addEventListener('dragover', event => {
+        if (!sfDragFrom || !sfCanHumanMove()) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        squareButton.classList.add('drag-target');
+      });
+      squareButton.addEventListener('dragleave', () => squareButton.classList.remove('drag-target'));
+      squareButton.addEventListener('drop', event => {
+        if (!sfDragFrom || !sfCanHumanMove()) return;
+        event.preventDefault();
+        const from = sfDragFrom;
+        sfDragFrom = null;
+        boardElement.querySelectorAll('.drag-source, .drag-target').forEach(node => node.classList.remove('drag-source', 'drag-target'));
+        sfAttemptHumanMove(from, square);
+      });
+      squareButton.addEventListener('click', () => handleSquareClick(square));
+      boardElement.appendChild(squareButton);
+    }
+  }
+};
+
+selectSquare = function(square) {
+  if (!sfCanHumanMove()) return;
+  const piece = game.get(square);
+  if (!piece || piece.color !== sfPlayerColor) return;
+  selectedSquare = square;
+  const from = game._sq(square);
+  const raw = game.fastMoves();
+  stonefishUiSelectedRawMoves = raw.filter(move => move.from === from);
+  legalTargets = [...new Set(stonefishUiSelectedRawMoves.map(move => game._alg(move.to)))];
+  renderBoard();
+};
+
+function sfOpenPromotion(from, to, candidates) {
+  sfPendingPromotion = { from, to, candidates };
+  if (typeof sfPromotionDialog.showModal === 'function') sfPromotionDialog.showModal();
+  else {
+    const queen = candidates.find(move => move.promotion === 5) || candidates[0];
+    sfCommitHumanRaw(queen);
+  }
+}
+
+function sfAttemptHumanMove(from, to, promotion = null) {
+  if (!sfCanHumanMove()) return false;
+  const fromSq = game._sq(from);
+  const toSq = game._sq(to);
+  const candidates = game.fastMoves().filter(move => move.from === fromSq && move.to === toSq);
+  if (!candidates.length) return false;
+
+  if (candidates.some(move => move.promotion)) {
+    if (!promotion) {
+      sfOpenPromotion(from, to, candidates);
+      return true;
+    }
+    const desired = sfPromotionType[promotion];
+    const chosen = candidates.find(move => move.promotion === desired);
+    if (!chosen) return false;
+    sfCommitHumanRaw(chosen);
+    return true;
+  }
+
+  sfCommitHumanRaw(candidates[0]);
+  return true;
+}
+
+function sfCommitHumanRaw(raw) {
+  if (!raw || !sfCanHumanMove()) return;
+  const moveNumber = game.fullmove;
+  const playedMove = stonefishUiCommitKnownRaw(game, raw);
+  lastMoveSquares = [playedMove.from, playedMove.to];
+  sfRecordMove(playedMove, sfPlayerColor, moveNumber);
+  clearSelection();
+  lastMoveElement.textContent = `You played ${playedMove.san}.`;
+  const ended = updateStatus();
+  renderBoard();
+  sfRefreshPositionUi();
+  if (!ended) sfScheduleBotMove();
+}
+
+handleSquareClick = function(square) {
+  if (!sfCanHumanMove()) return;
+  const piece = game.get(square);
+
+  if (!selectedSquare) {
+    if (piece && piece.color === sfPlayerColor) selectSquare(square);
+    return;
+  }
+  if (square === selectedSquare) {
+    clearSelection();
+    renderBoard();
+    return;
+  }
+  if (piece && piece.color === sfPlayerColor) {
+    selectSquare(square);
+    return;
+  }
+
+  if (!sfAttemptHumanMove(selectedSquare, square)) {
+    clearSelection();
+    renderBoard();
+  }
+};
+
+function sfScheduleBotMove() {
+  if (sfBotTimer) window.clearTimeout(sfBotTimer);
+  if (sfResigned || stonefishUiGameEnded || watchMode || testing || game.turn() === sfPlayerColor) return;
+  botThinking = true;
+  statusElement.textContent = `${models[selectedModel].name} is thinking…`;
+  sfBotTimer = window.setTimeout(() => {
+    sfBotTimer = null;
+    makeSelectedBotMove();
+  }, 60);
+}
+
+makeSelectedBotMove = function() {
+  if (sfResigned || stonefishUiGameEnded || watchMode || testing || game.turn() === sfPlayerColor) {
+    botThinking = false;
+    return;
+  }
+  const model = models[selectedModel];
+  const color = game.turn();
+  const moveNumber = game.fullmove;
+  const move = model.getMove(game);
+  if (move) {
+    const playedMove = playMoveOnGame(game, move);
+    lastMoveSquares = [playedMove.from, playedMove.to];
+    sfRecordMove(playedMove, color, moveNumber);
+    lastMoveElement.textContent = `${model.name} played ${playedMove.san}.`;
+  }
+  botThinking = false;
+  updateStatus();
+  renderBoard();
+  sfRefreshPositionUi();
+};
+
+updateStatus = function() {
+  if (watchMode) return updateWatchStatus();
+  if (sfResigned) {
+    stonefishUiGameEnded = true;
+    statusElement.textContent = `You resigned. ${models[selectedModel].name} won.`;
+    return true;
+  }
+
+  const inCheck = game.in_check();
+  const hasLegalMove = game.fastHasLegalMove();
+  if (!hasLegalMove) {
+    stonefishUiGameEnded = true;
+    if (inCheck) {
+      const winner = game.turn() === sfPlayerColor ? models[selectedModel].name : 'You';
+      statusElement.textContent = `Checkmate. ${winner} won.`;
+    } else {
+      statusElement.textContent = 'Draw by stalemate.';
+    }
+    return true;
+  }
+
+  if (game.halfmove >= 100) {
+    stonefishUiGameEnded = true;
+    statusElement.textContent = 'Draw by the 50-move rule.';
+    return true;
+  }
+  if (game._insufficientMaterial()) {
+    stonefishUiGameEnded = true;
+    statusElement.textContent = 'Draw by insufficient material.';
+    return true;
+  }
+  if ((game.positionCounts.get(game.fastPositionKey()) || 0) >= 3) {
+    stonefishUiGameEnded = true;
+    statusElement.textContent = 'Draw by threefold repetition.';
+    return true;
+  }
+
+  stonefishUiGameEnded = false;
+  const checkText = inCheck ? ' Check!' : '';
+  statusElement.textContent = game.turn() === sfPlayerColor
+    ? `Your move. You are ${sfHumanName()}.${checkText}`
+    : `${models[selectedModel].name} to move.${checkText}`;
+  return false;
+};
+
+resetGame = function() {
+  if (sfBotTimer) window.clearTimeout(sfBotTimer);
+  sfBotTimer = null;
+  stopWatching();
+  game.reset();
+  clearV45BookState();
+  clearSelection();
+  sfMoveLog = [];
+  sfResigned = false;
+  sfPendingPromotion = null;
+  lastMoveSquares = [];
+  botThinking = false;
+  stonefishUiGameEnded = false;
+  lastMoveElement.textContent = `${models[selectedModel].name} is waiting.`;
+  sfBoardOrientation = sfPlayerColor;
+  renderBoard();
+  updateStatus();
+  sfRefreshPositionUi();
+  sfScheduleBotMove();
+};
+
+function sfSetPlayerColor(color) {
+  if (color !== 'w' && color !== 'b') return;
+  sfPlayerColor = color;
+  sfBoardOrientation = color;
+  sfSideButtons.forEach(button => {
+    const active = button.dataset.side === color;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  resetGame();
+}
+
+function sfLoadFen() {
+  const fen = sfFenInput.value.trim();
+  if (!fen) {
+    sfFenMessage.textContent = 'Paste a FEN first.';
+    return;
+  }
+  try {
+    if (sfBotTimer) window.clearTimeout(sfBotTimer);
+    sfBotTimer = null;
+    stopWatching();
+    game.load(fen);
+    clearV45BookState();
+    clearSelection();
+    sfMoveLog = [];
+    sfResigned = false;
+    sfPendingPromotion = null;
+    lastMoveSquares = [];
+    botThinking = false;
+    stonefishUiGameEnded = false;
+    lastMoveElement.textContent = 'Position loaded from FEN.';
+    sfFenMessage.textContent = 'Position loaded.';
+    renderBoard();
+    updateStatus();
+    sfRefreshPositionUi();
+    sfScheduleBotMove();
+  } catch (error) {
+    sfFenMessage.textContent = `Could not load FEN: ${error.message}`;
+  }
+}
+
+async function sfCopyFen() {
+  const fen = game.fen();
+  try {
+    await navigator.clipboard.writeText(fen);
+    sfFenMessage.textContent = 'FEN copied to clipboard.';
+  } catch (_) {
+    sfFenInput.value = fen;
+    sfFenInput.focus();
+    sfFenInput.select();
+    document.execCommand('copy');
+    sfFenMessage.textContent = 'FEN copied to clipboard.';
+  }
+}
+
+sfSideButtons.forEach(button => button.addEventListener('click', () => sfSetPlayerColor(button.dataset.side)));
+sfFlipBoardButton.addEventListener('click', () => {
+  sfBoardOrientation = sfBoardOrientation === 'w' ? 'b' : 'w';
+  renderBoard();
+});
+sfCopyFenButton.addEventListener('click', sfCopyFen);
+sfLoadFenButton.addEventListener('click', sfLoadFen);
+sfFenInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    sfLoadFen();
+  }
+});
+sfResignButton.addEventListener('click', () => {
+  if (stonefishUiGameEnded || sfResigned || watchMode || testing) return;
+  if (sfBotTimer) window.clearTimeout(sfBotTimer);
+  sfBotTimer = null;
+  sfResigned = true;
+  botThinking = false;
+  clearSelection();
+  updateStatus();
+  renderBoard();
+  sfRefreshPositionUi();
+});
+sfPromotionButtons.forEach(button => button.addEventListener('click', () => {
+  if (!sfPendingPromotion) return;
+  const { from, to } = sfPendingPromotion;
+  const promotion = button.dataset.promotion;
+  sfPendingPromotion = null;
+  if (sfPromotionDialog.open) sfPromotionDialog.close();
+  sfAttemptHumanMove(from, to, promotion);
+}));
+sfCancelPromotion.addEventListener('click', () => {
+  sfPendingPromotion = null;
+  if (sfPromotionDialog.open) sfPromotionDialog.close();
+});
+sfPromotionDialog.addEventListener('cancel', () => { sfPendingPromotion = null; });
+
+// Re-render once after the feature layer replaces the original board functions.
+renderBoard();
+updateStatus();
+sfRefreshPositionUi();

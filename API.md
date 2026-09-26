@@ -50,11 +50,15 @@ A Promise that resolves once the rules engine, released models, and ARMX runtime
 
 Returns the public model list. This is the supported way to populate a model picker. Do not hard-code developer/test builds.
 
-### `await StonefishAPI.createGame(moves?)`
+### `await StonefishAPI.createGame(input?)`
 
-Creates a StoneFish `Chess` game. `moves` is optional and is an array of UCI strings or move objects.
+Creates a StoneFish `Chess` game. `input` can be a move array, a FEN string, or an object containing `{ fen, moves }`. Moves are replayed after the optional FEN position.
 
 Examples: `e2e4`, `g1f3`, `e7e8q`.
+
+```js
+const fromFen = await StonefishAPI.createGame('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+```
 
 ### `await StonefishAPI.getMove(modelId, state?)`
 
@@ -62,8 +66,9 @@ Asks one released model for a move without applying that move.
 
 `state` can be:
 - a game returned by `createGame()`;
+- a FEN string;
 - an array of moves from the normal starting position;
-- `{ moves: [...] }`;
+- `{ fen, moves }`;
 - omitted for the initial position.
 
 The return object contains the model id/name, the chosen move, current FEN, and side to move.
@@ -118,7 +123,7 @@ StoneFish runs in the visitor's browser. Your server does not need to send board
 
 The engine dependencies are loaded from the same base URL as `stonefish-api.js`. That means the one-file loader works when served from jsDelivr, GitHub Pages, or your own copy of the repository.
 
-The API accepts move history from the standard starting position rather than arbitrary FEN import. Supplying the move history preserves castling rights, en-passant state, repetition history, and the per-game context used by higher models.
+The API accepts either FEN positions or move history. FEN preserves side-to-move, castling rights, en-passant target, and move clocks; replaying move history additionally preserves the repetition history built during those moves.
 
 Model calculation can be CPU-intensive, especially the strongest models. For interactive sites, disable the move button while awaiting a result. If you need many simultaneous analyses, isolate calls in workers or rate-limit them in your own UI.
 
