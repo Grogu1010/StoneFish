@@ -1,14 +1,10 @@
-name: Stonefish v5.5 Full ARMX range
+name: Full ARMX causal scale sweep 140-220
 
 on:
   pull_request:
     paths:
       - 'ARMX/**'
       - 'models/**'
-      - 'app.js'
-      - 'index.html'
-      - 'test-worker.js'
-      - 'build_v5_5_kernel.cjs'
       - 'tests/**'
       - 'build_v5_5_kernel.cjs'
       - 'native/**'
@@ -16,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: v55-range-${{ github.event.pull_request.number || github.ref }}
+  group: causal-scale-sweep-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -37,18 +33,55 @@ jobs:
           node --check ARMX/ARMX-preview.js
           node --check ARMX/ARMX.js
           for f in models/*.js; do node --check "$f"; done
-          node --check app.js
-          node --check test-worker.js
           for f in tests/*.js; do node --check "$f"; done
-      - name: Verify v5.5 kernel contract
-        run: node tests/kernel_contract.js
       - name: Verify Full ARMX contracts
         run: |
+          node tests/kernel_contract.js
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Run saved-best range screen
+
+  scale-sweep:
+    needs: contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        scale: [140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220]
+    name: scale ${{ matrix.scale }} — 100 games
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Set causal decision scale
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path("ARMX/ARMX.js")
+          s=p.read_text()
+          scale="${{ matrix.scale }}"
+          s,n=re.subn(r"const ARMX_CAUSAL_DECISION_SCALE=\d+;",f"const ARMX_CAUSAL_DECISION_SCALE={scale};",s,count=1)
+          if n != 1:
+              raise SystemExit("causal decision scale constant not found exactly once")
+          p.write_text(s)
+          PY
+      - name: Build compiled v5.5 kernel
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Run 100-game Artemis strength test
         env:
           GAMES: '100'
           MATCHUP: 'artemisVsCurrent'
+          RESULT_JSON: result-${{ matrix.scale }}.json
         run: node tests/v5_5_range.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: causal-scale-${{ matrix.scale }}
+          path: result-${{ matrix.scale }}.json
+          if-no-files-found: ignore
