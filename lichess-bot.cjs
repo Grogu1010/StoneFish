@@ -19,7 +19,7 @@ const BASE = 'https://lichess.org';
 const TOKEN = process.env.LICHESS_TOKEN;
 const MODEL = (process.env.STONEFISH_MODEL || 'v55').toLowerCase();
 
-const RATED_ONLY = /^(1|true|yes)$/i.test(process.env.RATED_ONLY || 'false');
+const RATED_ONLY = /^(1|true|yes)$/i.test(process.env.RATED_ONLY || 'true');
 const MIN_INITIAL_SECONDS = Number(process.env.MIN_INITIAL_SECONDS || 15);
 const MIN_INCREMENT_SECONDS = Number(process.env.MIN_INCREMENT_SECONDS || 0);
 
@@ -170,6 +170,13 @@ async function* ndjson(stream) {
   }
 }
 
+function challengerIsBot(challenge) {
+  return Boolean(
+    challenge?.challenger?.title === 'BOT' ||
+    challenge?.challenger?.isBot === true
+  );
+}
+
 function challengeAllowed(challenge) {
   if (!challenge || challenge.variant?.key !== 'standard') return { ok: false, reason: 'variant' };
   if (RATED_ONLY && !challenge.rated) return { ok: false, reason: 'casual' };
@@ -206,7 +213,9 @@ async function acceptChallenge(challenge) {
   }
 
   pendingIncomingChallengeId = challenge.id;
-  console.log(`Accepting challenge ${challenge.id}`);
+  console.log(
+    `Accepting ${challengerIsBot(challenge) ? 'bot' : 'human'} challenge ${challenge.id}`
+  );
   try {
     await queuedPost(`/api/challenge/${challenge.id}/accept`);
   } catch (error) {
@@ -384,9 +393,16 @@ function chooseOpponent(bots, ownUsername) {
   let candidates = bots.filter(bot => {
     const name = botUsername(bot);
     if (!name || name.toLowerCase() === me) return false;
+
+    // /api/bot/online is already bot-only, but keep explicit safety checks.
+    if (bot.title && bot.title !== 'BOT') return false;
+    if (bot.disabled === true) return false;
+    if (bot.online === false) return false;
     if (bot.playing === true) return false;
+
     const blockedUntil = recentOpponents.get(name.toLowerCase());
     if (blockedUntil && (blockedUntil > now || now - blockedUntil <= 30 * 60_000)) return false;
+
     return true;
   });
 
@@ -536,7 +552,7 @@ async function run() {
   console.log(`StoneFish bridge connected as ${accountInfo.username} using ${MODEL}.`);
 
   if (AUTO_MATCH) {
-    console.log('StoneFish will automatically seek rated bot games to build its Bullet, Blitz, and Rapid ratings.');
+    console.log('StoneFish will automatically seek rated eligible bot games and accept rated human challenges.');
     autoMatchLoop(accountInfo.username).catch(error => console.error('Auto-match loop stopped:', error));
   } else {
     console.log('Auto-match disabled. Waiting for Lichess challenges...');
