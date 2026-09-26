@@ -3381,6 +3381,8 @@ if (typeof globalThis !== 'undefined') {
   globalThis.getStonefishV55AthenaMove = getStonefishV55AthenaMove;
   globalThis.getStonefishV55AresMove = getStonefishV55AresMove;
   globalThis.getStonefishV55ArtemisMove = getStonefishV55ArtemisMove;
+  globalThis.stonefishV55FullARMXScoreAllMoves = stonefishV55FullARMXScoreAllMoves;
+  globalThis.getStonefishV55FullARMXMove = getStonefishV55FullARMXMove;
   globalThis.getStonefishV55DiagFullPolicyPreviewReviewMove = getStonefishV55DiagFullPolicyPreviewReviewMove;
   globalThis.getStonefishV55DiagPreviewPolicyFullReviewMove = getStonefishV55DiagPreviewPolicyFullReviewMove;
   globalThis.getStonefishV55DiagFullBudgetPreviewOrderingMove = getStonefishV55DiagFullBudgetPreviewOrderingMove;
