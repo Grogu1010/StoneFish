@@ -795,15 +795,31 @@ function sfMaterialSnapshot() {
     counts[value > 0 ? 'w' : 'b'][type] += 1;
   }
 
-  const whiteCaptured = {}, blackCaptured = {};
-  let whitePoints = 0, blackPoints = 0;
-  for (const type of Object.keys(sfStartingCounts)) {
-    whiteCaptured[type] = Math.max(0, sfStartingCounts[type] - counts.b[type]);
-    blackCaptured[type] = Math.max(0, sfStartingCounts[type] - counts.w[type]);
-    whitePoints += whiteCaptured[type] * sfPieceValue[type];
-    blackPoints += blackCaptured[type] * sfPieceValue[type];
-  }
-  return { whiteCaptured, blackCaptured, whitePoints, blackPoints };
+  const missingFor = color => {
+    const missing = {};
+    for (const type of Object.keys(sfStartingCounts)) {
+      missing[type] = Math.max(0, sfStartingCounts[type] - counts[color][type]);
+    }
+    const promotionExtras = ['n','b','r','q'].reduce(
+      (sum, type) => sum + Math.max(0, counts[color][type] - sfStartingCounts[type]),
+      0
+    );
+    missing.p = Math.max(0, missing.p - promotionExtras);
+    return missing;
+  };
+
+  const whiteCaptured = missingFor('b');
+  const blackCaptured = missingFor('w');
+  const materialTotal = color => Object.keys(sfPieceValue).reduce(
+    (sum, type) => sum + counts[color][type] * sfPieceValue[type],
+    0
+  );
+  return {
+    whiteCaptured,
+    blackCaptured,
+    whitePoints: materialTotal('w'),
+    blackPoints: materialTotal('b')
+  };
 }
 
 function sfRenderMaterial() {
