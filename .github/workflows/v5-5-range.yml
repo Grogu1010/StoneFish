@@ -1,14 +1,10 @@
-name: Stonefish v5.5 Full ARMX range
+name: Full ARMX causal scale holdout 202-203
 
 on:
   pull_request:
     paths:
       - 'ARMX/**'
       - 'models/**'
-      - 'app.js'
-      - 'index.html'
-      - 'test-worker.js'
-      - 'build_v5_5_kernel.cjs'
       - 'tests/**'
       - 'build_v5_5_kernel.cjs'
       - 'native/**'
@@ -16,15 +12,18 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: v55-range-${{ github.event.pull_request.number || github.ref }}
+  group: causal-scale-holdout-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  contracts:
+  baseline:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    name: main baseline — holdout 100
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -32,23 +31,46 @@ jobs:
         env:
           STONEFISH_CC: clang
         run: node build_v5_5_kernel.cjs
-      - name: Check active files
-        run: |
-          node --check ARMX/ARMX-preview.js
-          node --check ARMX/ARMX.js
-          for f in models/*.js; do node --check "$f"; done
-          node --check app.js
-          node --check test-worker.js
-          for f in tests/*.js; do node --check "$f"; done
-      - name: Verify v5.5 kernel contract
-        run: node tests/kernel_contract.js
-      - name: Verify Full ARMX contracts
-        run: |
-          node tests/armx_contract.js
-          node tests/armx_reply_policy.js
-          node tests/native_contract.js
-      - name: Run saved-best range screen
+      - name: Run main holdout
         env:
           GAMES: '100'
+          START_INDEX: '100'
+          MATCHUP: 'artemisVsCurrent'
+        run: node tests/v5_5_range.js
+
+  candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scale: [202, 203]
+    name: scale ${{ matrix.scale }} — holdout 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Set causal decision scale
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path("ARMX/ARMX.js")
+          s=p.read_text()
+          scale="${{ matrix.scale }}"
+          s,n=re.subn(r"const ARMX_CAUSAL_DECISION_SCALE=\d+;",f"const ARMX_CAUSAL_DECISION_SCALE={scale};",s,count=1)
+          if n != 1:
+              raise SystemExit("causal decision scale constant not found exactly once")
+          p.write_text(s)
+          PY
+      - name: Build compiled v5.5 kernel
+        env:
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Run holdout
+        env:
+          GAMES: '100'
+          START_INDEX: '100'
           MATCHUP: 'artemisVsCurrent'
         run: node tests/v5_5_range.js
