@@ -1897,6 +1897,11 @@ function armxFullLast(style='artemis'){
 // bounded influence. Rich causal notes are layered onto this foundation next.
 // ---------------------------------------------------------------------------
 const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
+const ARMX_CAUSAL_DECISION_SCALE=220;
+const ARMX_CAUSAL_MAX_ADJUSTMENT=70;
+const ARMX_CAUSAL_MIN_CONFIDENCE=0.08;
+const ARMX_CAUSAL_MIN_ABS_SIGNAL=0.035;
+const ARMX_CAUSAL_MIN_OBSERVED_PLIES=8;
 
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const preview=armxPreviewOpponentPolicy(game,perspective);
@@ -1917,11 +1922,17 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
   const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
   const baseReports=candidates.map(entry=>armxPreviewCandidateReport(game,entry,profile));
+  const causalBook=armxCausalSync(game,perspective);
   const hostBest=candidates[0];
   const legacyStyleBook=style==='artemis'?null:armxFullSyncNotebook(game,perspective,profile);
   const reports=baseReports.map((base,index)=>{
     const entry=candidates[index];
     const adjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
+    const causal=armxCausalCandidateReport(game,entry,causalBook);
+    const causalAdjustment=armxFullClamp(
+      (Number(causal.signal)||0)*(Number(causal.confidence)||0)*ARMX_CAUSAL_DECISION_SCALE,
+      -ARMX_CAUSAL_MAX_ADJUSTMENT,ARMX_CAUSAL_MAX_ADJUSTMENT
+    );
     const response={
       contextFeatures:Array.isArray(base.features)?base.features:[],
       evidence:Number(base.evidence)||0,
@@ -1951,8 +1962,11 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       independentObservations:Number(base.independentObservations)||0,
       previewReport:base,
       previewAdjustment:adjustment,
-      noteAdjustment:0,noteConfidence:0,learnedSignal:0,
-      adaptiveAdjustment:adjustment,
+      causal,
+      noteAdjustment:causalAdjustment,
+      noteConfidence:Number(causal.confidence)||0,
+      learnedSignal:Number(causal.signal)||0,
+      adaptiveAdjustment:adjustment+causalAdjustment,
       styleSignal:Number(styleResult.signal)||0,
       styleScale:Number(styleResult.scale)||0,
       styleAdjustment:Number(styleResult.adjustment)||0,
@@ -1984,6 +1998,30 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       -((Number(provisional.hostScore)||0)+provisional.adjustment*STONEFISH_V5_5_ARMX_DECISION_GAIN);
     report.previewLead=gate.allowed?previewLead:0;
 
+    const causalConfidence=Math.max(
+      Number(report.noteConfidence)||0,Number(provisional.noteConfidence)||0
+    );
+    const causalSignal=Math.max(
+      Math.abs(Number(report.learnedSignal)||0),
+      Math.abs(Number(provisional.learnedSignal)||0)
+    );
+    const causalEvidence=Math.max(
+      Number(report.causal&&report.causal.evidence)||0,
+      Number(provisional.causal&&provisional.causal.evidence)||0
+    );
+    const causalAllowed=observedPlies>=ARMX_CAUSAL_MIN_OBSERVED_PLIES
+      &&causalConfidence>=ARMX_CAUSAL_MIN_CONFIDENCE
+      &&causalSignal>=ARMX_CAUSAL_MIN_ABS_SIGNAL
+      &&causalEvidence>=1;
+    const causalLead=causalAllowed
+      ?(Number(report.noteAdjustment)||0)-(Number(provisional.noteAdjustment)||0):0;
+    report.fullNoteGate={
+      allowed:causalAllowed,
+      reason:causalAllowed?'causal-evidence':'causal-insufficient',
+      confidence:causalConfidence,signal:causalSignal,evidence:causalEvidence,
+    };
+    report.noteLead=causalLead;
+
     const styleLead=(Number(report.styleAdjustment)||0)
       -(Number(provisional.styleAdjustment)||0);
     const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
@@ -1994,9 +2032,9 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     report.styleLead=styleAllowed?styleLead:0;
 
     const effectiveLead=(gate.allowed?previewLead:report.hostScore-provisional.hostScore)
-      +(styleAllowed?styleLead:0);
+      +causalLead+(styleAllowed?styleLead:0);
     report.decisionLead=effectiveLead;
-    report.fullScore=report.objectiveEligible&&(gate.allowed||styleAllowed)&&effectiveLead>0
+    report.fullScore=report.objectiveEligible&&(gate.allowed||causalAllowed||styleAllowed)&&effectiveLead>0
       ?provisional.hostScore+effectiveLead:-Infinity;
     if(report.fullScore>winner.fullScore)winner=report;
   }
@@ -2012,6 +2050,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     predictionSurprise:profile.quietPolicy&&profile.quietPolicy.qualityWeight
       ?Math.max(0,-profile.quietPolicy.qualitySum/profile.quietPolicy.qualityWeight):0,
     notes:armxPreviewProfileNotes(profile),
+    causal:armxCausalSummary(causalBook),
     reports,
     winner:winner.entry,
   };
