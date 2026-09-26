@@ -241,7 +241,7 @@ function armxFullMoveFeatures(game, move) {
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
 const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-3-preview-reliability';
-const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=8;
+const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
 const ARMX_CAUSAL_CORE_FEATURES=Object.freeze([
