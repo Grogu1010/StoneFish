@@ -2163,9 +2163,13 @@ function armxFullSyncNotebook(game,perspective=game.side,_previewProfile=null){
     let chosenFeatures=null;
 
     if(index>=observationStartPly){
-      const legal=book.replay.fastMoves();
       chosenFeatures=armxCausalMoveFeatures(book.replay,move);
       if(actor===-perspective)book.opponentMoves++;
+      // Opponent decisions are always observed. Our treatment/control notebook
+      // samples every other own decision; this preserves causal controls while
+      // avoiding a second full legal-opportunity scan on every ply.
+      const sampleOwn=actor!==perspective||((((index-observationStartPly)>>1)&1)===0);
+      const legal=sampleOwn?book.replay.fastMoves():[];
 
       if(legal.length>1){
         const sequence=actor===-perspective?book.lastOurFeatures:null;
@@ -2335,9 +2339,17 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
   const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
   const hostBest=candidates[0];
+  const currentPredictionTrust=armxCausalPredictionTrust(book);
   const reports=candidates.map((entry,index)=>{
     const base=armxPreviewCandidateReport(game,entry,profile);
-    const causal=armxCausalCandidateReport(game,entry,book);
+    const causal=index<2||(index<3&&currentPredictionTrust>=0.25)
+      ?armxCausalCandidateReport(game,entry,book)
+      :{
+        signal:0,confidence:0,adjustment:0,predictionTrust:currentPredictionTrust,
+        ownEffect:{value:0,confidence:0,evidence:0,independentObservations:0},
+        expectedOpponent:0,opponentConfidence:0,replyCount:0,
+        features:Array.isArray(base.features)?base.features:[],contexts:[],
+      };
     const previewAdjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
     const causalAdjustment=(causal.confidence>=0.24&&causal.ownEffect.independentObservations>=3
       ||causal.predictionTrust>=0.28)?causal.adjustment:0;
