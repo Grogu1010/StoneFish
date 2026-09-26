@@ -31,6 +31,17 @@ const AUTO_MATCH = !/^(0|false|no)$/i.test(process.env.AUTO_MATCH || 'true');
 const AUTO_CHALLENGE_TIMEOUT_MS = Number(process.env.AUTO_CHALLENGE_TIMEOUT_MS || 45_000);
 const AUTO_MATCH_RETRY_MS = Number(process.env.AUTO_MATCH_RETRY_MS || 12_000);
 
+// Human auto-challenges are ON by default. We discover public human accounts
+// through Lichess TV's official API, keep them in a pool, then use the official
+// real-time status API to prefer people who are online and not currently playing.
+// Set AUTO_HUMAN_MATCH=false to disable this without disabling bot matchmaking.
+const AUTO_HUMAN_MATCH = !/^(0|false|no)$/i.test(process.env.AUTO_HUMAN_MATCH || 'true');
+const AUTO_HUMAN_RATED = /^(1|true|yes)$/i.test(process.env.AUTO_HUMAN_RATED || 'false');
+const AUTO_HUMAN_COOLDOWN_MS = Number(process.env.AUTO_HUMAN_COOLDOWN_MS || 6 * 60 * 60_000);
+const HUMAN_POOL_REFRESH_MS = Number(process.env.HUMAN_POOL_REFRESH_MS || 60_000);
+const HUMAN_STATUS_BATCH = Math.max(1, Math.min(100, Number(process.env.HUMAN_STATUS_BATCH || 40)));
+const HUMAN_TIME_CONTROL = { name: 'Blitz', limit: 180, increment: 2 };
+
 // Matchmaking activity heuristic. Lichess does not expose the hidden daily
 // bot-vs-bot counter before a challenge, so we sample recent public game
 // activity and prefer less-active bots. This is only a bias, not a guarantee.
@@ -51,6 +62,7 @@ const AUTO_TIME_CONTROLS = [
 ];
 
 let autoTimeControlIndex = 0;
+let autoTargetKind = AUTO_HUMAN_MATCH ? 'human' : 'bot';
 
 if (!TOKEN) {
   console.error('Missing LICHESS_TOKEN. Set it in your environment before starting the bot.');
@@ -67,6 +79,9 @@ let postChain = Promise.resolve();
 const runningGames = new Set();
 const recentOpponents = new Map();
 const recentActivityCache = new Map();
+const knownHumans = new Map();
+const recentHumanTargets = new Map();
+let humanPoolRefreshedAt = 0;
 
 let pendingOutgoingChallenge = null;
 const outgoingChallengeIds = new Set();
@@ -211,6 +226,15 @@ function challengerIsBot(challenge) {
   );
 }
 
+function rememberHuman(username, source = 'challenge') {
+  const name = String(username || '').trim();
+  if (!name) return;
+  const key = name.toLowerCase();
+  const me = String(accountInfo?.username || accountInfo?.id || '').toLowerCase();
+  if (key === me) return;
+  knownHumans.set(key, { username: name, source, seenAt: Date.now() });
+}
+
 function challengeAllowed(challenge) {
   if (!challenge || challenge.variant?.key !== 'standard') return { ok: false, reason: 'variant' };
   if (RATED_ONLY && !challenge.rated) return { ok: false, reason: 'casual' };
@@ -235,6 +259,15 @@ async function acceptChallenge(challenge) {
     (challenge?.id && outgoingChallengeIds.has(challenge.id))
   ) {
     return;
+  }
+
+  if (!challengerIsBot(challenge)) {
+    rememberHuman(
+      challenge?.challenger?.name ||
+      challenge?.challenger?.username ||
+      challenge?.challenger?.id,
+      'incoming challenge'
+    );
   }
 
   const allowed = challengeAllowed(challenge);
@@ -412,6 +445,108 @@ async function getOnlineBots() {
     .map(line => JSON.parse(line));
 }
 
+async function refreshHumanPoolFromTv() {
+  const now = Date.now();
+  if (now - humanPoolRefreshedAt < HUMAN_POOL_REFRESH_MS && knownHumans.size > 0) {
+    return;
+  }
+
+  await waitForApiCooldown();
+
+  try {
+    const response = await fetch(BASE + '/api/tv/channels', {
+      headers: authHeaders({ Accept: 'application/json' })
+    });
+
+    if (response.status === 429) {
+      console.warn('Lichess rate limit reached while discovering humans; pausing ALL API activity for 60 seconds.');
+      startApiCooldown(60_000);
+      return;
+    }
+
+    if (!response.ok) return;
+
+    const channels = await response.json();
+    for (const entry of Object.values(channels || {})) {
+      const user = entry?.user;
+      const title = String(user?.title || '').toUpperCase();
+      const username = String(user?.name || user?.username || user?.id || '').trim();
+      if (!username || title === 'BOT') continue;
+      rememberHuman(username, 'Lichess TV');
+    }
+
+    humanPoolRefreshedAt = now;
+  } catch (_) {
+    // Best-effort discovery; bot matchmaking continues if this fails.
+  }
+}
+
+async function getHumanStatuses(usernames) {
+  const names = usernames
+    .map(name => String(name || '').trim())
+    .filter(Boolean)
+    .slice(0, HUMAN_STATUS_BATCH);
+
+  if (!names.length) return [];
+
+  await waitForApiCooldown();
+
+  try {
+    const params = new URLSearchParams({ ids: names.join(',') });
+    const response = await fetch(
+      BASE + '/api/users/status?' + params.toString(),
+      { headers: authHeaders({ Accept: 'application/json' }) }
+    );
+
+    if (response.status === 429) {
+      console.warn('Lichess rate limit reached while checking human status; pausing ALL API activity for 60 seconds.');
+      startApiCooldown(60_000);
+      return [];
+    }
+
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function chooseHumanOpponent() {
+  if (!AUTO_HUMAN_MATCH) return null;
+
+  await refreshHumanPoolFromTv();
+
+  const now = Date.now();
+  for (const [key, when] of recentHumanTargets) {
+    if (now - when >= AUTO_HUMAN_COOLDOWN_MS) {
+      recentHumanTargets.delete(key);
+    }
+  }
+
+  const availablePool = [...knownHumans.values()]
+    .filter(item => !recentHumanTargets.has(item.username.toLowerCase()));
+
+  if (!availablePool.length) return null;
+
+  const sample = [...availablePool]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, HUMAN_STATUS_BATCH);
+
+  const statuses = await getHumanStatuses(sample.map(item => item.username));
+  const eligible = statuses.filter(status => {
+    const title = String(status?.title || '').toUpperCase();
+    const username = String(status?.name || status?.username || status?.id || '').trim();
+    if (!username || title === 'BOT') return false;
+    if (status?.online !== true) return false;
+    if (status?.playing) return false;
+    return !recentHumanTargets.has(username.toLowerCase());
+  });
+
+  if (!eligible.length) return null;
+  return eligible[Math.floor(Math.random() * eligible.length)];
+}
+
 function botUsername(bot) {
   return String(bot?.username || bot?.id || bot?.name || '').trim();
 }
@@ -574,6 +709,57 @@ async function cancelPendingOutgoing(reason = 'timeout') {
   }
 }
 
+async function sendHumanChallenge(opponent) {
+  const username = String(
+    opponent?.name || opponent?.username || opponent?.id || ''
+  ).trim();
+  if (!username) return false;
+
+  const body = new URLSearchParams({
+    rated: AUTO_HUMAN_RATED ? 'true' : 'false',
+    'clock.limit': String(HUMAN_TIME_CONTROL.limit),
+    'clock.increment': String(HUMAN_TIME_CONTROL.increment),
+    color: 'random',
+    variant: 'standard',
+    keepAliveStream: 'false'
+  });
+
+  console.log(
+    'Auto-human: challenging ' + username + ' to ' +
+    (AUTO_HUMAN_RATED ? 'rated' : 'casual') + ' ' +
+    HUMAN_TIME_CONTROL.name + ' (' + HUMAN_TIME_CONTROL.limit + 's+' +
+    HUMAN_TIME_CONTROL.increment + 's).'
+  );
+
+  recentHumanTargets.set(username.toLowerCase(), Date.now());
+
+  try {
+    const response = await queuedPost(
+      '/api/challenge/' + encodeURIComponent(username),
+      body
+    );
+    const data = await response.json().catch(() => ({}));
+    const challenge = data.challenge || data;
+
+    if (!challenge?.id) {
+      throw new Error('Lichess created no challenge ID.');
+    }
+
+    pendingOutgoingChallenge = {
+      id: challenge.id,
+      username,
+      kind: 'human',
+      createdAt: Date.now()
+    };
+    outgoingChallengeIds.add(challenge.id);
+    console.log('Auto-human: challenge ' + challenge.id + ' sent to ' + username + '.');
+    return true;
+  } catch (error) {
+    console.log('Auto-human: ' + username + ' was unavailable or declined the request: ' + error.message);
+    return false;
+  }
+}
+
 async function sendRatedBotChallenge(opponent, timeControl) {
   const username = botUsername(opponent);
   if (!username) return false;
@@ -606,6 +792,7 @@ async function sendRatedBotChallenge(opponent, timeControl) {
     pendingOutgoingChallenge = {
       id: challenge.id,
       username,
+      kind: 'bot',
       createdAt: Date.now()
     };
     outgoingChallengeIds.add(challenge.id);
@@ -634,7 +821,9 @@ async function autoMatchLoop(username) {
   if (!AUTO_MATCH) return;
 
   console.log(
-    'Auto-match enabled: rotating rated Bullet 1+0, Blitz 3+2, and Rapid 10+0 against online bots, with a low-recent-activity preference.'
+    AUTO_HUMAN_MATCH
+      ? 'Auto-match enabled: alternating online humans with rated bot games; human challenges are casual Blitz 3+2 by default.'
+      : 'Auto-match enabled: rotating rated Bullet 1+0, Blitz 3+2, and Rapid 10+0 against online bots, with a low-recent-activity preference.'
   );
 
   while (true) {
@@ -655,20 +844,35 @@ async function autoMatchLoop(username) {
         }
       }
 
-      const bots = await getOnlineBots();
-      const opponent = await chooseOpponent(bots, username);
+      let sent = false;
 
-      if (!opponent) {
-        console.log('Auto-match: no available online bot found; trying again soon.');
-        await sleep(AUTO_MATCH_RETRY_MS);
-        continue;
+      if (AUTO_HUMAN_MATCH && autoTargetKind === 'human') {
+        const human = await chooseHumanOpponent();
+        if (human) {
+          sent = await sendHumanChallenge(human);
+          if (sent) autoTargetKind = 'bot';
+        } else {
+          console.log('Auto-human: no known online idle human found right now; falling back to bot matchmaking.');
+        }
       }
 
-      const timeControl = AUTO_TIME_CONTROLS[autoTimeControlIndex];
-      const sent = await sendRatedBotChallenge(opponent, timeControl);
+      if (!sent) {
+        const bots = await getOnlineBots();
+        const opponent = await chooseOpponent(bots, username);
 
-      if (sent) {
-        autoTimeControlIndex = (autoTimeControlIndex + 1) % AUTO_TIME_CONTROLS.length;
+        if (!opponent) {
+          console.log('Auto-match: no available online bot found; trying again soon.');
+          await sleep(AUTO_MATCH_RETRY_MS);
+          continue;
+        }
+
+        const timeControl = AUTO_TIME_CONTROLS[autoTimeControlIndex];
+        sent = await sendRatedBotChallenge(opponent, timeControl);
+
+        if (sent) {
+          autoTimeControlIndex = (autoTimeControlIndex + 1) % AUTO_TIME_CONTROLS.length;
+          autoTargetKind = AUTO_HUMAN_MATCH ? 'human' : 'bot';
+        }
       }
 
       await sleep(sent ? 3_000 : AUTO_MATCH_RETRY_MS);
@@ -684,7 +888,12 @@ async function run() {
   console.log(`StoneFish bridge connected as ${accountInfo.username} using ${MODEL}.`);
 
   if (AUTO_MATCH) {
-    console.log(`StoneFish will auto-seek eligible rated bot games and accept rated or casual human challenges, up to ${MAX_CONCURRENT_GAMES} games at once.`);
+    console.log(
+      'StoneFish will auto-seek rated bot games' +
+      (AUTO_HUMAN_MATCH ? ' plus online human opponents' : '') +
+      ' and accept rated or casual incoming challenges, up to ' +
+      MAX_CONCURRENT_GAMES + ' games at once.'
+    );
     autoMatchLoop(accountInfo.username).catch(error => console.error('Auto-match loop stopped:', error));
   } else {
     console.log('Auto-match disabled. Waiting for Lichess challenges...');
