@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-3-preview-reliability';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-reliability-scale-640';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -2054,7 +2054,12 @@ function armxFullLast(style='artemis'){
 // finalist vote.
 // ---------------------------------------------------------------------------
 const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
-const ARMX_CAUSAL_DECISION_SCALE=202;
+// Reliability is a multiplicative trust term. The earlier 202 scale was
+// calibrated before that term was added, so a typical reliable vote (~0.30)
+// was unintentionally shrunk to an effective scale near 60. Restore roughly
+// the intended causal magnitude while keeping the hard reliability gate and
+// the existing +/-70 finalist cap.
+const ARMX_CAUSAL_DECISION_SCALE=640;
 const ARMX_CAUSAL_MIN_CONFIDENCE=0.04;
 const ARMX_CAUSAL_MIN_SIGNAL=0.15;
 // Prediction quality is part of Full ARMX's trust contract. A model that does
