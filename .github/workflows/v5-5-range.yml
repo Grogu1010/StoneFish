@@ -49,5 +49,7 @@ jobs:
           node tests/native_contract.js
       - name: Run saved-best range screen
         env:
-          GAMES: '20'
+          GAMES: '100'
+          START_INDEX: '400'
+          MATCHUP: 'artemisVsCurrent'
         run: node tests/v5_5_range.js
