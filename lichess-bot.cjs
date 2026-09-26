@@ -60,6 +60,18 @@ const recentOpponents = new Map();
 let pendingOutgoingChallenge = null;
 let pendingIncomingChallengeId = null;
 let accountInfo = null;
+let apiCooldownUntil = 0;
+
+function startApiCooldown(ms = 60_000) {
+  apiCooldownUntil = Math.max(apiCooldownUntil, Date.now() + ms);
+}
+
+async function waitForApiCooldown() {
+  const remaining = apiCooldownUntil - Date.now();
+  if (remaining > 0) {
+    await sleep(remaining);
+  }
+}
 
 function authHeaders(extra = {}) {
   return { Authorization: `Bearer ${TOKEN}`, ...extra };
@@ -67,6 +79,8 @@ function authHeaders(extra = {}) {
 
 async function queuedPost(path, body) {
   const task = async () => {
+    await waitForApiCooldown();
+
     let response = await fetch(BASE + path, {
       method: 'POST',
       headers: authHeaders(
@@ -78,8 +92,10 @@ async function queuedPost(path, body) {
     });
 
     if (response.status === 429) {
-      console.warn('Lichess rate limit reached; waiting 60 seconds before retrying.');
-      await sleep(60_000);
+      console.warn('Lichess rate limit reached; pausing ALL API activity for 60 seconds before retrying.');
+      startApiCooldown(60_000);
+      await waitForApiCooldown();
+
       response = await fetch(BASE + path, {
         method: 'POST',
         headers: authHeaders(
@@ -89,6 +105,10 @@ async function queuedPost(path, body) {
         ),
         body
       });
+    }
+
+    if (response.status === 429) {
+      startApiCooldown(60_000);
     }
 
     if (!response.ok) {
@@ -104,10 +124,13 @@ async function queuedPost(path, body) {
 }
 
 async function openStream(path) {
+  await waitForApiCooldown();
+
   const response = await fetch(BASE + path, {
     headers: authHeaders({ Accept: 'application/x-ndjson' })
   });
   if (response.status === 429) {
+    startApiCooldown(60_000);
     const text = await response.text().catch(() => '');
     const error = new Error(`Failed to open stream ${path}: 429 ${text}`);
     error.rateLimited = true;
@@ -295,19 +318,23 @@ async function playGame(gameId, username) {
 }
 
 async function getAccount() {
+  await waitForApiCooldown();
   const response = await fetch(BASE + '/api/account', { headers: authHeaders() });
   if (!response.ok) throw new Error(`Could not read Lichess account: ${response.status}`);
   return response.json();
 }
 
 async function getOnlineBots() {
+  await waitForApiCooldown();
+
   const response = await fetch(BASE + '/api/bot/online', {
     headers: authHeaders({ Accept: 'application/x-ndjson' })
   });
 
   if (response.status === 429) {
-    console.warn('Lichess rate limit reached while listing bots; waiting 60 seconds.');
-    await sleep(60_000);
+    console.warn('Lichess rate limit reached while listing bots; pausing ALL API activity for 60 seconds.');
+    startApiCooldown(60_000);
+    await waitForApiCooldown();
     return [];
   }
 
@@ -363,14 +390,8 @@ function chooseOpponent(bots, ownUsername) {
     return true;
   });
 
-  // If every online bot has been tried recently, allow repeats.
-  if (!candidates.length) {
-    candidates = bots.filter(bot => {
-      const name = botUsername(bot);
-      return name && name.toLowerCase() !== me && bot.playing !== true;
-    });
-  }
-
+  // Do not immediately retry bots we just challenged, and never bypass a
+  // future "blocked until" timestamp from Lichess's daily bot-vs-bot cap.
   if (!candidates.length) return null;
 
   const ourRating = blitzRating(accountInfo);
@@ -470,6 +491,8 @@ async function autoMatchLoop(username) {
 
   while (true) {
     try {
+      await waitForApiCooldown();
+
       if (runningGames.size > 0 || pendingIncomingChallengeId) {
         await sleep(3_000);
         continue;
@@ -553,8 +576,9 @@ async function run() {
       console.error('Account event stream disconnected:', error.message);
 
       if (error.rateLimited || /\b429\b/.test(String(error.message || ''))) {
-        console.warn('Lichess rate limit reached; waiting 60 seconds before reconnecting.');
-        await sleep(60_000);
+        console.warn('Lichess rate limit reached; pausing ALL API activity for 60 seconds before reconnecting.');
+        startApiCooldown(60_000);
+        await waitForApiCooldown();
       } else {
         await sleep(5_000);
       }
