@@ -94,7 +94,12 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
     [blackModelKey]: { moves: 0, thinkMs: 0, nativeKernelAvailable, compiledMoves: 0, fallbackMoves: 0 }
   };
 
-  while (plies < maxPlies) {
+  // Match CI exactly after the mirrored opening: both color-swapped games for
+  // an opening index start from the same deterministic random stream. This
+  // makes v5.5's randomized opening-book/tie behavior reproducible regardless
+  // of worker scheduling.
+  return withSeed((0xC550000 + openingIndex * 977) >>> 0, () => {
+    while (plies < maxPlies) {
     const modelKey = game.turn() === 'w' ? whiteModelKey : blackModelKey;
     const getMove = workerModels[modelKey];
     if (!getMove) throw new Error(`Unknown model: ${modelKey}`);
@@ -125,7 +130,8 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
     if (cheapDrawReached(game)) return { outcome: 'draw', metrics, plies, openingIndex };
   }
 
-  return { outcome: 'draw', metrics, plies, openingIndex };
+    return { outcome: 'draw', metrics, plies, openingIndex };
+  });
 }
 
 self.onmessage = event => {
