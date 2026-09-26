@@ -232,6 +232,410 @@ function armxFullMoveFeatures(game, move) {
   if ((piece===2||piece===3) && fromRank===0) features.add('development');
   return features;
 }
+// Full ARMX causal notebook.
+//
+// Preview remains the proven prediction substrate. Full ARMX adds a richer,
+// per-game notebook whose central unit is not "feature -> outcome", but
+// "feature chosen when available" versus "feature declined when available".
+// Each observation is scored against the median one-ply trajectory of the legal
+// alternatives from the same position. This makes the learned value a bounded
+// counterfactual residual rather than raw evaluation drift.
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-1';
+const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
+const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
+const ARMX_CAUSAL_CORE_FEATURES=Object.freeze([
+  'capture','trade','rookTrade','queenTrade','minorTrade','simplify','check','kingAttack',
+  'pawnPush','castle','quiet','advance','retreat','forcing','promotion','center','kingside',
+  'queenside','centralize','development','pawnMove','knightMove','bishopMove','rookMove',
+  'queenMove','kingMove','capturePawn','captureKnight','captureBishop','captureRook',
+  'captureQueen','captureWithPawn','captureWithKnight','captureWithBishop','captureWithRook',
+  'captureWithQueen','winningCapture','equalCapture','sacrificeCapture','checkCapture',
+  'kingAttackCapture','centralPawnPush','wingPawnPush','rookToOpenSide','queenlessTransition'
+]);
+function armxCausalMedian(values){
+  if(!values.length)return 0;
+  const sorted=values.slice().sort((a,b)=>a-b),mid=sorted.length>>1;
+  return sorted.length&1?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;
+}
+function armxCausalContexts(game,perspective){
+  let material=0,queens=0;
+  for(const piece of game.boardState){
+    if(!piece)continue;
+    const type=Math.abs(piece);
+    if(type===6)continue;
+    material+=ARMX_PREVIEW_PIECE_VALUES[type]||0;
+    if(type===5)queens++;
+  }
+  const score=armxPreviewStateSnapshot(game,perspective).score;
+  const contexts=[
+    material>=5600?'phaseOpening':material>=3200?'phaseMiddle':'phaseEnd',
+    queens?'queensOn':'queenless',
+    score>=180?'weAhead':score<=-180?'weBehind':'roughlyEqual',
+  ];
+  const ply=Math.max(0,(game.historyStack||[]).length-Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)));
+  contexts.push(ply<16?'earlyObserved':ply<40?'midObserved':'lateObserved');
+  return contexts;
+}
+function armxCausalBaseFeatures(game,move){
+  const features=new Set(armxFullMoveFeatures(game,move));
+  if(!move)return features;
+  const piece=move.piece||Math.abs(game.boardState[move.from]||0);
+  const captured=move.captured||0;
+  const pieceName=ARMX_CAUSAL_PIECE_NAMES[piece]||'piece';
+  const capturedName=ARMX_CAUSAL_PIECE_NAMES[captured]||'piece';
+  if(captured){
+    features.add('capture'+capturedName[0].toUpperCase()+capturedName.slice(1));
+    features.add('captureWith'+pieceName[0].toUpperCase()+pieceName.slice(1));
+    const moverValue=ARMX_PREVIEW_PIECE_VALUES[piece]||0;
+    const capturedValue=ARMX_PREVIEW_PIECE_VALUES[captured]||0;
+    if(capturedValue>=moverValue+90)features.add('winningCapture');
+    else if(moverValue>=capturedValue+180)features.add('sacrificeCapture');
+    else features.add('equalCapture');
+    if(features.has('check'))features.add('checkCapture');
+    if(features.has('kingAttack'))features.add('kingAttackCapture');
+    if(captured===5)features.add('queenlessTransition');
+  }
+  if(piece===1){
+    const file=move.to&7;
+    if(file>=2&&file<=5)features.add('centralPawnPush');
+    else features.add('wingPawnPush');
+  }
+  if(piece===4){
+    const file=move.to&7;
+    if(file===0||file===7)features.add('rookToOpenSide');
+  }
+  return features;
+}
+function armxCausalKeys(game,move,perspective){
+  const base=[...armxCausalBaseFeatures(game,move)].filter(feature=>ARMX_CAUSAL_CORE_FEATURES.includes(feature));
+  const contexts=armxCausalContexts(game,perspective);
+  const keys=new Set(base);
+  for(const feature of base){
+    for(const context of contexts)keys.add(feature+'@'+context);
+  }
+  // A small interaction layer captures common combinations without exploding
+  // the notebook into every possible feature pair.
+  const interactions=[
+    ['capture','check'],['capture','kingAttack'],['trade','queenlessTransition'],
+    ['quiet','weAhead'],['forcing','weBehind'],['pawnPush','phaseEnd'],
+    ['rookTrade','weAhead'],['rookTrade','weBehind'],['queenTrade','weAhead'],
+    ['queenTrade','weBehind']
+  ];
+  const contextSet=new Set(contexts),baseSet=new Set(base);
+  for(const [a,b] of interactions){
+    if(baseSet.has(a)&&(baseSet.has(b)||contextSet.has(b)))keys.add(a+'&'+b);
+  }
+  return keys;
+}
+function armxCausalCheapBaseFeatures(game,move){
+  const features=new Set(armxFullCheapMoveFeatures(move,game.side));
+  if(!move)return features;
+  const piece=move.piece||Math.abs(game.boardState[move.from]||0);
+  const captured=move.captured||0;
+  const pieceName=ARMX_CAUSAL_PIECE_NAMES[piece]||'piece';
+  const capturedName=ARMX_CAUSAL_PIECE_NAMES[captured]||'piece';
+  if(captured){
+    features.add('capture'+capturedName[0].toUpperCase()+capturedName.slice(1));
+    features.add('captureWith'+pieceName[0].toUpperCase()+pieceName.slice(1));
+    const moverValue=ARMX_PREVIEW_PIECE_VALUES[piece]||0;
+    const capturedValue=ARMX_PREVIEW_PIECE_VALUES[captured]||0;
+    if(capturedValue>=moverValue+90)features.add('winningCapture');
+    else if(moverValue>=capturedValue+180)features.add('sacrificeCapture');
+    else features.add('equalCapture');
+    if(captured===5)features.add('queenlessTransition');
+  }
+  if(piece===1){
+    const file=move.to&7;
+    if(file>=2&&file<=5)features.add('centralPawnPush');
+    else features.add('wingPawnPush');
+  }
+  if(piece===4){
+    const file=move.to&7;
+    if(file===0||file===7)features.add('rookToOpenSide');
+  }
+  return features;
+}
+function armxCausalCheapKeys(game,move,perspective){
+  const base=[...armxCausalCheapBaseFeatures(game,move)]
+    .filter(feature=>ARMX_CAUSAL_CORE_FEATURES.includes(feature));
+  const contexts=armxCausalContexts(game,perspective);
+  const keys=new Set(base);
+  for(const feature of base){
+    for(const context of contexts)keys.add(feature+'@'+context);
+  }
+  const contextSet=new Set(contexts),baseSet=new Set(base);
+  for(const [a,b] of [
+    ['trade','queenlessTransition'],['quiet','weAhead'],['forcing','weBehind'],
+    ['pawnPush','phaseEnd'],['rookTrade','weAhead'],['rookTrade','weBehind'],
+    ['queenTrade','weAhead'],['queenTrade','weBehind']
+  ]){
+    if(baseSet.has(a)&&(baseSet.has(b)||contextSet.has(b)))keys.add(a+'&'+b);
+  }
+  return keys;
+}
+function armxCausalFreshRow(){
+  return {
+    opportunities:0,choices:0,
+    treatedWeight:0,treatedImpact:0,treatedImpactSq:0,
+    controlWeight:0,controlImpact:0,controlImpactSq:0,
+    treatedObservations:new Set(),controlObservations:new Set()
+  };
+}
+function armxCausalNewBook(perspective,game){
+  const replay=armxFullReplayFromGameStart(game);
+  return {
+    perspective,
+    observationStartPly:Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)),
+    processedPlies:0,lastHistoryState:null,initialPositionKey:replay.fastPositionKey(),replay,
+    our:new Map(),opponent:new Map(),
+    predictionQualitySum:0,predictionQualityWeight:0,predictionCount:0,
+    lastPredictionProbability:0,lastPredictionRank:0,
+  };
+}
+function armxCausalRow(map,key){
+  let row=map.get(key);
+  if(!row){row=armxCausalFreshRow();map.set(key,row);}
+  return row;
+}
+function armxCausalChoiceRate(row){
+  if(!row||!row.opportunities)return {rate:0.5,evidence:0};
+  return {rate:(row.choices+1)/(row.opportunities+2),evidence:row.opportunities};
+}
+function armxCausalEffect(row){
+  if(!row||row.treatedWeight<=0||row.controlWeight<=0){
+    return {value:0,evidence:0,confidence:0,treated:row?row.treatedWeight:0,control:row?row.controlWeight:0};
+  }
+  const mt=row.treatedImpact/row.treatedWeight,mc=row.controlImpact/row.controlWeight;
+  const vt=Math.max(0,row.treatedImpactSq/row.treatedWeight-mt*mt);
+  const vc=Math.max(0,row.controlImpactSq/row.controlWeight-mc*mc);
+  const se=Math.sqrt(vt/Math.max(1,row.treatedWeight)+vc/Math.max(1,row.controlWeight));
+  const evidence=2*row.treatedWeight*row.controlWeight/(row.treatedWeight+row.controlWeight);
+  const independent=Math.min(row.treatedObservations.size,row.controlObservations.size);
+  const evidenceConfidence=armxFullClamp(evidence/(evidence+4),0,1)
+    *armxFullClamp(independent/4,0,1);
+  const separation=Math.abs(mt-mc);
+  const signalConfidence=separation/(separation+se+0.08);
+  return {
+    value:armxFullClamp(mt-mc,-1,1),evidence,
+    confidence:armxFullClamp(evidenceConfidence*signalConfidence,0,1),
+    treated:row.treatedWeight,control:row.controlWeight,
+    treatedMean:mt,controlMean:mc,se
+  };
+}
+function armxCausalPredictionReliability(book){
+  if(!book||!book.predictionQualityWeight)return 0;
+  const n=book.predictionQualityWeight;
+  const mean=book.predictionQualitySum/n;
+  const maturity=armxFullClamp(n/8,0,1);
+  // Zero means uniform prediction. Positive log gain earns trust; negative
+  // prediction quality actively suppresses Full-only influence.
+  return maturity*armxFullClamp((mean+0.05)/0.65,0,1);
+}
+function armxCausalMovePreference(book,map,game,move){
+  const keys=armxCausalCheapKeys(game,move,book.perspective);
+  let sum=0,weight=0;
+  for(const key of keys){
+    const row=map.get(key);
+    const choice=armxCausalChoiceRate(row);
+    if(choice.evidence<2)continue;
+    const w=Math.min(1,choice.evidence/6);
+    const p=armxFullClamp(choice.rate,0.08,0.92);
+    sum+=Math.log(p/(1-p))*w;
+    weight+=w;
+  }
+  return weight?sum/Math.sqrt(weight):0;
+}
+function armxCausalRecordPrediction(book,legal,chosen,map){
+  if(legal.length<2)return;
+  const logits=legal.map(move=>armxCausalMovePreference(book,map,book.replay,move));
+  const max=Math.max(...logits),weights=logits.map(x=>Math.exp(x-max));
+  const total=weights.reduce((a,b)=>a+b,0)||1;
+  const chosenIndex=legal.findIndex(move=>move.from===chosen.from&&move.to===chosen.to
+    &&(move.promotion||0)===(chosen.promotion||0));
+  if(chosenIndex<0)return;
+  const probability=weights[chosenIndex]/total;
+  const rank=1+logits.reduce((n,x,i)=>n+(i!==chosenIndex&&x>logits[chosenIndex]?1:0),0);
+  book.predictionQualitySum+=Math.log(Math.max(1e-9,probability*legal.length));
+  book.predictionQualityWeight++;
+  book.predictionCount++;
+  book.lastPredictionProbability=probability;
+  book.lastPredictionRank=rank;
+}
+function armxCausalAlternativeBaseline(game,legal,perspective){
+  // Counterfactuals must stay cheap enough to be useful during live play.
+  // Sample a deterministic spread of legal alternatives instead of evaluating
+  // the entire move list. Treatment/control evidence across later comparable
+  // positions supplies the second causal safeguard.
+  const after=[];
+  const depth=game.historyStack.length;
+  const n=legal.length;
+  const wanted=Math.min(5,n);
+  const chosen=[];
+  if(n<=wanted){
+    for(let i=0;i<n;i++)chosen.push(i);
+  }else{
+    const used=new Set();
+    for(let k=0;k<wanted;k++){
+      const i=Math.round(k*(n-1)/(wanted-1));
+      if(!used.has(i)){used.add(i);chosen.push(i);}
+    }
+  }
+  try{
+    for(const i of chosen){
+      game.fastApply(legal[i]);
+      after.push(armxPreviewStateSnapshot(game,perspective).score);
+      game.fastUndo();
+    }
+  }finally{
+    while(game.historyStack.length>depth)game.fastUndo();
+  }
+  return armxCausalMedian(after);
+}
+function armxCausalUpdateRows(map,available,chosen,residual,observationId){
+  for(const key of available){
+    const row=armxCausalRow(map,key);
+    row.opportunities++;
+    const selected=chosen.has(key);
+    if(selected){
+      row.choices++;
+      row.treatedWeight++;
+      row.treatedImpact+=residual;
+      row.treatedImpactSq+=residual*residual;
+      row.treatedObservations.add(observationId);
+    }else{
+      row.controlWeight++;
+      row.controlImpact+=residual;
+      row.controlImpactSq+=residual*residual;
+      row.controlObservations.add(observationId);
+    }
+  }
+}
+function armxCausalSync(game,perspective=game.side){
+  let books=ARMX_CAUSAL_GAME_NOTES.get(game);
+  if(!books){books=new Map();ARMX_CAUSAL_GAME_NOTES.set(game,books);}
+  const history=game.historyStack||[];
+  const observationStartPly=Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0));
+  let book=books.get(perspective);
+  const changedHistory=book&&book.processedPlies>0&&history[book.processedPlies-1]!==book.lastHistoryState;
+  const changedEmpty=book&&!history.length&&game.fastPositionKey()!==book.initialPositionKey;
+  if(!book||history.length<book.processedPlies||changedHistory||changedEmpty
+      ||book.observationStartPly!==observationStartPly){
+    book=armxCausalNewBook(perspective,game);books.set(perspective,book);
+  }
+  while(book.processedPlies<history.length){
+    const index=book.processedPlies,state=history[index],move=state&&state.move;
+    if(!move)break;
+    const actor=book.replay.side;
+    if(index>=observationStartPly){
+      const legal=book.replay.fastMoves();
+      if(legal.length>1){
+        const map=actor===perspective?book.our:book.opponent;
+        if(actor===-perspective)armxCausalRecordPrediction(book,legal,move,map);
+        const available=new Set(),chosen=armxCausalCheapKeys(book.replay,move,perspective);
+        for(const option of legal){
+          for(const key of armxCausalCheapKeys(book.replay,option,perspective))available.add(key);
+        }
+        const baselineAfter=armxCausalAlternativeBaseline(book.replay,legal,perspective);
+        const beforeDepth=book.replay.historyStack.length;
+        book.replay.fastApply(move);
+        const actualAfter=armxPreviewStateSnapshot(book.replay,perspective).score;
+        book.replay.fastUndo();
+        if(book.replay.historyStack.length!==beforeDepth)throw new Error('ARMX causal replay leak');
+        const residual=armxFullClamp((actualAfter-baselineAfter)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
+        armxCausalUpdateRows(map,available,chosen,residual,index);
+      }
+    }
+    book.replay.fastApply(move);
+    book.processedPlies++;
+    book.lastHistoryState=state;
+  }
+  return book;
+}
+function armxCausalTopEffects(map,keys,limit=4){
+  const rows=[];
+  for(const key of keys){
+    const effect=armxCausalEffect(map.get(key));
+    if(effect.confidence<=0)continue;
+    rows.push({key,...effect});
+  }
+  rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
+  return rows.slice(0,limit);
+}
+function armxCausalCandidateReport(game,entry,book){
+  const ownKeys=armxCausalKeys(game,entry.raw,book.perspective);
+  const ownRows=armxCausalTopEffects(book.our,ownKeys,4);
+  let ownValue=0,ownWeight=0;
+  for(const row of ownRows){
+    ownValue+=row.value*row.confidence;ownWeight+=row.confidence;
+  }
+  if(ownWeight)ownValue/=ownWeight;
+
+  const depth=game.historyStack.length;
+  let replies=[],replyRows=[];
+  try{
+    game.fastApply(entry.raw);
+    replies=game.fastMoves();
+    if(replies.length){
+      const logits=replies.map(move=>armxCausalMovePreference(book,book.opponent,game,move));
+      const max=Math.max(...logits),weights=logits.map(x=>Math.exp(x-max));
+      const total=weights.reduce((a,b)=>a+b,0)||1;
+      replyRows=replies.map((move,i)=>{
+        const keys=armxCausalCheapKeys(game,move,book.perspective);
+        const effects=armxCausalTopEffects(book.opponent,keys,3);
+        let value=0,w=0;
+        for(const row of effects){value+=row.value*row.confidence;w+=row.confidence;}
+        return {probability:weights[i]/total,value:w?value/w:0,confidence:w?Math.min(1,w/effects.length):0,effects};
+      });
+    }
+  }finally{
+    while(game.historyStack.length>depth)game.fastUndo();
+  }
+  let replyValue=0,replyConfidence=0;
+  for(const row of replyRows){
+    replyValue+=row.probability*row.value*row.confidence;
+    replyConfidence+=row.probability*row.confidence;
+  }
+  const ownConfidence=ownRows.length?Math.min(1,ownRows.reduce((s,r)=>s+r.confidence,0)/ownRows.length):0;
+  const reliability=armxCausalPredictionReliability(book);
+  // "What has worked for us" is causal evidence in its own right and must not
+  // disappear merely because exact-reply prediction is still immature. Reply
+  // exploitation, however, is explicitly gated by demonstrated prediction gain.
+  const replyTrustedConfidence=replyConfidence*reliability;
+  const confidence=armxFullClamp(0.65*ownConfidence+0.35*replyTrustedConfidence,0,1);
+  const signal=0.62*ownValue+0.38*replyValue*reliability;
+  return {
+    signal,confidence,reliability,ownValue,replyValue,ownConfidence,replyConfidence,replyTrustedConfidence,
+    evidence:ownRows.reduce((s,r)=>s+r.evidence,0)
+      +replyRows.reduce((s,row)=>s+row.effects.reduce((a,e)=>a+e.evidence,0)*row.probability,0),
+    ownEffects:ownRows,
+    predictedReplies:replyRows,
+    predictionCount:book.predictionCount,
+    predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
+  };
+}
+function armxCausalSummary(book){
+  const collect=(map,actor)=>{
+    const rows=[];
+    for(const [key,row] of map){
+      const effect=armxCausalEffect(row),choice=armxCausalChoiceRate(row);
+      if(choice.evidence<2&&effect.confidence<=0)continue;
+      rows.push({actor,key,choiceRate:choice.rate,choiceEvidence:choice.evidence,...effect});
+    }
+    rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
+    return rows.slice(0,12);
+  };
+  return {
+    version:ARMX_CAUSAL_FEATURE_VERSION,
+    reliability:armxCausalPredictionReliability(book),
+    predictionCount:book.predictionCount,
+    predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
+    lastPredictionProbability:book.lastPredictionProbability,
+    lastPredictionRank:book.lastPredictionRank,
+    effects:[...collect(book.our,'our'),...collect(book.opponent,'opponent')].slice(0,16),
+  };
+}
+
+
 function armxFullCheapMoveFeatures(move, side) {
   const features = new Set(armxPreviewCheapFeatureSet(move));
   if (!move) return features;
@@ -1575,11 +1979,13 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
   const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
   const baseReports=candidates.map(entry=>armxPreviewCandidateReport(game,entry,profile));
+  const causalBook=armxCausalSync(game,perspective);
   const hostBest=candidates[0];
   const legacyStyleBook=style==='artemis'?null:armxFullSyncNotebook(game,perspective,profile);
   const reports=baseReports.map((base,index)=>{
     const entry=candidates[index];
     const adjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
+    const causal=armxCausalCandidateReport(game,entry,causalBook);
     const response={
       contextFeatures:Array.isArray(base.features)?base.features:[],
       evidence:Number(base.evidence)||0,
@@ -1609,7 +2015,10 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       independentObservations:Number(base.independentObservations)||0,
       previewReport:base,
       previewAdjustment:adjustment,
-      noteAdjustment:0,noteConfidence:0,learnedSignal:0,
+      causal,
+      noteAdjustment:0,
+      noteConfidence:Number(causal.confidence)||0,
+      learnedSignal:Number(causal.signal)||0,
       adaptiveAdjustment:adjustment,
       styleSignal:Number(styleResult.signal)||0,
       styleScale:Number(styleResult.scale)||0,
@@ -1670,6 +2079,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     predictionSurprise:profile.quietPolicy&&profile.quietPolicy.qualityWeight
       ?Math.max(0,-profile.quietPolicy.qualitySum/profile.quietPolicy.qualityWeight):0,
     notes:armxPreviewProfileNotes(profile),
+    causal:armxCausalSummary(causalBook),
     reports,
     winner:winner.entry,
   };
