@@ -257,7 +257,7 @@ function armxCausalMedian(values){
   const sorted=values.slice().sort((a,b)=>a-b),mid=sorted.length>>1;
   return sorted.length&1?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;
 }
-function armxCausalContexts(game,perspective){
+function armxCausalContexts(game,perspective,knownScore=NaN){
   let material=0,queens=0;
   for(const piece of game.boardState){
     if(!piece)continue;
@@ -266,7 +266,8 @@ function armxCausalContexts(game,perspective){
     material+=ARMX_PREVIEW_PIECE_VALUES[type]||0;
     if(type===5)queens++;
   }
-  const score=armxPreviewStateSnapshot(game,perspective).score;
+  const score=Number.isFinite(knownScore)
+    ?knownScore:armxPreviewStateSnapshot(game,perspective).score;
   const contexts=[
     material>=5600?'phaseOpening':material>=3200?'phaseMiddle':'phaseEnd',
     queens?'queensOn':'queenless',
@@ -306,9 +307,9 @@ function armxCausalBaseFeatures(game,move){
   }
   return features;
 }
-function armxCausalKeys(game,move,perspective){
+function armxCausalKeys(game,move,perspective,knownContexts=null){
   const base=[...armxCausalBaseFeatures(game,move)].filter(feature=>ARMX_CAUSAL_CORE_FEATURES.includes(feature));
-  const contexts=armxCausalContexts(game,perspective);
+  const contexts=knownContexts||armxCausalContexts(game,perspective);
   const keys=new Set(base);
   for(const feature of base){
     for(const context of contexts)keys.add(feature+'@'+context);
@@ -432,8 +433,8 @@ function armxCausalPredictionReliability(book){
   // prediction quality actively suppresses Full-only influence.
   return maturity*armxFullClamp((mean+0.05)/0.65,0,1);
 }
-function armxCausalMovePreference(book,map,game,move){
-  const keys=armxCausalKeys(game,move,book.perspective);
+function armxCausalMovePreference(book,map,game,move,knownKeys=null){
+  const keys=knownKeys||armxCausalKeys(game,move,book.perspective);
   let sum=0,weight=0;
   for(const key of keys){
     const row=map.get(key);
@@ -446,9 +447,11 @@ function armxCausalMovePreference(book,map,game,move){
   }
   return weight?sum/Math.sqrt(weight):0;
 }
-function armxCausalRecordPrediction(book,legal,chosen,map){
+function armxCausalRecordPrediction(book,legal,chosen,map,legalKeys=null){
   if(legal.length<2)return;
-  const logits=legal.map(move=>armxCausalMovePreference(book,map,book.replay,move));
+  const logits=legal.map((move,index)=>armxCausalMovePreference(
+    book,map,book.replay,move,legalKeys&&legalKeys[index]
+  ));
   const max=Math.max(...logits),weights=logits.map(x=>Math.exp(x-max));
   const total=weights.reduce((a,b)=>a+b,0)||1;
   const chosenIndex=legal.findIndex(move=>move.from===chosen.from&&move.to===chosen.to
@@ -462,19 +465,26 @@ function armxCausalRecordPrediction(book,legal,chosen,map){
   book.lastPredictionProbability=probability;
   book.lastPredictionRank=rank;
 }
-function armxCausalAlternativeBaseline(game,legal,perspective){
+function armxCausalSameMove(a,b){
+  return !!a&&!!b&&a.from===b.from&&a.to===b.to
+    &&(a.promotion||0)===(b.promotion||0);
+}
+function armxCausalAlternativeBaseline(game,legal,perspective,chosen=null){
   const after=[];
+  let actualAfter=NaN;
   const depth=game.historyStack.length;
   try{
     for(const move of legal){
       game.fastApply(move);
-      after.push(armxPreviewStateSnapshot(game,perspective).score);
+      const score=armxPreviewStateSnapshot(game,perspective).score;
+      after.push(score);
+      if(chosen&&armxCausalSameMove(move,chosen))actualAfter=score;
       game.fastUndo();
     }
   }finally{
     while(game.historyStack.length>depth)game.fastUndo();
   }
-  return armxCausalMedian(after);
+  return {baselineAfter:armxCausalMedian(after),actualAfter};
 }
 function armxCausalUpdateRows(map,available,chosen,residual,observationId){
   for(const key of available){
@@ -572,17 +582,29 @@ function armxCausalSync(game,perspective=game.side){
       const legal=book.replay.fastMoves();
       if(legal.length>1){
         const map=actor===perspective?book.our:book.opponent;
-        if(actor===-perspective)armxCausalRecordPrediction(book,legal,move,map);
-        const available=new Set(),chosen=armxCausalKeys(book.replay,move,perspective);
-        for(const option of legal){
-          for(const key of armxCausalKeys(book.replay,option,perspective))available.add(key);
+        // Context is position-wide. Compute it once, then reuse the exact same
+        // context/features for prediction, opportunity accounting and baseline
+        // attribution instead of rescanning the board for every consumer.
+        const contexts=armxCausalContexts(book.replay,perspective,trajectoryScore);
+        const legalKeys=legal.map(option=>armxCausalKeys(
+          book.replay,option,perspective,contexts
+        ));
+        const chosenIndex=legal.findIndex(option=>armxCausalSameMove(option,move));
+        const chosen=chosenIndex>=0
+          ?legalKeys[chosenIndex]:armxCausalKeys(book.replay,move,perspective,contexts);
+        if(actor===-perspective)armxCausalRecordPrediction(book,legal,move,map,legalKeys);
+        const available=new Set();
+        for(const keys of legalKeys)for(const key of keys)available.add(key);
+        const baseline=armxCausalAlternativeBaseline(book.replay,legal,perspective,move);
+        const baselineAfter=baseline.baselineAfter;
+        let actualAfter=baseline.actualAfter;
+        if(!Number.isFinite(actualAfter)){
+          const beforeDepth=book.replay.historyStack.length;
+          book.replay.fastApply(move);
+          actualAfter=armxPreviewStateSnapshot(book.replay,perspective).score;
+          book.replay.fastUndo();
+          if(book.replay.historyStack.length!==beforeDepth)throw new Error('ARMX causal replay leak');
         }
-        const baselineAfter=armxCausalAlternativeBaseline(book.replay,legal,perspective);
-        const beforeDepth=book.replay.historyStack.length;
-        book.replay.fastApply(move);
-        const actualAfter=armxPreviewStateSnapshot(book.replay,perspective).score;
-        book.replay.fastUndo();
-        if(book.replay.historyStack.length!==beforeDepth)throw new Error('ARMX causal replay leak');
         const residual=armxFullClamp((actualAfter-baselineAfter)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
         armxCausalUpdateRows(map,available,chosen,residual,index);
         armxCausalQueueTrajectory(book,map,available,chosen,actualAfter,index);
@@ -604,13 +626,13 @@ function armxCausalTopEffects(map,keys,limit=4){
   rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
   return rows.slice(0,limit);
 }
-function armxCausalCandidateReport(game,entry,book){
+function armxCausalCandidateReport(game,entry,book,knownContexts=null){
   // Full ARMX keeps Preview as the opponent-prediction/search layer and adds
   // causal treatment-vs-control evidence for which of our plan types have
   // actually worked against this opponent. Candidate-specific reply scanning
   // is deliberately omitted here because the broader direct causal vote tested
   // stronger and cleaner without it.
-  const ownKeys=armxCausalKeys(game,entry.raw,book.perspective);
+  const ownKeys=armxCausalKeys(game,entry.raw,book.perspective,knownContexts);
   const ownRows=armxCausalTopEffects(book.our,ownKeys,4);
   let ownValue=0,ownWeight=0;
   for(const row of ownRows){
@@ -2016,12 +2038,13 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
   const baseReports=candidates.map(entry=>armxPreviewCandidateReport(game,entry,profile));
   const causalBook=armxCausalSync(game,perspective);
+  const causalContexts=armxCausalContexts(game,perspective);
   const hostBest=candidates[0];
   const legacyStyleBook=style==='artemis'?null:armxFullSyncNotebook(game,perspective,profile);
   const reports=baseReports.map((base,index)=>{
     const entry=candidates[index];
     const adjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
-    const causal=armxCausalCandidateReport(game,entry,causalBook);
+    const causal=armxCausalCandidateReport(game,entry,causalBook,causalContexts);
     const causalAdjustment=armxCausalDecisionAdjustment(causal);
     const response={
       contextFeatures:Array.isArray(base.features)?base.features:[],
