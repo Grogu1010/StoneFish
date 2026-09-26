@@ -211,7 +211,10 @@ function review(game) {
     'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
   game.armxObservationStartPly = 0;
   const learned = armxCausalSync(game, game.side);
-  assert.equal(armxCausalSummary(learned).version, 'causal-preview-foundation-3-preview-reliability');
+  const compactSummary = armxCausalSummary(learned);
+  assert.equal(compactSummary.version, 'causal-preview-foundation-3-preview-reliability');
+  assert.deepEqual(compactSummary.effects, []);
+  assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
   assert.ok(learned.our.size > 0);
   assert.equal(learned.opponent.size, 0);
