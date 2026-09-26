@@ -2055,6 +2055,7 @@ function armxFullLast(style='artemis'){
 // ---------------------------------------------------------------------------
 const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
 const ARMX_CAUSAL_DECISION_SCALE=202;
+const ARMX_CAUSAL_DECISION_SCALE_MAX=320;
 const ARMX_CAUSAL_MIN_CONFIDENCE=0.04;
 const ARMX_CAUSAL_MIN_SIGNAL=0.15;
 // Prediction quality is part of Full ARMX's trust contract. A model that does
@@ -2068,9 +2069,17 @@ function armxCausalDecisionTrust(causal){
   const reliability=armxFullClamp(Number(causal&&causal.reliability)||0,0,1);
   return confidence*reliability;
 }
+function armxCausalDecisionScale(causal){
+  const reliability=armxFullClamp(Number(causal&&causal.reliability)||0,0,1);
+  // Keep the proven 202 scale when prediction quality is weak. Only highly
+  // reliable opponent models earn extra causal decisiveness, rising smoothly
+  // to the historical 320 ceiling instead of giving every note a blanket boost.
+  return ARMX_CAUSAL_DECISION_SCALE
+    +(ARMX_CAUSAL_DECISION_SCALE_MAX-ARMX_CAUSAL_DECISION_SCALE)*reliability*reliability;
+}
 function armxCausalDecisionAdjustment(causal){
   return armxFullClamp(
-    (Number(causal&&causal.signal)||0)*armxCausalDecisionTrust(causal)*ARMX_CAUSAL_DECISION_SCALE,
+    (Number(causal&&causal.signal)||0)*armxCausalDecisionTrust(causal)*armxCausalDecisionScale(causal),
     -70,70
   );
 }

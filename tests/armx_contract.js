@@ -204,6 +204,10 @@ function review(game) {
 // The causal notebook must also reset with the game independently of v5.5.
 {
   assert.equal(armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 0 }), 0);
+  assert.equal(armxCausalDecisionScale({ reliability: 0 }), ARMX_CAUSAL_DECISION_SCALE);
+  assert.equal(armxCausalDecisionScale({ reliability: 1 }), ARMX_CAUSAL_DECISION_SCALE_MAX);
+  const mediumScale = armxCausalDecisionScale({ reliability: 0.5 });
+  assert.ok(mediumScale > ARMX_CAUSAL_DECISION_SCALE && mediumScale < ARMX_CAUSAL_DECISION_SCALE_MAX);
   const trusted = armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 1 });
   assert.ok(trusted > 0 && trusted <= 70);
 
