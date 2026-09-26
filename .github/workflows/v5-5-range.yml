@@ -55,4 +55,5 @@ jobs:
         env:
           GAMES: '100'
           MATCHUP: 'artemisVsCurrent'
+          ARMX_TIMING_SAMPLES: '120'
         run: node tests/v5_5_range.js
