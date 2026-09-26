@@ -2008,10 +2008,52 @@ function armxCausalQuickDeltas(game,moves,perspective){
   });
 }
 
+function armxCausalChoiceModelLogit(book,features,contexts){
+  let total=0,n=0;
+  for(const feature of features){
+    if(!ARMX_CAUSAL_FEATURES.includes(feature))continue;
+    const attribution=armxCausalAttributionWeight(feature,features);
+    total+=(Number(book.choiceWeights[feature])||0)*attribution;
+    n+=attribution;
+    for(const context of contexts||[]){
+      total+=0.55*(Number(book.contextChoiceWeights[context+'>'+feature])||0)*attribution;
+    }
+  }
+  return (n?total/Math.sqrt(n):0)+0.30*armxCausalPreferenceScore(book,features,contexts);
+}
+function armxCausalUpdateChoiceModel(book,moves,prediction,chosen,contexts){
+  if(moves.length<=1)return;
+  const chosenIndex=moves.findIndex(move=>armxCausalMoveIdentity(move)===armxCausalMoveIdentity(chosen));
+  if(chosenIndex<0)return;
+  const selected=prediction.features[chosenIndex],union=new Set();
+  for(const row of prediction.features)for(const feature of row)union.add(feature);
+  const learningRate=0.62/Math.sqrt(1+0.055*(book.choiceModelCount||0));
+  for(const feature of union){
+    if(!ARMX_CAUSAL_FEATURES.includes(feature))continue;
+    let expected=0;
+    for(let i=0;i<prediction.features.length;i++){
+      if(prediction.features[i].has(feature))expected+=prediction.probabilities[i]||0;
+    }
+    const actual=selected.has(feature)?1:0;
+    const attribution=armxCausalAttributionWeight(feature,selected.has(feature)?selected:union);
+    const delta=learningRate*(actual-expected)*attribution;
+    book.choiceWeights[feature]=armxFullClamp(
+      (Number(book.choiceWeights[feature])||0)*0.997+delta,-4.5,4.5
+    );
+    for(const context of contexts||[]){
+      const key=context+'>'+feature;
+      book.contextChoiceWeights[key]=armxFullClamp(
+        (Number(book.contextChoiceWeights[key])||0)*0.998+delta*0.42,-3.5,3.5
+      );
+    }
+  }
+  book.choiceModelCount++;
+}
+
 function armxCausalPredictReplies(book,game,moves,perspective,contexts){
   if(!moves.length)return {probabilities:[],scores:[],features:[]};
   const featureRows=moves.map(move=>armxCausalCheapMoveFeatures(game,move));
-  const scores=featureRows.map(features=>armxCausalPreferenceScore(book,features,contexts));
+  const scores=featureRows.map(features=>armxCausalChoiceModelLogit(book,features,contexts));
   const max=Math.max(...scores);
   const exps=scores.map(score=>Math.exp((score-max)/0.72));
   const sum=exps.reduce((a,b)=>a+b,0)||1;
@@ -2064,6 +2106,7 @@ function armxCausalNewNotebook(perspective,game){
     opponentMoves:0,voluntaryOpponentMoves:0,
     opportunities:Object.create(null),choices:Object.create(null),
     contextOpportunities:Object.create(null),contextChoices:Object.create(null),
+    choiceWeights:Object.create(null),contextChoiceWeights:Object.create(null),choiceModelCount:0,
     opponentEffects:Object.create(null),ourEffects:Object.create(null),
     opponentContextEffects:Object.create(null),ourContextEffects:Object.create(null),
     pending:[],lastOurFeatures:new Set(),
@@ -2168,7 +2211,7 @@ function armxFullSyncNotebook(game,perspective=game.side,_previewProfile=null){
       // Opponent decisions are always observed. Our treatment/control notebook
       // samples every other own decision; this preserves causal controls while
       // avoiding a second full legal-opportunity scan on every ply.
-      const sampleOwn=actor!==perspective||((((index-observationStartPly)>>1)&1)===0);
+      const sampleOwn=actor!==perspective||((((index-observationStartPly)>>1)&3)===0);
       const legal=sampleOwn?book.replay.fastMoves():[];
 
       if(legal.length>1){
@@ -2183,6 +2226,7 @@ function armxFullSyncNotebook(game,perspective=game.side,_previewProfile=null){
         for(const row of learned.features)for(const feature of row)available.add(feature);
         if(actor===-perspective){
           armxCausalRecordPrediction(book,legal,learned,move);
+          armxCausalUpdateChoiceModel(book,legal,learned,move,contexts);
           armxCausalRecordPreference(book,chosenFeatures,available,contexts);
           book.voluntaryOpponentMoves++;
         }
@@ -2258,6 +2302,16 @@ function armxCausalEffectFor(book,role,features,contexts){
     independentObservations:observations.size,
   };
 }
+function armxCausalNotebookActionable(book){
+  if(armxCausalPredictionTrust(book)>=0.18)return true;
+  for(const table of [book.ourEffects,book.opponentEffects]){
+    for(const row of Object.values(table||{})){
+      const estimate=armxCausalEstimate(row);
+      if(estimate.confidence>=0.18&&Math.abs(estimate.value)>=0.05)return true;
+    }
+  }
+  return false;
+}
 function armxCausalCandidateReport(game,entry,book){
   const perspective=book.perspective;
   const ownFeatures=armxCausalMoveFeatures(game,entry.raw);
@@ -2273,10 +2327,13 @@ function armxCausalCandidateReport(game,entry,book){
     replyCount=replies.length;
     if(replies.length){
       const prediction=armxCausalPredictReplies(book,game,replies,perspective,replyContexts);
-      for(let i=0;i<replies.length;i++){
-        const features=prediction.features[i];
+      const ranked=prediction.probabilities.map((p,index)=>({p,index}))
+        .sort((a,b)=>b.p-a.p).slice(0,6);
+      const covered=ranked.reduce((sum,row)=>sum+row.p,0)||1;
+      for(const row of ranked){
+        const features=prediction.features[row.index];
         const effect=armxCausalEffectFor(book,'opponent',features,replyContexts);
-        const p=prediction.probabilities[i]||0;
+        const p=row.p/covered;
         expectedOpponent+=p*effect.value*effect.confidence;
         opponentConfidence+=p*effect.confidence;
       }
@@ -2340,9 +2397,10 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
   const hostBest=candidates[0];
   const currentPredictionTrust=armxCausalPredictionTrust(book);
+  const causalActionable=armxCausalNotebookActionable(book);
   const reports=candidates.map((entry,index)=>{
     const base=armxPreviewCandidateReport(game,entry,profile);
-    const causal=index<2||(index<3&&currentPredictionTrust>=0.25)
+    const causal=causalActionable&&(index<2||(index<3&&currentPredictionTrust>=0.35))
       ?armxCausalCandidateReport(game,entry,book)
       :{
         signal:0,confidence:0,adjustment:0,predictionTrust:currentPredictionTrust,
