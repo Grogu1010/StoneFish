@@ -536,11 +536,14 @@ function armxCausalCandidateReport(game,entry,book){
   }
   const ownConfidence=ownRows.length?Math.min(1,ownRows.reduce((s,r)=>s+r.confidence,0)/ownRows.length):0;
   const reliability=armxCausalPredictionReliability(book);
-  const evidenceConfidence=armxFullClamp((ownConfidence+replyConfidence)/1.2,0,1);
-  const confidence=reliability*evidenceConfidence;
-  const signal=(0.55*ownValue+0.45*replyValue)*confidence;
+  // "What has worked for us" is causal evidence in its own right and must not
+  // disappear merely because exact-reply prediction is still immature. Reply
+  // exploitation, however, is explicitly gated by demonstrated prediction gain.
+  const replyTrustedConfidence=replyConfidence*reliability;
+  const confidence=armxFullClamp(0.65*ownConfidence+0.35*replyTrustedConfidence,0,1);
+  const signal=0.62*ownValue+0.38*replyValue*reliability;
   return {
-    signal,confidence,reliability,ownValue,replyValue,ownConfidence,replyConfidence,
+    signal,confidence,reliability,ownValue,replyValue,ownConfidence,replyConfidence,replyTrustedConfidence,
     evidence:ownRows.reduce((s,r)=>s+r.evidence,0)
       +replyRows.reduce((s,row)=>s+row.effects.reduce((a,e)=>a+e.evidence,0)*row.probability,0),
     ownEffects:ownRows,
