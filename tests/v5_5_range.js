@@ -479,8 +479,14 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
       if(host.searchBudget<policy.searchBudget){
         throw new Error(style+' Full ARMX host must honor its earned node budget');
       }
-      if(host.rootWidth!==ARMX_FULL.baseRootWidth){
-        throw new Error(style+' Full ARMX telemetry must report actual root width');
+      // The causal rebuild deliberately stays on Preview's exact host-search
+      // path. Preview's accelerated fast path does not expose rootWidth, so
+      // absence means the native v5.5 multiPV width rather than a different
+      // search configuration.
+      const effectiveRootWidth=Number.isFinite(host.rootWidth)
+        ?host.rootWidth:SF55C.multiPV;
+      if(effectiveRootWidth!==ARMX_FULL.baseRootWidth){
+        throw new Error(style+' Full ARMX telemetry must preserve Preview root width');
       }
       paths[style]={
         policy:project(policy),

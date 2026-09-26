@@ -40,7 +40,7 @@ const ARMX_FULL_EXTENDED_REPLY_FEATURES = Object.freeze([
 
 const ARMX_FULL = Object.freeze({
   name: 'ARMX',
-  version: '2.1-response-attributed',
+  version: 'full-preview-causal-rebuild-1',
   kind: 'opponent-adaptation',
   reset: 'per-game',
 
@@ -1543,6 +1543,136 @@ function armxFullRankHost(game,host,style='artemis'){
 }
 function armxFullLast(style='artemis'){
   return ARMX_FULL_LAST[style]||null;
+}
+
+
+// ---------------------------------------------------------------------------
+// Full ARMX causal rebuild, stage 1: rebase the live Full path on Preview.
+//
+// The old experimental Full notebook is migration scaffolding only. It no
+// longer decides Artemis moves. The shared live policy is Preview's proven
+// policy and the live finalist vote is Preview evidence with stronger, still
+// bounded influence. Rich causal notes are layered onto this foundation next.
+// ---------------------------------------------------------------------------
+const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
+
+function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
+  const preview=armxPreviewOpponentPolicy(game,perspective);
+  if(!preview)return null;
+  return {
+    ...preview,
+    model:ARMX_FULL.name,
+    version:ARMX_FULL.version,
+    fullFoundation:'preview',
+  };
+}
+
+function armxFullReview(game,finished,style='artemis',perspective=game.side){
+  const profile=armxPreviewSyncProfile(game,perspective);
+  const candidates=(finished||[]).filter(entry=>entry&&Number.isFinite(entry.score))
+    .slice(0,Math.max(ARMX_PREVIEW.candidateLimit,ARMX_FULL.candidateLimit));
+  if(!candidates.length)return {reports:[],winner:null,maturity:0,notes:[]};
+
+  const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
+  const baseReports=candidates.map(entry=>armxPreviewCandidateReport(game,entry,profile));
+  const hostBest=candidates[0];
+  const legacyStyleBook=style==='artemis'?null:armxFullSyncNotebook(game,perspective,profile);
+  const reports=baseReports.map((base,index)=>{
+    const entry=candidates[index];
+    const adjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
+    const response={
+      contextFeatures:Array.isArray(base.features)?base.features:[],
+      evidence:Number(base.evidence)||0,
+      replyCount:0,forcingReplyRate:0,kingAttackReplyRate:0,captureReplyRate:0,
+      repetitionPressure:0,
+    };
+    const styleResult=style==='artemis'
+      ?{signal:0,scale:0,adjustment:0,tendencies:null,activatedPatient:0}
+      :armxFullStyleAdjustment(game,entry,response,style,hostBest,legacyStyleBook);
+    const hostGap=(Number(hostBest.score)||0)-(Number(entry.score)||0);
+    const deepSacrifice=Number.isFinite(hostBest.deep)&&Number.isFinite(entry.deep)
+      ?hostBest.deep-entry.deep:hostGap;
+    const protectedTruth=armxFullMateScale(hostBest)||armxFullMateScale(entry);
+    const objectiveEligible=index===0||(!protectedTruth
+      &&hostGap<=ARMX_FULL.maxHostGap&&deepSacrifice<=ARMX_FULL.maxDeepSacrifice);
+
+    return {
+      raw:entry.raw,entry,
+      hostScore:entry.score,hostDeep:entry.deep,
+      adjustment,
+      multiplier:1,
+      adaptedScore:entry.score+adjustment,
+      signal:Number(base.signal)||0,
+      confidence:Number(base.confidence)||0,
+      evidence:Number(base.evidence)||0,
+      featureEvidence:Number(base.featureEvidence)||0,
+      independentObservations:Number(base.independentObservations)||0,
+      previewReport:base,
+      previewAdjustment:adjustment,
+      noteAdjustment:0,noteConfidence:0,learnedSignal:0,
+      adaptiveAdjustment:adjustment,
+      styleSignal:Number(styleResult.signal)||0,
+      styleScale:Number(styleResult.scale)||0,
+      styleAdjustment:Number(styleResult.adjustment)||0,
+      styleTendencies:styleResult.tendencies||null,
+      styleActivatedPatient:Number(styleResult.activatedPatient)||0,
+      hostGap,deepSacrifice,objectiveEligible,
+      previewGate:{allowed:index===0,reason:index===0?'provisional':'pending'},
+      fullNoteGate:{allowed:false,reason:'causal-rebuild-pending'},
+      styleGate:{allowed:false,styleLead:0},
+      previewLead:0,noteLead:0,styleLead:0,decisionLead:0,fullScore:-Infinity,
+    };
+  });
+
+  const provisional=reports[0];
+  provisional.fullScore=provisional.hostScore;
+  let winner=provisional;
+  for(let i=1;i<reports.length;i++){
+    const report=reports[i];
+    if(!report.objectiveEligible)continue;
+    const provisionalEntry=provisional.entry,challengerEntry=report.entry;
+    provisionalEntry.armxOriginalScore=provisionalEntry.score;
+    challengerEntry.armxOriginalScore=challengerEntry.score;
+
+    const gate=stonefishV55ARMXChangeDecision(
+      provisionalEntry,challengerEntry,provisional,report,observedPlies
+    );
+    report.previewGate=gate;
+    const previewLead=(Number(report.hostScore)||0)+report.adjustment*STONEFISH_V5_5_ARMX_DECISION_GAIN
+      -((Number(provisional.hostScore)||0)+provisional.adjustment*STONEFISH_V5_5_ARMX_DECISION_GAIN);
+    report.previewLead=gate.allowed?previewLead:0;
+
+    const styleLead=(Number(report.styleAdjustment)||0)
+      -(Number(provisional.styleAdjustment)||0);
+    const styleProfile=ARMX_FULL.styleProfiles[style]||ARMX_FULL.styleProfiles.artemis;
+    const minStyleLead=Number(styleProfile.minStyleLead);
+    const styleAllowed=style!=='artemis'&&Number.isFinite(minStyleLead)&&styleLead>=minStyleLead
+      &&report.objectiveEligible;
+    report.styleGate={allowed:styleAllowed,styleLead};
+    report.styleLead=styleAllowed?styleLead:0;
+
+    const effectiveLead=(gate.allowed?previewLead:report.hostScore-provisional.hostScore)
+      +(styleAllowed?styleLead:0);
+    report.decisionLead=effectiveLead;
+    report.fullScore=report.objectiveEligible&&(gate.allowed||styleAllowed)&&effectiveLead>0
+      ?provisional.hostScore+effectiveLead:-Infinity;
+    if(report.fullScore>winner.fullScore)winner=report;
+  }
+
+  const maturity=armxPreviewClamp(observedPlies/24,0,1);
+  return {
+    model:ARMX_FULL.name,version:ARMX_FULL.version,style,reset:ARMX_FULL.reset,
+    opponentMoves:profile.opponentMoves,
+    voluntaryOpponentMoves:profile.quietPolicy?profile.quietPolicy.count:0,
+    maturity,
+    noteUsefulness:baseReports.reduce((s,r)=>s+(Number(r.confidence)||0),0)/Math.max(1,baseReports.length),
+    learnedStrength:baseReports.reduce((s,r)=>s+Math.abs(Number(r.signal)||0),0)/Math.max(1,baseReports.length),
+    predictionSurprise:profile.quietPolicy&&profile.quietPolicy.qualityWeight
+      ?Math.max(0,-profile.quietPolicy.qualitySum/profile.quietPolicy.qualityWeight):0,
+    notes:armxPreviewProfileNotes(profile),
+    reports,
+    winner:winner.entry,
+  };
 }
 
 if(typeof globalThis!=='undefined'){
