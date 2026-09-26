@@ -3285,9 +3285,19 @@ function getStonefishV55AresMove(game) {
   return scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
 }
 
-function getStonefishV55ArtemisMove(game) {
-  const scored = stonefishV55RangeScoreAllMoves(game, 'artemis');
+// Neutral technology runner: same frozen v5.5 host, Full ARMX, no God-style prior.
+function stonefishV55FullARMXScoreAllMoves(game) {
+  const perspective = game.side;
+  const policy = armxFullOpponentPolicy(game, perspective, 'artemis');
+  const host = stonefishV55HostSearch(game, policy);
+  return armxFullRankHost(game, host, 'artemis');
+}
+function getStonefishV55FullARMXMove(game) {
+  const scored = stonefishV55FullARMXScoreAllMoves(game);
   return scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
+}
+function getStonefishV55ArtemisMove(game) {
+  return getStonefishV55FullARMXMove(game);
 }
 
 function stonefishV55PreviewRankHost(game, host) {
