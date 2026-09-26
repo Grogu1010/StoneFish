@@ -1,3 +1,4 @@
+// Trigger 100-game Artemis baseline block.
 // Benchmark-only current-main baseline marker (2026-09-26).
 // ARMX — full per-game opponent adaptation for the Stonefish v5.5 range.
 //
