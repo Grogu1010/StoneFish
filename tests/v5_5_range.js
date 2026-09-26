@@ -481,6 +481,18 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
       if(host.searchBudget<policy.searchBudget){
         throw new Error(style+' Full ARMX host must honor its earned node budget');
       }
+      if(style==='artemis'){
+        const review=armxFullReview(game,host.finished,style,game.side);
+        if(!review.causal||review.causal.version!=='causal-preview-foundation-1'){
+          throw new Error('Full ARMX live review must expose the causal notebook');
+        }
+        if(!review.reports.every(report=>report.causal
+          &&Number.isFinite(report.causal.reliability)
+          &&report.fullNoteGate
+          &&typeof report.fullNoteGate.allowed==='boolean')){
+          throw new Error('Full ARMX live candidates must expose reliability-gated causal telemetry');
+        }
+      }
       // The causal rebuild deliberately stays on Preview's exact host-search
       // path. Preview's accelerated fast path does not expose rootWidth, so
       // absence means the native v5.5 multiPV width rather than a different
