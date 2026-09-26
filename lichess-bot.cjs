@@ -103,6 +103,13 @@ async function openStream(path) {
   const response = await fetch(BASE + path, {
     headers: authHeaders({ Accept: 'application/x-ndjson' })
   });
+  if (response.status === 429) {
+    const text = await response.text().catch(() => '');
+    const error = new Error(`Failed to open stream ${path}: 429 ${text}`);
+    error.rateLimited = true;
+    throw error;
+  }
+
   if (!response.ok || !response.body) {
     const text = await response.text().catch(() => '');
     throw new Error(`Failed to open stream ${path}: ${response.status} ${text}`);
@@ -322,8 +329,11 @@ function chooseOpponent(bots, ownUsername) {
   const me = ownUsername.toLowerCase();
   const now = Date.now();
 
-  // Forget "recently challenged" status after 30 minutes.
+  // Normal entries are timestamps of when we challenged a bot and expire after
+  // 30 minutes. Future timestamps are used as "do not retry before" times for
+  // bots that have hit Lichess's daily bot-vs-bot game cap.
   for (const [name, when] of recentOpponents) {
+    if (when > now) continue;
     if (now - when > 30 * 60_000) recentOpponents.delete(name);
   }
 
@@ -331,7 +341,8 @@ function chooseOpponent(bots, ownUsername) {
     const name = botUsername(bot);
     if (!name || name.toLowerCase() === me) return false;
     if (bot.playing === true) return false;
-    if (recentOpponents.has(name.toLowerCase())) return false;
+    const blockedUntil = recentOpponents.get(name.toLowerCase());
+    if (blockedUntil && (blockedUntil > now || now - blockedUntil <= 30 * 60_000)) return false;
     return true;
   });
 
@@ -416,7 +427,18 @@ async function sendRatedBotChallenge(opponent, timeControl) {
     console.log(`Auto-match: challenge ${challenge.id} sent to ${username}.`);
     return true;
   } catch (error) {
-    recentOpponents.set(username.toLowerCase(), Date.now());
+    const key = username.toLowerCase();
+
+    // If Lichess reports that this bot has reached its daily bot-vs-bot cap,
+    // avoid trying the same opponent again for the rest of the day.
+    const resetMatch = String(error.message || '').match(/wait until ([0-9T:.\-]+Z)/i);
+    if (resetMatch) {
+      const resetAt = Date.parse(resetMatch[1]);
+      recentOpponents.set(key, Number.isFinite(resetAt) ? resetAt : Date.now() + 12 * 60 * 60_000);
+    } else {
+      recentOpponents.set(key, Date.now());
+    }
+
     console.log(`Auto-match: ${username} was unavailable or declined the request: ${error.message}`);
     return false;
   }
@@ -512,7 +534,13 @@ async function run() {
       }
     } catch (error) {
       console.error('Account event stream disconnected:', error.message);
-      await sleep(5_000);
+
+      if (error.rateLimited || /\b429\b/.test(String(error.message || ''))) {
+        console.warn('Lichess rate limit reached; waiting 60 seconds before reconnecting.');
+        await sleep(60_000);
+      } else {
+        await sleep(5_000);
+      }
     }
   }
 }
