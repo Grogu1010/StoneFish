@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-3-preview-reliability';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-signal-010';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -2056,7 +2056,7 @@ function armxFullLast(style='artemis'){
 const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
 const ARMX_CAUSAL_DECISION_SCALE=202;
 const ARMX_CAUSAL_MIN_CONFIDENCE=0.04;
-const ARMX_CAUSAL_MIN_SIGNAL=0.15;
+const ARMX_CAUSAL_MIN_SIGNAL=0.10;
 // Prediction quality is part of Full ARMX's trust contract. A model that does
 // not beat a uniform reply prior must fall back toward Preview instead of
 // turning coincidental treatment/control splits into a finalist vote.
