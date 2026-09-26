@@ -76,7 +76,7 @@ async function waitForApiCooldown() {
 }
 
 function occupiedGameSlots() {
-  return runningGames.size + pendingIncomingChallenges.size;
+  return runningGames.size + pendingIncomingChallenges.size + (pendingOutgoingChallenge ? 1 : 0);
 }
 
 function hasGameCapacity() {
@@ -592,9 +592,11 @@ async function run() {
         }
 
         if (event.type === 'gameStart' && event.game?.id) {
-          pendingOutgoingChallenge = null;
+          const wasOutgoing = Boolean(pendingOutgoingChallenge);
 
-          if (pendingIncomingChallenges.size > 0) {
+          if (wasOutgoing) {
+            pendingOutgoingChallenge = null;
+          } else if (pendingIncomingChallenges.size > 0) {
             const firstPending = pendingIncomingChallenges.values().next().value;
             pendingIncomingChallenges.delete(firstPending);
           }
