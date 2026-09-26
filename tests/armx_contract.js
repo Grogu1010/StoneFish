@@ -204,6 +204,9 @@ function review(game) {
 // The causal notebook must also reset with the game independently of v5.5.
 {
   assert.equal(armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 0 }), 0);
+  assert.equal(armxCausalDecisionTrust({ confidence: 0.8, reliability: 0 }), 0);
+  const partialTrust = armxCausalDecisionTrust({ confidence: 0.8, reliability: 0.25 });
+  assert.ok(partialTrust > 0.25 * 0.8 && partialTrust < 0.8);
   const trusted = armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 1 });
   assert.ok(trusted > 0 && trusted <= 70);
 
@@ -212,7 +215,7 @@ function review(game) {
   game.armxObservationStartPly = 0;
   const learned = armxCausalSync(game, game.side);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-3-preview-reliability');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-4-sqrt-reliability');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);

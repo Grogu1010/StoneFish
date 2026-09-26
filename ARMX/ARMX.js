@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-3-preview-reliability';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-sqrt-reliability';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -2066,7 +2066,11 @@ const ARMX_CAUSAL_MIN_OBSERVED_PLIES=8;
 function armxCausalDecisionTrust(causal){
   const confidence=armxFullClamp(Number(causal&&causal.confidence)||0,0,1);
   const reliability=armxFullClamp(Number(causal&&causal.reliability)||0,0,1);
-  return confidence*reliability;
+  // Prediction quality must still collapse Full-only influence to zero when
+  // the opponent model is untrusted. A square-root calibration avoids
+  // suppressing moderately reliable evidence twice (gate + linear multiplier)
+  // while remaining monotonic and bounded.
+  return confidence*Math.sqrt(reliability);
 }
 function armxCausalDecisionAdjustment(causal){
   return armxFullClamp(
