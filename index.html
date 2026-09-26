@@ -96,6 +96,121 @@
           </details>
         </div>
 
+
+        <section id="settings" class="settings-card" aria-label="Settings and API">
+          <details class="settings-menu">
+            <summary>
+              <span>
+                <span class="section-label">SETTINGS</span>
+                <strong>API access</strong>
+              </span>
+              <span class="settings-chevron" aria-hidden="true">⌄</span>
+            </summary>
+
+            <div class="settings-panel">
+              <div>
+                <h2>Use StoneFish on another website</h2>
+                <p>StoneFish has a browser API for external sites. It runs the engine locally in the visitor’s browser, so there is no API key and no board data has to be sent to a StoneFish server.</p>
+              </div>
+
+              <div class="api-callout">
+                <strong>Released models only</strong>
+                <p>The public API includes v1, v2, v3, v4, v4.5, v5, v5 Pro, and v5.5. Developer controls, No-ARMX builds, and Athena/Ares/Artemis testunits are deliberately unavailable through the API.</p>
+              </div>
+
+              <div>
+                <h3>1. Add the loader</h3>
+                <p>Put this script on the page that will use StoneFish. The loader fetches the released engine files from the same CDN base automatically.</p>
+                <pre><code>&lt;script src="https://cdn.jsdelivr.net/gh/Grogu1010/StoneFish@main/stonefish-api.js"&gt;&lt;/script&gt;</code></pre>
+                <p class="api-note">For a production site, pin the URL to a release tag or commit instead of <code>@main</code> so your integration does not change unexpectedly.</p>
+              </div>
+
+              <div>
+                <h3>2. Wait until StoneFish is ready</h3>
+                <pre><code>await StonefishAPI.ready;
+
+console.log(StonefishAPI.listModels());</code></pre>
+                <p><code>listModels()</code> is the supported source for model pickers. It only returns released models.</p>
+              </div>
+
+              <div>
+                <h3>3. Create a game</h3>
+                <p>You can start from the normal initial position or replay a move history. Move strings use UCI notation such as <code>e2e4</code>, <code>g1f3</code>, or <code>e7e8q</code>.</p>
+                <pre><code>const game = await StonefishAPI.createGame([
+  'e2e4',
+  'e7e5',
+  'g1f3'
+]);</code></pre>
+              </div>
+
+              <div>
+                <h3>4. Ask a model for a move</h3>
+                <pre><code>const answer = await StonefishAPI.getMove('v55', game);
+
+console.log(answer.move.uci);
+// example: "b8c6"</code></pre>
+                <p><code>getMove()</code> does not apply the selected move. The result includes the model id/name, move details, current FEN, and side to move.</p>
+              </div>
+
+              <div>
+                <h3>5. Apply moves</h3>
+                <p>Apply a user move with <code>playMove()</code>, or choose and apply the engine move in one call with <code>playBestMove()</code>.</p>
+                <pre><code>await StonefishAPI.playMove(game, 'f1b5');
+
+const reply = await StonefishAPI.playBestMove('v55', game);
+console.log(reply.move.uci);</code></pre>
+              </div>
+
+              <div>
+                <h3>Available model IDs</h3>
+                <div class="api-model-grid">
+                  <span><code>v1</code> Stonefish_v1</span>
+                  <span><code>v2</code> Stonefish_v2</span>
+                  <span><code>v3</code> Stonefish_v3</span>
+                  <span><code>v4</code> Stonefish_v4</span>
+                  <span><code>v45</code> Stonefish_v4.5</span>
+                  <span><code>v5</code> Stonefish_v5</span>
+                  <span><code>v5pro</code> Stonefish_v5 Pro</span>
+                  <span><code>v55</code> Stonefish_v5.5</span>
+                </div>
+              </div>
+
+              <div>
+                <h3>Complete example</h3>
+                <pre><code>&lt;script src="https://cdn.jsdelivr.net/gh/Grogu1010/StoneFish@main/stonefish-api.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+(async () =&gt; {
+  await StonefishAPI.ready;
+
+  const game = await StonefishAPI.createGame(['e2e4']);
+  const result = await StonefishAPI.playBestMove('v55', game);
+
+  document.querySelector('#engine-move').textContent =
+    result.move ? result.move.uci : 'Game over';
+})();
+&lt;/script&gt;</code></pre>
+              </div>
+
+              <div class="api-reference">
+                <h3>API reference</h3>
+                <p><code>StonefishAPI.ready</code> — Promise that resolves after all released engine dependencies are loaded.</p>
+                <p><code>StonefishAPI.listModels()</code> — returns the released model ids and display names.</p>
+                <p><code>StonefishAPI.createGame(moves?)</code> — creates a game and optionally replays a move array from the starting position.</p>
+                <p><code>StonefishAPI.getMove(modelId, state?)</code> — calculates a model move without applying it. State can be a StoneFish game, a move array, or <code>{ moves: [...] }</code>.</p>
+                <p><code>StonefishAPI.playMove(game, move)</code> — applies a legal UCI move or <code>{ from, to, promotion }</code> object.</p>
+                <p><code>StonefishAPI.playBestMove(modelId, game)</code> — calculates and applies the model’s move.</p>
+              </div>
+
+              <div class="api-callout">
+                <strong>Performance note</strong>
+                <p>The stronger engines do real search in the browser and can use noticeable CPU time. Disable repeated UI clicks while awaiting a move. Sites running many games at once should use workers or their own queue.</p>
+              </div>
+
+              <p class="api-note">The full integration guide also lives in <a href="API.md">API.md</a> in the repository.</p>
+            </div>
+          </details>
+        </section>
+
         <button id="new-game" class="new-game-button" type="button">New game</button>
       </aside>
     </section>
