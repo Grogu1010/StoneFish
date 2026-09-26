@@ -583,7 +583,7 @@ for(const key of ['athenaVsCurrent','aresVsCurrent','artemisVsCurrent']){
 }
 const games=Math.max(0,Number.parseInt(process.env.GAMES||'12',10)||0);
 const armxTimingSamples=Math.max(12,Number.parseInt(process.env.ARMX_TIMING_SAMPLES||'40',10)||40);
-const startIndex=Math.max(0,Number.parseInt(process.env.START_INDEX||'0',10)||0);
+const startIndex=Math.max(0,Number.parseInt(process.env.START_INDEX||'300',10)||0);
 const only=process.env.MATCHUP||'';
 if(only&&!definitions[only])throw new Error('Unknown MATCHUP '+only);
 if(process.env.RELEASE_GATE==='1'&&(games<100||games%2!==0||only))throw new Error('Range release proof requires all six matchups with at least 100 color-balanced games each');
