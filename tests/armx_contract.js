@@ -198,6 +198,39 @@ function review(game) {
   assert.equal(snapshot(game), before);
 }
 
+// Correlated labels must not multiply the same underlying causal observation.
+// When two labels were treated on the exact same moves, only one may contribute
+// independent finalist confidence; an effect with different treated observations
+// remains eligible.
+{
+  const fixture=(treated,control,value)=>{
+    const row=armxCausalFreshRow();
+    row.treatedWeight=treated.length;
+    row.treatedImpact=value*treated.length;
+    row.treatedImpactSq=value*value*treated.length;
+    row.controlWeight=control.length;
+    row.controlImpact=0;
+    row.controlImpactSq=0;
+    row.treatedObservations=new Set(treated);
+    row.controlObservations=new Set(control);
+    return row;
+  };
+  const effects=new Map([
+    ['capture',fixture([1,2],[3,4],0.60)],
+    ['checkCapture',fixture([1,2],[3,4],0.55)],
+    ['pawnPush',fixture([7,8],[9,10],0.35)],
+  ]);
+  const selected=armxCausalTopEffects(
+    effects,['capture','checkCapture','pawnPush'],3
+  );
+  assert.equal(selected.length,2);
+  assert.equal(
+    selected.filter(row=>row.key==='capture'||row.key==='checkCapture').length,1
+  );
+  assert.ok(selected.some(row=>row.key==='pawnPush'));
+  assert.ok(selected.every(row=>row.correlationFactor>0&&row.correlationFactor<=1));
+}
+
 // Full ARMX causal voting is live again, but trust is explicitly gated by
 // measured opponent-prediction reliability. Zero predictive reliability must
 // contribute zero causal finalist adjustment; trusted evidence stays bounded.
@@ -212,7 +245,7 @@ function review(game) {
   game.armxObservationStartPly = 0;
   const learned = armxCausalSync(game, game.side);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-3-preview-reliability');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-4-correlation-discount');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
