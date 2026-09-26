@@ -656,24 +656,31 @@ function armxCausalSync(game,perspective=game.side){
   }
   return book;
 }
-function armxCausalTopEffects(map,keys,limit=4){
+function armxCausalTopEffects(map,keys,limit=4,effectCache=null){
   const rows=[];
   for(const key of keys){
-    const effect=armxCausalEffect(map.get(key));
+    const source=map.get(key);
+    let effect=effectCache&&source?effectCache.get(source):null;
+    if(!effect){
+      effect=armxCausalEffect(source);
+      if(effectCache&&source)effectCache.set(source,effect);
+    }
     if(effect.confidence<=0)continue;
     rows.push({key,...effect});
   }
   rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
   return rows.slice(0,limit);
 }
-function armxCausalCandidateReport(game,entry,book,knownContexts=null,previewProfile=null){
+function armxCausalCandidateReport(
+  game,entry,book,knownContexts=null,previewProfile=null,effectCache=null
+){
   // Full ARMX keeps Preview as the opponent-prediction/search layer and adds
   // causal treatment-vs-control evidence for which of our plan types have
   // actually worked against this opponent. Candidate-specific reply scanning
   // is deliberately omitted here because the broader direct causal vote tested
   // stronger and cleaner without it.
   const ownKeys=armxCausalKeys(game,entry.raw,book.perspective,knownContexts);
-  const ownRows=armxCausalTopEffects(book.our,ownKeys,4);
+  const ownRows=armxCausalTopEffects(book.our,ownKeys,4,effectCache);
   let ownValue=0,ownWeight=0;
   for(const row of ownRows){
     ownValue+=row.value*row.confidence;ownWeight+=row.confidence;
@@ -692,17 +699,26 @@ function armxCausalCandidateReport(game,entry,book,knownContexts=null,previewPro
     predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
   };
 }
-function armxCausalSummary(book,previewProfile=null){
-  const collect=(map,actor)=>{
-    const rows=[];
-    for(const [key,row] of map){
-      const effect=armxCausalEffect(row),choice=armxCausalChoiceRate(row);
-      if(choice.evidence<2&&effect.confidence<=0)continue;
-      rows.push({actor,key,choiceRate:choice.rate,choiceEvidence:choice.evidence,...effect});
-    }
-    rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
-    return rows.slice(0,12);
-  };
+function armxCausalSummary(book,previewProfile=null,includeEffects=false,effectCache=null){
+  let effects=[];
+  if(includeEffects){
+    const collect=(map,actor)=>{
+      const rows=[];
+      for(const [key,row] of map){
+        let effect=effectCache&&row?effectCache.get(row):null;
+        if(!effect){
+          effect=armxCausalEffect(row);
+          if(effectCache&&row)effectCache.set(row,effect);
+        }
+        const choice=armxCausalChoiceRate(row);
+        if(choice.evidence<2&&effect.confidence<=0)continue;
+        rows.push({actor,key,choiceRate:choice.rate,choiceEvidence:choice.evidence,...effect});
+      }
+      rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
+      return rows.slice(0,12);
+    };
+    effects=[...collect(book.our,'our'),...collect(book.opponent,'opponent')].slice(0,16);
+  }
   return {
     version:ARMX_CAUSAL_FEATURE_VERSION,
     reliability:armxCausalPredictionReliability(book,previewProfile),
@@ -710,7 +726,7 @@ function armxCausalSummary(book,previewProfile=null){
     predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
     lastPredictionProbability:book.lastPredictionProbability,
     lastPredictionRank:book.lastPredictionRank,
-    effects:[...collect(book.our,'our'),...collect(book.opponent,'opponent')].slice(0,16),
+    effects,
   };
 }
 
@@ -2080,13 +2096,14 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const baseReports=candidates.map(entry=>armxPreviewCandidateReport(game,entry,profile));
   const causalBook=armxCausalSync(game,perspective);
   const causalContexts=armxCausalContexts(game,perspective);
+  const causalEffectCache=new Map();
   const hostBest=candidates[0];
   const legacyStyleBook=style==='artemis'?null:armxFullSyncNotebook(game,perspective,profile);
   const reports=baseReports.map((base,index)=>{
     const entry=candidates[index];
     const adjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
     const causal=armxCausalCandidateReport(
-      game,entry,causalBook,causalContexts,profile
+      game,entry,causalBook,causalContexts,profile,causalEffectCache
     );
     const causalAdjustment=armxCausalDecisionAdjustment(causal);
     const response={
@@ -2214,7 +2231,9 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     predictionSurprise:profile.quietPolicy&&profile.quietPolicy.qualityWeight
       ?Math.max(0,-profile.quietPolicy.qualitySum/profile.quietPolicy.qualityWeight):0,
     notes:armxPreviewProfileNotes(profile),
-    causal:armxCausalSummary(causalBook,profile),
+    // The live decision path only needs compact causal telemetry. Detailed
+    // top-effect expansion is diagnostic-only and can be requested explicitly.
+    causal:armxCausalSummary(causalBook,profile,false,causalEffectCache),
     reports,
     winner:winner.entry,
   };
