@@ -23,14 +23,20 @@ const RATED_ONLY = /^(1|true|yes)$/i.test(process.env.RATED_ONLY || 'false');
 const MIN_INITIAL_SECONDS = Number(process.env.MIN_INITIAL_SECONDS || 15);
 const MIN_INCREMENT_SECONDS = Number(process.env.MIN_INCREMENT_SECONDS || 0);
 
-// Auto-matchmaking is ON by default. It challenges other online BOT accounts
-// to rated Standard 3+2 games so StoneFish can build a Lichess Blitz rating.
+// Auto-matchmaking is ON by default. StoneFish rotates through rated Standard
+// Bullet, Blitz, and Rapid games so it can establish all three Lichess ratings.
 // Set AUTO_MATCH=false if you only want to accept incoming challenges.
 const AUTO_MATCH = !/^(0|false|no)$/i.test(process.env.AUTO_MATCH || 'true');
-const AUTO_CLOCK_LIMIT = Number(process.env.AUTO_CLOCK_LIMIT || 180);
-const AUTO_CLOCK_INCREMENT = Number(process.env.AUTO_CLOCK_INCREMENT || 2);
 const AUTO_CHALLENGE_TIMEOUT_MS = Number(process.env.AUTO_CHALLENGE_TIMEOUT_MS || 45_000);
 const AUTO_MATCH_RETRY_MS = Number(process.env.AUTO_MATCH_RETRY_MS || 12_000);
+
+const AUTO_TIME_CONTROLS = [
+  { name: 'Bullet', limit: 60, increment: 0 },
+  { name: 'Blitz', limit: 180, increment: 2 },
+  { name: 'Rapid', limit: 600, increment: 0 }
+];
+
+let autoTimeControlIndex = 0;
 
 if (!TOKEN) {
   console.error('Missing LICHESS_TOKEN. Set it in your environment before starting the bot.');
@@ -372,21 +378,21 @@ async function cancelPendingOutgoing(reason = 'timeout') {
   }
 }
 
-async function sendRatedBotChallenge(opponent) {
+async function sendRatedBotChallenge(opponent, timeControl) {
   const username = botUsername(opponent);
   if (!username) return false;
 
   const body = new URLSearchParams({
     rated: 'true',
-    'clock.limit': String(AUTO_CLOCK_LIMIT),
-    'clock.increment': String(AUTO_CLOCK_INCREMENT),
+    'clock.limit': String(timeControl.limit),
+    'clock.increment': String(timeControl.increment),
     color: 'random',
     variant: 'standard',
     keepAliveStream: 'false'
   });
 
   console.log(
-    `Auto-match: challenging ${username} to rated Standard ${AUTO_CLOCK_LIMIT}s+${AUTO_CLOCK_INCREMENT}s.`
+    `Auto-match: challenging ${username} to rated ${timeControl.name} (${timeControl.limit}s+${timeControl.increment}s).`
   );
 
   try {
@@ -420,7 +426,7 @@ async function autoMatchLoop(username) {
   if (!AUTO_MATCH) return;
 
   console.log(
-    `Auto-match enabled: rated Standard ${AUTO_CLOCK_LIMIT}s+${AUTO_CLOCK_INCREMENT}s against online bots.`
+    'Auto-match enabled: rotating rated Bullet 1+0, Blitz 3+2, and Rapid 10+0 against online bots.'
   );
 
   while (true) {
@@ -448,7 +454,13 @@ async function autoMatchLoop(username) {
         continue;
       }
 
-      const sent = await sendRatedBotChallenge(opponent);
+      const timeControl = AUTO_TIME_CONTROLS[autoTimeControlIndex];
+      const sent = await sendRatedBotChallenge(opponent, timeControl);
+
+      if (sent) {
+        autoTimeControlIndex = (autoTimeControlIndex + 1) % AUTO_TIME_CONTROLS.length;
+      }
+
       await sleep(sent ? 3_000 : AUTO_MATCH_RETRY_MS);
     } catch (error) {
       console.error('Auto-match error:', error.message);
@@ -462,7 +474,7 @@ async function run() {
   console.log(`StoneFish bridge connected as ${accountInfo.username} using ${MODEL}.`);
 
   if (AUTO_MATCH) {
-    console.log('StoneFish will automatically seek rated bot games to build its Blitz rating.');
+    console.log('StoneFish will automatically seek rated bot games to build its Bullet, Blitz, and Rapid ratings.');
     autoMatchLoop(accountInfo.username).catch(error => console.error('Auto-match loop stopped:', error));
   } else {
     console.log('Auto-match disabled. Waiting for Lichess challenges...');
