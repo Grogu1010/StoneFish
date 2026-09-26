@@ -182,7 +182,15 @@ function review(game) {
     );
   }
   const chosen = legal[0];
+  const sample = armxCausalBaselineSample(legal, chosen);
+  assert.ok(sample.length <= ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT);
+  assert.ok(sample.some(move => armxCausalSameMove(move, chosen)));
+  assert.deepEqual(
+    armxCausalBaselineSample(legal.slice().reverse(), chosen).map(armxCausalMoveOrderKey).sort((a,b)=>a-b),
+    sample.map(armxCausalMoveOrderKey).sort((a,b)=>a-b)
+  );
   const baseline = armxCausalAlternativeBaseline(game, legal, perspective, chosen);
+  assert.equal(baseline.sampleCount, sample.length);
   game.fastApply(chosen);
   const chosenScore = armxPreviewStateSnapshot(game, perspective).score;
   game.fastUndo();
@@ -203,7 +211,7 @@ function review(game) {
     'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
   game.armxObservationStartPly = 0;
   const learned = armxCausalSync(game, game.side);
-  assert.equal(armxCausalSummary(learned).version, 'causal-preview-foundation-1');
+  assert.equal(armxCausalSummary(learned).version, 'causal-preview-foundation-2-sampled-baseline');
   assert.ok(learned.processedPlies > 0);
 
   game.reset();
