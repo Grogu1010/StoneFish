@@ -1977,7 +1977,7 @@ function armxFullLast(style='artemis'){
 const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
 const ARMX_CAUSAL_DECISION_SCALE=202;
 const ARMX_CAUSAL_MIN_CONFIDENCE=0.04;
-const ARMX_CAUSAL_MIN_SIGNAL=0.04;
+const ARMX_CAUSAL_MIN_SIGNAL=0.15;
 const ARMX_CAUSAL_MIN_OBSERVED_PLIES=8;
 
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
