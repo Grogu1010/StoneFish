@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-correlation-discount';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-3-preview-reliability';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -656,15 +656,8 @@ function armxCausalSync(game,perspective=game.side){
   }
   return book;
 }
-function armxCausalNovelTreatedFraction(row,seenObservations){
-  const observations=row&&row.treatedObservations;
-  if(!(observations instanceof Set)||!observations.size)return 0;
-  let novel=0;
-  for(const observation of observations)if(!seenObservations.has(observation))novel++;
-  return novel/observations.size;
-}
 function armxCausalTopEffects(map,keys,limit=4,effectCache=null){
-  const pool=[];
+  const rows=[];
   for(const key of keys){
     const source=map.get(key);
     let effect=effectCache&&source?effectCache.get(source):null;
@@ -673,45 +666,10 @@ function armxCausalTopEffects(map,keys,limit=4,effectCache=null){
       if(effectCache&&source)effectCache.set(source,effect);
     }
     if(effect.confidence<=0)continue;
-    pool.push({key,source,effect});
+    rows.push({key,...effect});
   }
-
-  // Many move labels describe the same underlying choice (for example
-  // capture + checkCapture + captureQueen). Treating those labels as
-  // independent evidence multiplies one observation into several votes.
-  // Greedily prefer effects that add new treated observations; overlapping
-  // labels retain only the confidence justified by genuinely new choices.
-  const selected=[];
-  const seenObservations=new Set();
-  while(pool.length&&selected.length<limit){
-    let bestIndex=-1,bestScore=-Infinity,bestCorrelationFactor=0;
-    for(let i=0;i<pool.length;i++){
-      const item=pool[i];
-      const novelty=selected.length
-        ?armxCausalNovelTreatedFraction(item.source,seenObservations):1;
-      const correlationFactor=Math.sqrt(armxFullClamp(novelty,0,1));
-      const adjustedConfidence=item.effect.confidence*correlationFactor;
-      const score=adjustedConfidence*Math.abs(item.effect.value);
-      const bestKey=bestIndex>=0?String(pool[bestIndex].key):'';
-      if(score>bestScore||(score===bestScore&&String(item.key)<bestKey)){
-        bestIndex=i;
-        bestScore=score;
-        bestCorrelationFactor=correlationFactor;
-      }
-    }
-    if(bestIndex<0||bestScore<=0)break;
-    const item=pool.splice(bestIndex,1)[0];
-    const adjustedConfidence=item.effect.confidence*bestCorrelationFactor;
-    selected.push({
-      key:item.key,...item.effect,
-      rawConfidence:item.effect.confidence,
-      correlationFactor:bestCorrelationFactor,
-      confidence:adjustedConfidence,
-    });
-    const observations=item.source&&item.source.treatedObservations;
-    if(observations)for(const observation of observations)seenObservations.add(observation);
-  }
-  return selected;
+  rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
+  return rows.slice(0,limit);
 }
 function armxCausalCandidateReport(
   game,entry,book,knownContexts=null,previewProfile=null,effectCache=null
