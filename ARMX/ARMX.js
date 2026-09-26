@@ -40,7 +40,7 @@ const ARMX_FULL_EXTENDED_REPLY_FEATURES = Object.freeze([
 
 const ARMX_FULL = Object.freeze({
   name: 'ARMX',
-  version: '2.1-response-attributed',
+  version: '2.2-opponent-net-outcome',
   kind: 'opponent-adaptation',
   reset: 'per-game',
 
@@ -75,6 +75,11 @@ const ARMX_FULL = Object.freeze({
   ownOutcomeScale: 0.80,
   ownOutcomeMinEvidence: 3.0,
   ownOutcomeMinConsistency: 0.40,
+  // Remember whether our move types produce a good net result after this
+  // opponent's reply. This is per-game opponent experience, not evaluator truth.
+  ourNetOutcomeScale: 0.65,
+  ourNetOutcomeMinEvidence: 3.0,
+  ourNetOutcomeMinConsistency: 0.40,
   ownContextOutcomeScale: 0.70,
   ownContextOutcomeMinEvidence: 2.5,
   ownContextOutcomeMinConsistency: 0.45,
@@ -375,6 +380,8 @@ function armxFullNewNotebook(perspective,game,observationStartPly,previewProfile
     pendingExtendedEffects:[],
     ourExtendedEffects:armxFullFreshEffects(),
     pendingOurExtendedEffects:[],
+    ourNetEffects:armxFullFreshEffects(),
+    pendingOurNetEffects:[],
     ourContextEffects:Object.create(null),
     pendingOurContextEffects:[],
     currentScore:armxPreviewStateSnapshot(replay,perspective).score,
@@ -522,6 +529,47 @@ function armxFullResolveOwnExtendedEffects(book,currentPly,currentScore){
     );
   }
   book.pendingOurExtendedEffects=keep;
+}
+function armxFullOwnNetEffect(book,feature){
+  const row=book&&book.ourNetEffects&&book.ourNetEffects[feature];
+  if(!row||row.weight<ARMX_FULL.minEffectEvidence){
+    return {value:0,evidence:row?row.weight:0,consistency:0,observations:row?row.observations:new Set()};
+  }
+  const directionalWeight=(row.positiveWeight||0)+(row.negativeWeight||0);
+  const consistency=directionalWeight
+    ?Math.abs((row.positiveWeight||0)-(row.negativeWeight||0))/directionalWeight
+    :0;
+  return {
+    value:row.impact/row.weight,evidence:row.weight,consistency,
+    observations:row.observations
+  };
+}
+function armxFullRecordOwnNetEffects(book,features,impact,weight,observationId){
+  if(!features||!features.length)return;
+  const effectScale=Number(ARMX_PREVIEW.effectScale)||360;
+  const normalized=armxFullClamp(impact/effectScale,-1,1);
+  for(const feature of features){
+    if(!ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature))continue;
+    const row=book.ourNetEffects[feature];
+    if(!row)continue;
+    row.weight+=weight;
+    row.impact+=normalized*weight;
+    row.impactSq+=normalized*normalized*weight;
+    if(normalized>0.015)row.positiveWeight+=weight;
+    else if(normalized<-0.015)row.negativeWeight+=weight;
+    row.observations.add(observationId);
+  }
+}
+function armxFullResolveOwnNetEffects(book,currentPly,currentScore){
+  if(!book.pendingOurNetEffects.length)return;
+  const keep=[];
+  for(const event of book.pendingOurNetEffects){
+    if(currentPly<event.resolveAt){keep.push(event);continue;}
+    armxFullRecordOwnNetEffects(
+      book,event.features,currentScore-event.before,event.weight,event.observationId
+    );
+  }
+  book.pendingOurNetEffects=keep;
 }
 function armxFullOwnContextEffect(book,stateContext,moveFeature){
   const row=book.ourContextEffects[armxFullResponseKey(stateContext,moveFeature)];
@@ -705,6 +753,12 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
           feature=>ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature)
         );
         if(ownExtended.length){
+          // Net outcome starts before our move and resolves after this opponent's
+          // reply. Keep it distinct from reply-attribution, which starts after our move.
+          book.pendingOurNetEffects.push({
+            features:ownExtended,before:book.currentScore,observationId:index,
+            resolveAt:index+2,weight:1,
+          });
           const ownEffect={
             features:ownExtended,before:null,observationId:index,
             resolveAt:index+2,weight:1,
@@ -743,11 +797,13 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
     armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);
     armxFullResolveExtendedEffects(book,book.processedPlies,book.currentScore);
     armxFullResolveOwnExtendedEffects(book,book.processedPlies,book.currentScore);
+    armxFullResolveOwnNetEffects(book,book.processedPlies,book.currentScore);
     armxFullResolveOwnContextEffects(book,book.processedPlies,book.currentScore);
   }
   armxFullResolveResponseEffects(book,book.processedPlies,book.currentScore);
   armxFullResolveExtendedEffects(book,book.processedPlies,book.currentScore);
   armxFullResolveOwnExtendedEffects(book,book.processedPlies,book.currentScore);
+  armxFullResolveOwnNetEffects(book,book.processedPlies,book.currentScore);
   armxFullResolveOwnContextEffects(book,book.processedPlies,book.currentScore);
   return book;
 }
@@ -1156,6 +1212,25 @@ function armxFullCandidateResponseReport(
     evidence+=Math.min(1.5,0.45*ownOutcomeWeight);
   }
 
+  let ourNetOutcome=0,ourNetWeight=0;
+  for(const feature of contextFeatures){
+    if(!ARMX_FULL_OWN_OUTCOME_FEATURES.includes(feature))continue;
+    const effect=armxFullOwnNetEffect(book,feature);
+    if(effect.evidence<ARMX_FULL.ourNetOutcomeMinEvidence
+        ||effect.consistency<ARMX_FULL.ourNetOutcomeMinConsistency)continue;
+    const confidence=armxFullClamp(effect.evidence/6,0,1)
+      *armxFullClamp(effect.consistency,0,1)
+      *ARMX_FULL.fullOnlyOutcomeScale;
+    if(confidence<=0)continue;
+    ourNetOutcome+=effect.value*confidence;
+    ourNetWeight+=confidence;
+    recordObservations(effect.observations);
+  }
+  if(ourNetWeight){
+    ourNetOutcome/=ourNetWeight;
+    evidence+=Math.min(1.5,0.45*ourNetWeight);
+  }
+
   let ownContextOutcome=0,ownContextWeight=0;
   const stateContexts=Array.from(contextFeatures).filter(
     feature=>ARMX_FULL_STATE_CONTEXTS.includes(feature)
@@ -1185,6 +1260,7 @@ function armxFullCandidateResponseReport(
     expectedOpponentOutcome:contextualOutcome,
     opponentPreferenceSignal:preferenceSignal,
     ownOutcome,
+    ourNetOutcome,
     ownContextOutcome,
     evidence:Math.min(book.opponentMoves,evidence,independentObservations.size),
     replyCount,
@@ -1351,6 +1427,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const noteConfidence=armxFullClamp(response.evidence/ARMX_FULL.fullConfidenceEvidence,0,1);
     const learnedSignal=response.expectedOpponentOutcome
       +ARMX_FULL.ownOutcomeScale*(Number(response.ownOutcome)||0)
+      +ARMX_FULL.ourNetOutcomeScale*(Number(response.ourNetOutcome)||0)
       +ARMX_FULL.ownContextOutcomeScale*(Number(response.ownContextOutcome)||0);
     const noteAdjustment=armxFullClamp(
       learnedSignal*ARMX_FULL.fullNoteScale*noteConfidence*maturity,
