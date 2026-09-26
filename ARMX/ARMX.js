@@ -1448,7 +1448,13 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const noteConfidence=Number(report.noteConfidence)||0;
     const notebookDecisionLead=(Number(report.entry.score)||0)+(Number(report.noteAdjustment)||0)
       -((Number(provisionalReport.entry.score)||0)+(Number(provisionalReport.noteAdjustment)||0));
-    const signalQuality=(Number(report.learnedSignal)||0)>=ARMX_FULL.fullNoteMinPositiveSignal
+    // Full ARMX is choosing between finalists for this opponent. Gate on the
+    // learned pairwise advantage, not on whether the challenger is absolutely
+    // positive. A move can be the better opponent-specific choice even when
+    // both candidates have negative learned outcomes.
+    const learnedSignalLead=(Number(report.learnedSignal)||0)
+      -(Number(provisionalReport.learnedSignal)||0);
+    const signalQuality=learnedSignalLead>=ARMX_FULL.fullNoteMinPositiveSignal
       ||(Number(provisionalReport.learnedSignal)||0)<=ARMX_FULL.fullNoteStrongAvoidSignal;
     const matureEvidence=responseEvidence>=ARMX_FULL.fullNoteMinEvidence
       &&noteConfidence>=ARMX_FULL.fullNoteMinConfidence;
