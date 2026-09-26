@@ -261,7 +261,7 @@ function observeStyleMove(game,move,counts){
   for(const feature of STYLE_FEATURES)if(features.has(feature))counts[feature]++;
 }
 
-function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPlies=1000){
+function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPlies=360){
   const game=positionAfter(opening);
   clearSharedEngineCaches();
   let plies=opening.length;
@@ -360,7 +360,9 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
     const i=startIndex+local,pair=Math.floor(i/2);
     const opening=generateOpening(pair,10);
     const contenderIsWhite=i%2===0;
-    const row=simulateGame(contenderIsWhite,opening,(0xC550000+pair*977+i)>>>0,contenderFn,opponentFn);
+    // Use the same post-opening random stream as the browser worker for both
+    // colors of this mirrored opening pair.
+    const row=simulateGame(contenderIsWhite,opening,(0xC550000+pair*977)>>>0,contenderFn,opponentFn);
     out[row.result]++;
     out.plies+=row.plies;out.playedPlies+=row.playedPlies;
     out.contenderThinkMs+=row.contenderThinkMs;out.opponentThinkMs+=row.opponentThinkMs;
