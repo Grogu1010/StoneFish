@@ -30,6 +30,10 @@ const AUTO_MATCH = !/^(0|false|no)$/i.test(process.env.AUTO_MATCH || 'true');
 const AUTO_CHALLENGE_TIMEOUT_MS = Number(process.env.AUTO_CHALLENGE_TIMEOUT_MS || 45_000);
 const AUTO_MATCH_RETRY_MS = Number(process.env.AUTO_MATCH_RETRY_MS || 12_000);
 
+// This does NOT terminate a long game. It only logs a warning if a game stream
+// has produced no events for a long time. Lichess's clocks still decide the game.
+const GAME_INACTIVITY_WARNING_MS = Number(process.env.GAME_INACTIVITY_WARNING_MS || 15 * 60_000);
+
 const AUTO_TIME_CONTROLS = [
   { name: 'Bullet', limit: 60, increment: 0 },
   { name: 'Blitz', limit: 180, increment: 2 },
@@ -212,12 +216,24 @@ async function playGame(gameId, username) {
   let syncedMoves = [];
   let ourColor = null;
   let thinkingForPly = -1;
+  let lastEventAt = Date.now();
+
+  const watchdog = setInterval(() => {
+    const silentFor = Date.now() - lastEventAt;
+    if (silentFor >= GAME_INACTIVITY_WARNING_MS) {
+      console.warn(
+        `Game ${gameId} has had no stream event for ${Math.round(silentFor / 60_000)} minutes. Still waiting; the bot will not start another game while this one is active.`
+      );
+    }
+  }, Math.min(60_000, GAME_INACTIVITY_WARNING_MS));
 
   try {
     console.log(`Starting Lichess game ${gameId} with StoneFish ${MODEL}`);
     const stream = await openStream(`/api/bot/game/stream/${gameId}`);
 
     for await (const event of ndjson(stream)) {
+      lastEventAt = Date.now();
+
       if (event.type === 'gameFull') {
         const whiteId = String(event.white?.id || event.white?.name || '').toLowerCase();
         const blackId = String(event.black?.id || event.black?.name || '').toLowerCase();
@@ -272,6 +288,7 @@ async function playGame(gameId, username) {
   } catch (error) {
     console.error(`Game ${gameId} ended with bridge error:`, error);
   } finally {
+    clearInterval(watchdog);
     runningGames.delete(gameId);
     console.log(`Game ${gameId} stream closed.`);
   }
