@@ -51,3 +51,8 @@ jobs:
         env:
           GAMES: '20'
         run: node tests/v5_5_range.js
+      - name: Run aligned 100-game Artemis benchmark
+        env:
+          GAMES: '100'
+          MATCHUP: 'artemisVsCurrent'
+        run: node tests/v5_5_range.js
