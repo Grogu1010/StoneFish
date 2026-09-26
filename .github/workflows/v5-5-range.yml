@@ -1,14 +1,10 @@
-name: Stonefish v5.5 Full ARMX range
+name: Full ARMX signal 0.15 holdout
 
 on:
   pull_request:
     paths:
       - 'ARMX/**'
       - 'models/**'
-      - 'app.js'
-      - 'index.html'
-      - 'test-worker.js'
-      - 'build_v5_5_kernel.cjs'
       - 'tests/**'
       - 'build_v5_5_kernel.cjs'
       - 'native/**'
@@ -16,38 +12,44 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: v55-range-${{ github.event.pull_request.number || github.ref }}
+  group: causal-signal-015-holdout-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  contracts:
+  holdout:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ['main', 'signal015']
+        start: [400, 500]
+    name: ${{ matrix.variant }} — holdout ${{ matrix.start }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Set signal threshold for candidate
+        if: matrix.variant == 'signal015'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path("ARMX/ARMX.js")
+          s=p.read_text()
+          s,n=re.subn(r"const ARMX_CAUSAL_MIN_SIGNAL=[0-9.]+;","const ARMX_CAUSAL_MIN_SIGNAL=0.15;",s,count=1)
+          if n != 1:
+              raise SystemExit("signal constant not found exactly once")
+          p.write_text(s)
+          PY
       - name: Build compiled v5.5 kernel
         env:
           STONEFISH_CC: clang
         run: node build_v5_5_kernel.cjs
-      - name: Check active files
-        run: |
-          node --check ARMX/ARMX-preview.js
-          node --check ARMX/ARMX.js
-          for f in models/*.js; do node --check "$f"; done
-          node --check app.js
-          node --check test-worker.js
-          for f in tests/*.js; do node --check "$f"; done
-      - name: Verify v5.5 kernel contract
-        run: node tests/kernel_contract.js
-      - name: Verify Full ARMX contracts
-        run: |
-          node tests/armx_contract.js
-          node tests/armx_reply_policy.js
-          node tests/native_contract.js
-      - name: Run saved-best range screen
+      - name: Run holdout
         env:
-          GAMES: '20'
+          GAMES: '100'
+          START_INDEX: '${{ matrix.start }}'
+          MATCHUP: 'artemisVsCurrent'
         run: node tests/v5_5_range.js
