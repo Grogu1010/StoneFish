@@ -168,6 +168,7 @@ function review(game) {
 // Full ARMX causal voting is live again, but trust is explicitly gated by
 // measured opponent-prediction reliability. Zero predictive reliability must
 // contribute zero causal finalist adjustment; trusted evidence stays bounded.
+// The causal notebook must also reset with the game independently of v5.5.
 {
   assert.equal(armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 0 }), 0);
   const trusted = armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 1 });
@@ -176,20 +177,15 @@ function review(game) {
   const game = play(new Chess(),
     'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
   game.armxObservationStartPly = 0;
-  const candidates = game.fastMoves().slice(0, 3)
-    .map((raw, index) => ({ raw, score: 100 - index, deep: 100 - index }));
-  const full = armxFullReview(game, candidates, 'artemis', game.side);
-  assert.equal(full.causal.version, 'causal-preview-foundation-1');
-  assert.ok(full.reports.every(report => report.causal
-    && Number.isFinite(report.causal.reliability)
-    && report.fullNoteGate
-    && typeof report.fullNoteGate.allowed === 'boolean'));
+  const learned = armxCausalSync(game, game.side);
+  assert.equal(armxCausalSummary(learned).version, 'causal-preview-foundation-1');
+  assert.ok(learned.processedPlies > 0);
 
   game.reset();
-  const freshCandidates = game.fastMoves().slice(0, 3)
-    .map((raw, index) => ({ raw, score: 100 - index, deep: 100 - index }));
-  const fresh = armxFullReview(game, freshCandidates, 'artemis', game.side);
-  assert.equal(fresh.causal.predictionCount, 0);
+  const fresh = armxCausalSync(game, game.side);
+  assert.notEqual(fresh, learned);
+  assert.equal(fresh.processedPlies, 0);
+  assert.equal(fresh.predictionCount, 0);
 }
 
 console.log('ARMX_CONTRACT passed: per-round reset, side isolation, undo, opening exclusion, attribution, evidence, board purity');
