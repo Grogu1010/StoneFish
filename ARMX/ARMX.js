@@ -56,7 +56,7 @@ const ARMX_FULL = Object.freeze({
   maxExtraDepth: 2,
   baseRootWidth: 3,
   maxRootWidth: 3,
-  matureOpponentMoves: 6,
+  matureOpponentMoves: 10,
   opportunityScanStride: 2,
   rootBreadthEvidenceThreshold: 0.80,
   stateContextMinEvidence: 5,
