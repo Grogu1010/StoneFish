@@ -486,6 +486,9 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
         if(!review.causal||review.causal.version!=='causal-preview-foundation-3-preview-reliability'){
           throw new Error('Full ARMX live review must expose the causal notebook');
         }
+        if(!Array.isArray(review.causal.effects)||review.causal.effects.length!==0){
+          throw new Error('Full ARMX decision path must keep detailed causal telemetry lazy');
+        }
         if(!review.reports.every(report=>report.causal
           &&Number.isFinite(report.causal.reliability)
           &&report.fullNoteGate
