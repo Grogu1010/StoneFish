@@ -130,7 +130,8 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
     if (cheapDrawReached(game)) return { outcome: 'draw', metrics, plies, openingIndex };
   }
 
-  return { outcome: 'draw', metrics, plies, openingIndex };
+    return { outcome: 'draw', metrics, plies, openingIndex };
+  });
 }
 
 self.onmessage = event => {
