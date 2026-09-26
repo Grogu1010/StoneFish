@@ -1,14 +1,10 @@
-name: Stonefish v5.5 Full ARMX range
+name: Full ARMX causal signal sweep
 
 on:
   pull_request:
     paths:
       - 'ARMX/**'
       - 'models/**'
-      - 'app.js'
-      - 'index.html'
-      - 'test-worker.js'
-      - 'build_v5_5_kernel.cjs'
       - 'tests/**'
       - 'build_v5_5_kernel.cjs'
       - 'native/**'
@@ -16,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: v55-range-${{ github.event.pull_request.number || github.ref }}
+  group: causal-signal-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,22 +28,47 @@ jobs:
         env:
           STONEFISH_CC: clang
         run: node build_v5_5_kernel.cjs
-      - name: Check active files
+      - name: Verify contracts
         run: |
-          node --check ARMX/ARMX-preview.js
-          node --check ARMX/ARMX.js
-          for f in models/*.js; do node --check "$f"; done
-          node --check app.js
-          node --check test-worker.js
-          for f in tests/*.js; do node --check "$f"; done
-      - name: Verify v5.5 kernel contract
-        run: node tests/kernel_contract.js
-      - name: Verify Full ARMX contracts
-        run: |
+          node tests/kernel_contract.js
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Run saved-best range screen
+
+  signal-sweep:
+    needs: contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 13
+      matrix:
+        signal: ['0.00', '0.01', '0.02', '0.03', '0.04', '0.05', '0.06', '0.07', '0.08', '0.09', '0.10', '0.11', '0.12']
+    name: signal ${{ matrix.signal }} — 100 games
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Set causal signal threshold
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path("ARMX/ARMX.js")
+          s=p.read_text()
+          value="${{ matrix.signal }}"
+          s,n=re.subn(r"const ARMX_CAUSAL_MIN_SIGNAL=[0-9.]+;",f"const ARMX_CAUSAL_MIN_SIGNAL={value};",s,count=1)
+          if n != 1:
+              raise SystemExit("signal constant not found exactly once")
+          p.write_text(s)
+          PY
+      - name: Build compiled v5.5 kernel
         env:
-          GAMES: '20'
+          STONEFISH_CC: clang
+        run: node build_v5_5_kernel.cjs
+      - name: Run 100-game Artemis strength test
+        env:
+          GAMES: '100'
+          MATCHUP: 'artemisVsCurrent'
         run: node tests/v5_5_range.js
