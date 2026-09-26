@@ -114,40 +114,52 @@ function buildOverheadPositions(count){
   return rows;
 }
 
-// Full-only outcome notes measure the opponent's move or response directly.
-// The value of our initiating move must not leak into the recorded response.
+// Full ARMX causal notebook contracts.
 {
-  const game=new Chess();
-  game.armxObservationStartPly=0;
-  armxFullSyncNotebook(game,1);
-  const ourMove=game.fastMoves().find(move=>move.from===game._sq('e2')&&move.to===game._sq('e4'));
-  if(!ourMove)throw new Error('Missing Full ARMX attribution fixture move e2e4');
-  game.fastApply(ourMove);
-  armxFullSyncNotebook(game,1);
-  const afterOurMove=armxPreviewStateSnapshot(game,1).score;
-  const reply=game.fastMoves().find(move=>move.from===game._sq('e7')&&move.to===game._sq('e5'));
-  if(!reply)throw new Error('Missing Full ARMX attribution fixture reply e7e5');
-  game.fastApply(reply);
-  const afterReply=armxPreviewStateSnapshot(game,1).score;
-  const expectedImpact=armxFullClamp(
-    (afterReply-afterOurMove)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1
-  );
-  const book=armxFullSyncNotebook(game,1);
-  const opponentMoveEffect=book.extendedEffects.pawnMove;
-  if(!opponentMoveEffect||opponentMoveEffect.weight!==1
-    ||Math.abs(opponentMoveEffect.impact/opponentMoveEffect.weight-expectedImpact)>1e-12){
-    throw new Error('Full ARMX opponent notes must attribute only the opponent move');
+  if(!Array.isArray(ARMX_CAUSAL_FEATURES)
+    ||ARMX_CAUSAL_FEATURES.length<ARMX_PREVIEW_FEATURES.length*4){
+    throw new Error('Full ARMX must track at least four times Preview feature resolution');
   }
-  const ownReplyEffects=Object.entries(book.ourContextEffects)
-    .filter(([key])=>key.endsWith('>pawnMove')).map(([,row])=>row);
-  if(!ownReplyEffects.length||ownReplyEffects.some(row=>row.weight!==1
-    ||Math.abs(row.impact/row.weight-expectedImpact)>1e-12)){
-    throw new Error('Full ARMX context notes must attribute only the opponent reply');
+
+  // Correlation is not causation: if treatment and matched-control trajectories
+  // decline equally, the learned causal effect must remain zero.
+  const coincidence=armxCausalNewEffectRow();
+  for(const id of [1,2,3]){
+    armxCausalRecordEffect(coincidence,'treatment',-0.35,1,id);
+    armxCausalRecordEffect(coincidence,'control',-0.35,1,id+10);
   }
-  const responseEffects=Object.values(book.responseEffects);
-  if(!responseEffects.length||responseEffects.some(row=>row.weight!==1
-    ||Math.abs(row.impact/row.weight-expectedImpact)>1e-12)){
-    throw new Error('Full ARMX response notes must attribute only the opponent reply');
+  const coincidenceEstimate=armxCausalEstimate(coincidence);
+  if(Math.abs(coincidenceEstimate.value)>1e-12){
+    throw new Error('Full ARMX must not blame a feature for a matched coincidental decline');
+  }
+
+  // When treatment repeatedly underperforms comparable controls, Full may
+  // attribute a negative causal effect.
+  const caused=armxCausalNewEffectRow();
+  for(const id of [1,2,3,4]){
+    armxCausalRecordEffect(caused,'treatment',-0.55,1,id);
+    armxCausalRecordEffect(caused,'control',-0.10,1,id+10);
+  }
+  const causedEstimate=armxCausalEstimate(caused);
+  if(!(causedEstimate.value<-0.40&&causedEstimate.confidence>0.35)){
+    throw new Error('Full ARMX causal treatment/control attribution is inactive');
+  }
+
+  // Treatment with no control must shrink to zero confidence rather than
+  // inventing causation from "this happened before the evaluation fell".
+  const uncontrolled=armxCausalNewEffectRow();
+  for(const id of [1,2,3,4])armxCausalRecordEffect(uncontrolled,'treatment',-0.8,1,id);
+  if(armxCausalEstimate(uncontrolled).confidence!==0){
+    throw new Error('Full ARMX must require matched controls for causal confidence');
+  }
+
+  // Multiple labels/horizon samples from one move remain one independent
+  // observation for confidence purposes.
+  const correlated=armxCausalNewEffectRow();
+  armxCausalRecordEffect(correlated,'treatment',-0.4,0.65,7);
+  armxCausalRecordEffect(correlated,'treatment',-0.4,0.35,7);
+  if(correlated.treatment.observations.size!==1){
+    throw new Error('Full ARMX correlated labels/horizons manufactured evidence');
   }
 }
 
