@@ -50,6 +50,8 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 - Reliability-trust calibration experiment: replacing linear reliability with sqrt(reliability) increased causal final-move changes from the saved diagnostic's 15 to 24, but the aligned 100-game Artemis score fell to 51.5% (48W/45L/7D). Athena/Ares attributed overhead also exceeded 2x Preview (~2.06x/~2.05x). Rejected; main remains on the 53.5% checkpoint.
 - Reliable signal-gate experiment: lowering ARMX_CAUSAL_MIN_SIGNAL from 0.15 to 0.10 increased causal final-move changes to 43 and gate activations to 1,057, but the aligned 100-game Artemis score was 53.0% (48W/42L/10D), below the saved 53.5% checkpoint. Athena/Ares overhead again exceeded 2x (~2.08x each; Artemis ~1.98x). Rejected; increased causal frequency alone is not a demonstrated strength gain.
 
+- Reliability-normalized scale experiment: raising ARMX_CAUSAL_DECISION_SCALE from 202 to 640 (while retaining the linear reliability multiplier, hard reliability gate, and +/-70 cap) increased causal final-move changes to 36 but dropped aligned 100-game Artemis to 51.5% (48W/45L/7D). Artemis overhead stayed ~1.87x, Athena ~1.99x, but Ares rose to ~2.07x. Rejected; causal amplitude is not the current bottleneck.
+
 ## Test units and promotion rule
 
 `v5.5 Athena (testunit)`, `v5.5 Ares (testunit)`, and `v5.5 Artemis (testunit)` in Dev Test are rolling aliases for the saved best-known candidate of each profile. Whenever a candidate is demonstrably better and promoted, update these registrations and this checkpoint with its settings and evidence. Current test units are available for comparison; they do not pass the strength or pace gates.
