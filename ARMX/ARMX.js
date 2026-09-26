@@ -416,11 +416,27 @@ function armxCausalRecordPrediction(book,legal,chosen,map){
   book.lastPredictionRank=rank;
 }
 function armxCausalAlternativeBaseline(game,legal,perspective){
+  // Counterfactuals must stay cheap enough to be useful during live play.
+  // Sample a deterministic spread of legal alternatives instead of evaluating
+  // the entire move list. Treatment/control evidence across later comparable
+  // positions supplies the second causal safeguard.
   const after=[];
   const depth=game.historyStack.length;
+  const n=legal.length;
+  const wanted=Math.min(5,n);
+  const chosen=[];
+  if(n<=wanted){
+    for(let i=0;i<n;i++)chosen.push(i);
+  }else{
+    const used=new Set();
+    for(let k=0;k<wanted;k++){
+      const i=Math.round(k*(n-1)/(wanted-1));
+      if(!used.has(i)){used.add(i);chosen.push(i);}
+    }
+  }
   try{
-    for(const move of legal){
-      game.fastApply(move);
+    for(const i of chosen){
+      game.fastApply(legal[i]);
       after.push(armxPreviewStateSnapshot(game,perspective).score);
       game.fastUndo();
     }
