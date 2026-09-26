@@ -244,8 +244,8 @@ console.log(reply.move.uci);</code></pre>
                 <h3>API reference</h3>
                 <p><code>StonefishAPI.ready</code> — Promise that resolves after all released engine dependencies are loaded.</p>
                 <p><code>StonefishAPI.listModels()</code> — returns the released model ids and display names.</p>
-                <p><code>StonefishAPI.createGame(moves?)</code> — creates a game and optionally replays a move array from the starting position.</p>
-                <p><code>StonefishAPI.getMove(modelId, state?)</code> — calculates a model move without applying it. State can be a StoneFish game, a move array, or <code>{ moves: [...] }</code>.</p>
+                <p><code>StonefishAPI.createGame(input?)</code> — creates a game from the starting position, a FEN string, a move array, or <code>{ fen, moves }</code>.</p>
+                <p><code>StonefishAPI.getMove(modelId, state?)</code> — calculates a model move without applying it. State can be a StoneFish game, FEN string, move array, or <code>{ fen, moves }</code>.</p>
                 <p><code>StonefishAPI.playMove(game, move)</code> — applies a legal UCI move or <code>{ from, to, promotion }</code> object.</p>
                 <p><code>StonefishAPI.playBestMove(modelId, game)</code> — calculates and applies the model’s move.</p>
               </div>
