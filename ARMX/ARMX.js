@@ -1875,19 +1875,6 @@ function armxCausalContextFeatures(game,perspective,precedingFeatures=null){
   else contexts.add('evalEqual');
 
   if(game.in_check())contexts.add(game.side===perspective?'weInCheck':'opponentInCheck');
-  const pressure=(king,bySide)=>{
-    if(!Number.isFinite(king)||typeof game._isAttacked!=='function')return 0;
-    const kf=king&7,kr=king>>3;let count=0;
-    for(let df=-1;df<=1;df++)for(let dr=-1;dr<=1;dr++){
-      if(!df&&!dr)continue;
-      const f=kf+df,r=kr+dr;if(f<0||f>7||r<0||r>7)continue;
-      if(game._isAttacked(r*8+f,bySide))count++;
-    }
-    return count;
-  };
-  if(pressure(game.kingSq[perspective],-perspective)>=3)contexts.add('ourKingPressure');
-  if(pressure(game.kingSq[-perspective],perspective)>=3)contexts.add('opponentKingPressure');
-
   if(precedingFeatures){
     const sequenceFeatures=[
       'capture','rookTrade','queenTrade','minorTrade','check','kingAttack','quiet',
@@ -2022,14 +2009,13 @@ function armxCausalQuickDeltas(game,moves,perspective){
 }
 
 function armxCausalPredictReplies(book,game,moves,perspective,contexts){
-  if(!moves.length)return {probabilities:[],scores:[]};
-  const scores=moves.map(move=>armxCausalPreferenceScore(
-    book,armxCausalCheapMoveFeatures(game,move),contexts
-  ));
+  if(!moves.length)return {probabilities:[],scores:[],features:[]};
+  const featureRows=moves.map(move=>armxCausalCheapMoveFeatures(game,move));
+  const scores=featureRows.map(features=>armxCausalPreferenceScore(book,features,contexts));
   const max=Math.max(...scores);
   const exps=scores.map(score=>Math.exp((score-max)/0.72));
   const sum=exps.reduce((a,b)=>a+b,0)||1;
-  return {scores,probabilities:exps.map(x=>x/sum)};
+  return {scores,probabilities:exps.map(x=>x/sum),features:featureRows};
 }
 function armxCausalPredictionTrust(book){
   const n=book.predictionCount||0;
@@ -2184,15 +2170,13 @@ function armxFullSyncNotebook(game,perspective=game.side,_previewProfile=null){
       if(legal.length>1){
         const sequence=actor===-perspective?book.lastOurFeatures:null;
         const contexts=armxCausalContextFeatures(book.replay,perspective,sequence);
-        const available=new Set();
-        for(const option of legal){
-          for(const feature of armxCausalCheapMoveFeatures(book.replay,option))available.add(feature);
-        }
-
         const beforeScore=book.currentScore;
         const learned=actor===-perspective
           ?armxCausalPredictReplies(book,book.replay,legal,perspective,contexts)
-          :{probabilities:new Array(legal.length).fill(1/legal.length),scores:[]};
+          :{probabilities:new Array(legal.length).fill(1/legal.length),scores:[],
+            features:legal.map(option=>armxCausalCheapMoveFeatures(book.replay,option))};
+        const available=new Set();
+        for(const row of learned.features)for(const feature of row)available.add(feature);
         if(actor===-perspective){
           armxCausalRecordPrediction(book,legal,learned,move);
           armxCausalRecordPreference(book,chosenFeatures,available,contexts);
@@ -2286,7 +2270,7 @@ function armxCausalCandidateReport(game,entry,book){
     if(replies.length){
       const prediction=armxCausalPredictReplies(book,game,replies,perspective,replyContexts);
       for(let i=0;i<replies.length;i++){
-        const features=armxCausalCheapMoveFeatures(game,replies[i]);
+        const features=prediction.features[i];
         const effect=armxCausalEffectFor(book,'opponent',features,replyContexts);
         const p=prediction.probabilities[i]||0;
         expectedOpponent+=p*effect.value*effect.confidence;
