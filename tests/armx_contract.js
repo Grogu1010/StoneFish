@@ -198,6 +198,8 @@ function review(game) {
   assert.equal(snapshot(game), before);
 }
 
+assert.equal(ARMX_CAUSAL_MIN_SIGNAL, 0.10);
+
 // Full ARMX causal voting is live again, but trust is explicitly gated by
 // measured opponent-prediction reliability. Zero predictive reliability must
 // contribute zero causal finalist adjustment; trusted evidence stays bounded.
@@ -212,7 +214,7 @@ function review(game) {
   game.armxObservationStartPly = 0;
   const learned = armxCausalSync(game, game.side);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-3-preview-reliability');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-4-signal-010');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
