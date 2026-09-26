@@ -305,6 +305,10 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
           bucket.noteUsefulnessTotal+=Number(last.noteUsefulness)||0;
           bucket.learnedStrengthTotal+=Number(last.learnedStrength)||0;
           bucket.surpriseTotal+=Number(last.predictionSurprise)||0;
+          bucket.predictionGainTotal=(bucket.predictionGainTotal||0)+(Number(last.predictionGain)||0);
+          bucket.predictionTrustTotal=(bucket.predictionTrustTotal||0)+(Number(last.predictionTrust)||0);
+          bucket.predictionTop1RateTotal=(bucket.predictionTop1RateTotal||0)+(Number(last.predictionTop1Rate)||0);
+          bucket.predictionRankTotal=(bucket.predictionRankTotal||0)+(Number(last.predictionAverageRank)||0);
           const reports=Array.isArray(last.reports)?last.reports:[];
           for(const report of reports){
             if(report&&report.fullNoteGate&&report.fullNoteGate.allowed)bucket.fullNoteAllowed++;
@@ -381,7 +385,7 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
       out.contenderStyle[feature]+=row.contenderStyle[feature]||0;
       out.opponentStyle[feature]+=row.opponentStyle[feature]||0;
     }
-    for(const key of ['moves','rootWidthTotal','changedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal','fullNoteAllowed','styleAllowed','previewAllowed','winnerFullNoteAllowed','winnerStyleAllowed','winnerPreviewAllowed','challengers','noteAllowedChallengers','positiveNoteLeadChallengers','noteLeadTotal','absoluteNoteLeadTotal','absoluteLearnedSignalTotal','patientTotal','activatedPatientTotal','patientSamples']){
+    for(const key of ['moves','rootWidthTotal','changedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal','predictionGainTotal','predictionTrustTotal','predictionTop1RateTotal','predictionRankTotal','fullNoteAllowed','styleAllowed','previewAllowed','winnerFullNoteAllowed','winnerStyleAllowed','winnerPreviewAllowed','challengers','noteAllowedChallengers','positiveNoteLeadChallengers','noteLeadTotal','absoluteNoteLeadTotal','absoluteLearnedSignalTotal','patientTotal','activatedPatientTotal','patientSamples']){
       out.contenderArmx[key]+=row.contenderArmx[key]||0;
       out.opponentArmx[key]+=row.opponentArmx[key]||0;
     }
@@ -412,6 +416,10 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.contenderArmx.averageNoteUsefulness=out.contenderArmx.moves?out.contenderArmx.noteUsefulnessTotal/out.contenderArmx.moves:0;
   out.contenderArmx.averageLearnedStrength=out.contenderArmx.moves?out.contenderArmx.learnedStrengthTotal/out.contenderArmx.moves:0;
   out.contenderArmx.averagePredictionSurprise=out.contenderArmx.moves?out.contenderArmx.surpriseTotal/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionGain=out.contenderArmx.moves?(out.contenderArmx.predictionGainTotal||0)/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionTrust=out.contenderArmx.moves?(out.contenderArmx.predictionTrustTotal||0)/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionTop1Rate=out.contenderArmx.moves?(out.contenderArmx.predictionTop1RateTotal||0)/out.contenderArmx.moves:0;
+  out.contenderArmx.averagePredictionRank=out.contenderArmx.moves?(out.contenderArmx.predictionRankTotal||0)/out.contenderArmx.moves:0;
   out.contenderArmx.fullNoteWinnerRate=out.contenderArmx.moves?out.contenderArmx.winnerFullNoteAllowed/out.contenderArmx.moves:0;
   out.contenderArmx.styleWinnerRate=out.contenderArmx.moves?out.contenderArmx.winnerStyleAllowed/out.contenderArmx.moves:0;
   out.contenderArmx.previewWinnerRate=out.contenderArmx.moves?out.contenderArmx.winnerPreviewAllowed/out.contenderArmx.moves:0;
@@ -431,6 +439,10 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.opponentArmx.averageNoteUsefulness=out.opponentArmx.moves?out.opponentArmx.noteUsefulnessTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averageLearnedStrength=out.opponentArmx.moves?out.opponentArmx.learnedStrengthTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averagePredictionSurprise=out.opponentArmx.moves?out.opponentArmx.surpriseTotal/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionGain=out.opponentArmx.moves?(out.opponentArmx.predictionGainTotal||0)/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionTrust=out.opponentArmx.moves?(out.opponentArmx.predictionTrustTotal||0)/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionTop1Rate=out.opponentArmx.moves?(out.opponentArmx.predictionTop1RateTotal||0)/out.opponentArmx.moves:0;
+  out.opponentArmx.averagePredictionRank=out.opponentArmx.moves?(out.opponentArmx.predictionRankTotal||0)/out.opponentArmx.moves:0;
   out.opponentArmx.fullNoteWinnerRate=out.opponentArmx.moves?out.opponentArmx.winnerFullNoteAllowed/out.opponentArmx.moves:0;
   out.opponentArmx.styleWinnerRate=out.opponentArmx.moves?out.opponentArmx.winnerStyleAllowed/out.opponentArmx.moves:0;
   out.opponentArmx.previewWinnerRate=out.opponentArmx.moves?out.opponentArmx.winnerPreviewAllowed/out.opponentArmx.moves:0;
