@@ -327,6 +327,52 @@ function armxCausalKeys(game,move,perspective){
   }
   return keys;
 }
+function armxCausalCheapBaseFeatures(game,move){
+  const features=new Set(armxFullCheapMoveFeatures(move,game.side));
+  if(!move)return features;
+  const piece=move.piece||Math.abs(game.boardState[move.from]||0);
+  const captured=move.captured||0;
+  const pieceName=ARMX_CAUSAL_PIECE_NAMES[piece]||'piece';
+  const capturedName=ARMX_CAUSAL_PIECE_NAMES[captured]||'piece';
+  if(captured){
+    features.add('capture'+capturedName[0].toUpperCase()+capturedName.slice(1));
+    features.add('captureWith'+pieceName[0].toUpperCase()+pieceName.slice(1));
+    const moverValue=ARMX_PREVIEW_PIECE_VALUES[piece]||0;
+    const capturedValue=ARMX_PREVIEW_PIECE_VALUES[captured]||0;
+    if(capturedValue>=moverValue+90)features.add('winningCapture');
+    else if(moverValue>=capturedValue+180)features.add('sacrificeCapture');
+    else features.add('equalCapture');
+    if(captured===5)features.add('queenlessTransition');
+  }
+  if(piece===1){
+    const file=move.to&7;
+    if(file>=2&&file<=5)features.add('centralPawnPush');
+    else features.add('wingPawnPush');
+  }
+  if(piece===4){
+    const file=move.to&7;
+    if(file===0||file===7)features.add('rookToOpenSide');
+  }
+  return features;
+}
+function armxCausalCheapKeys(game,move,perspective){
+  const base=[...armxCausalCheapBaseFeatures(game,move)]
+    .filter(feature=>ARMX_CAUSAL_CORE_FEATURES.includes(feature));
+  const contexts=armxCausalContexts(game,perspective);
+  const keys=new Set(base);
+  for(const feature of base){
+    for(const context of contexts)keys.add(feature+'@'+context);
+  }
+  const contextSet=new Set(contexts),baseSet=new Set(base);
+  for(const [a,b] of [
+    ['trade','queenlessTransition'],['quiet','weAhead'],['forcing','weBehind'],
+    ['pawnPush','phaseEnd'],['rookTrade','weAhead'],['rookTrade','weBehind'],
+    ['queenTrade','weAhead'],['queenTrade','weBehind']
+  ]){
+    if(baseSet.has(a)&&(baseSet.has(b)||contextSet.has(b)))keys.add(a+'&'+b);
+  }
+  return keys;
+}
 function armxCausalFreshRow(){
   return {
     opportunities:0,choices:0,
@@ -386,7 +432,7 @@ function armxCausalPredictionReliability(book){
   return maturity*armxFullClamp((mean+0.05)/0.65,0,1);
 }
 function armxCausalMovePreference(book,map,game,move){
-  const keys=armxCausalKeys(game,move,book.perspective);
+  const keys=armxCausalCheapKeys(game,move,book.perspective);
   let sum=0,weight=0;
   for(const key of keys){
     const row=map.get(key);
@@ -485,9 +531,9 @@ function armxCausalSync(game,perspective=game.side){
       if(legal.length>1){
         const map=actor===perspective?book.our:book.opponent;
         if(actor===-perspective)armxCausalRecordPrediction(book,legal,move,map);
-        const available=new Set(),chosen=armxCausalKeys(book.replay,move,perspective);
+        const available=new Set(),chosen=armxCausalCheapKeys(book.replay,move,perspective);
         for(const option of legal){
-          for(const key of armxCausalKeys(book.replay,option,perspective))available.add(key);
+          for(const key of armxCausalCheapKeys(book.replay,option,perspective))available.add(key);
         }
         const baselineAfter=armxCausalAlternativeBaseline(book.replay,legal,perspective);
         const beforeDepth=book.replay.historyStack.length;
@@ -534,7 +580,7 @@ function armxCausalCandidateReport(game,entry,book){
       const max=Math.max(...logits),weights=logits.map(x=>Math.exp(x-max));
       const total=weights.reduce((a,b)=>a+b,0)||1;
       replyRows=replies.map((move,i)=>{
-        const keys=armxCausalKeys(game,move,book.perspective);
+        const keys=armxCausalCheapKeys(game,move,book.perspective);
         const effects=armxCausalTopEffects(book.opponent,keys,3);
         let value=0,w=0;
         for(const row of effects){value+=row.value*row.confidence;w+=row.confidence;}
