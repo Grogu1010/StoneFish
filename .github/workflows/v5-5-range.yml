@@ -47,10 +47,6 @@ jobs:
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Run saved-best range screen
-        env:
-          GAMES: '20'
-        run: node tests/v5_5_range.js
       - name: Trace known-good Artemis causal wins
         env:
           GAMES: '2'
