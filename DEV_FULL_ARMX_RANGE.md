@@ -60,6 +60,8 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 
 - Single-confidence opponent reply experiment (#212): removing duplicate reply-confidence shrinkage increased causal final-move changes to 18, with ~7,094 reply-valued candidates, average |reply value| ~0.122 and average reply confidence only ~0.093. Artemis still scored exactly 53.5% (50W/43L/7D); the three extra causal moves (games 50, 71, 74) changed no outcomes. Athena/Ares overhead worsened to ~2.09x/~2.18x (Artemis ~1.93x). The coarse five-feature reply model is too weak to promote; not promoted.
 
+- Candidate-specific opponent causal reply experiment: reused Preview's recorded reply opportunities (no second legal-reply scan) to estimate chosen-vs-declined causal effects and apply them only where the reply behavior was available. Aligned 100-game Artemis stayed flat at 53.5% (50W/43L/7D), with 16 causal finalist changes, 7,072 reply-valued challenger reports and average absolute reply effect ~0.122. Artemis overhead was ~1.86x, but Athena ~2.09x and Ares ~2.06x exceeded the ceiling. Rejected; candidate-specific reply value is present, but needs better response-specific trust/calibration rather than more weight.
+
 ## Test units and promotion rule
 
 `v5.5 Athena (testunit)`, `v5.5 Ares (testunit)`, and `v5.5 Artemis (testunit)` in Dev Test are rolling aliases for the saved best-known candidate of each profile. Whenever a candidate is demonstrably better and promoted, update these registrations and this checkpoint with its settings and evidence. Current test units are available for comparison; they do not pass the strength or pace gates.
