@@ -2133,7 +2133,10 @@ function armxCausalPairwiseDifferential(reference,candidate,book,effectCache=nul
       effect=armxCausalEffect(source);
       if(effectCache)effectCache.set(source,effect);
     }
-    if(!effect||effect.confidence<=0)continue;
+    if(!effect
+        ||effect.confidence<ARMX_CAUSAL_MIN_CONFIDENCE
+        ||Number(effect.evidence)<2
+        ||Number(effect.delayedEvidence)<0.5)continue;
     const direction=inCandidate?1:-1;
     const strength=effect.confidence*Math.abs(effect.value);
     const family=armxCausalPairwiseFamily(key);
@@ -2305,11 +2308,13 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     const pairwise=armxCausalPairwiseDifferential(
       shadowWinner,report,causalBook,causalEffectCache
     );
-    const causalLead=pairGate.allowed?pairwise.adjustment:0;
+    const pairwiseAllowed=pairGate.allowed&&pairwise.rows.length>0;
+    const causalLead=pairwiseAllowed?pairwise.adjustment:0;
     const nonCausalVsShadow=report.nonCausalScore-shadowWinner.nonCausalScore;
     const effectiveLead=nonCausalVsShadow+causalLead;
     report.pairwiseCausal=pairwise;
-    report.fullNoteGate={...pairGate,pairwise:true};
+    report.fullNoteGate={...pairGate,allowed:pairwiseAllowed,pairwise:true,
+      pairRows:pairwise.rows.length};
     report.noteLead=causalLead;
     report.decisionLead=effectiveLead;
     report.fullScore=pairGate.allowed&&effectiveLead>0

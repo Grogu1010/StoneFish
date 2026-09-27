@@ -279,6 +279,20 @@ function review(game) {
   assert.equal(pair.rows[0].family,'captureWithKnight');
   assert.ok(pair.adjustment>0);
 
+  const weak=armxCausalFreshRow();
+  weak.opportunities=2;weak.choices=1;
+  weak.treatedWeight=1;weak.treatedImpact=0.2;weak.treatedImpactSq=0.04;
+  weak.controlWeight=1;weak.controlImpact=-0.2;weak.controlImpactSq=0.04;
+  weak.shortTreatedWeight=1;weak.shortTreatedImpact=0.2;weak.shortTreatedImpactSq=0.04;
+  weak.shortControlWeight=1;weak.shortControlImpact=-0.2;weak.shortControlImpactSq=0.04;
+  weak.treatedObservations=new Set([1]);weak.controlObservations=new Set([2]);
+  const weakPair=armxCausalPairwiseDifferential(
+    reference,{causal:{ownKeys:['advance'],reliability:1},noteConfidence:0.5,learnedSignal:0.5},
+    {our:new Map([['advance',weak]])},new Map()
+  );
+  assert.equal(weakPair.rows.length,0);
+  assert.equal(weakPair.adjustment,0);
+
   game.reset();
   const fresh = armxCausalSync(game, game.side);
   assert.notEqual(fresh, learned);
