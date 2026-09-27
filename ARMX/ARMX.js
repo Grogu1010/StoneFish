@@ -2063,7 +2063,12 @@ function armxFullLast(style='artemis'){
 const ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE=1.30;
 const ARMX_CAUSAL_DECISION_SCALE=202;
 const ARMX_CAUSAL_MIN_CONFIDENCE=0.04;
-const ARMX_CAUSAL_MIN_SIGNAL=0.15;
+// The saved 0.15 gate remains the trusted path. Signals down to 0.10 may
+// propose an intervention, but must survive a targeted native verification
+// search before they can change the finalist.
+const ARMX_CAUSAL_MIN_SIGNAL=0.10;
+const ARMX_CAUSAL_STRONG_SIGNAL=0.15;
+const ARMX_CAUSAL_VERIFY_EXTRA_NODES=3600;
 // Prediction quality is part of Full ARMX's trust contract. A model that does
 // not beat a uniform reply prior must fall back toward Preview instead of
 // turning coincidental treatment/control splits into a finalist vote.
@@ -2080,6 +2085,55 @@ function armxCausalDecisionAdjustment(causal){
     (Number(causal&&causal.signal)||0)*armxCausalDecisionTrust(causal)*ARMX_CAUSAL_DECISION_SCALE,
     -70,70
   );
+}
+
+function armxCausalVerifyIntervention(game,causalEntry,shadowEntry,perspective=game.side){
+  const beforeDepth=game.historyStack.length;
+  const beforeKey=game.fastPositionKey();
+  const preview=armxPreviewOpponentPolicy(game,perspective);
+  if(!preview){
+    return {attempted:false,accepted:false,reason:'no-preview-policy'};
+  }
+  const baseBudget=Number.isFinite(preview.searchBudget)
+    ?preview.searchBudget:SF55C.nodes;
+  const policy={
+    ...preview,
+    searchBudget:baseBudget+ARMX_CAUSAL_VERIFY_EXTRA_NODES,
+    maxExtraNodes:ARMX_CAUSAL_VERIFY_EXTRA_NODES,
+  };
+  const host=stonefishV55HostSearch(game,policy);
+  if(game.historyStack.length!==beforeDepth||game.fastPositionKey()!==beforeKey){
+    throw new Error('ARMX causal verification search leaked board state');
+  }
+  const rows=host&&Array.isArray(host.finished)?host.finished:[];
+  const causal=rows.find(row=>row&&causalEntry&&stonefishV5SameMove(row.raw,causalEntry.raw));
+  const shadow=rows.find(row=>row&&shadowEntry&&stonefishV5SameMove(row.raw,shadowEntry.raw));
+  const causalScore=causal&&Number.isFinite(causal.score)?causal.score:null;
+  const shadowScore=shadow&&Number.isFinite(shadow.score)?shadow.score:null;
+  if(causalScore==null){
+    return {
+      attempted:true,accepted:false,reason:'causal-dropped',
+      causalScore,shadowScore,baseBudget,
+      searchBudget:Number(host&&host.searchBudget)||policy.searchBudget,
+      nodes:Number(host&&host.nodes)||0,depth:Number(host&&host.depth)||0,
+    };
+  }
+  if(shadowScore==null){
+    return {
+      attempted:true,accepted:true,reason:'shadow-dropped',
+      causalScore,shadowScore,scoreGap:null,baseBudget,
+      searchBudget:Number(host&&host.searchBudget)||policy.searchBudget,
+      nodes:Number(host&&host.nodes)||0,depth:Number(host&&host.depth)||0,
+    };
+  }
+  const scoreGap=causalScore-shadowScore;
+  return {
+    attempted:true,accepted:scoreGap>=0,
+    reason:scoreGap>=0?'verified':'native-veto',
+    causalScore,shadowScore,scoreGap,baseBudget,
+    searchBudget:Number(host&&host.searchBudget)||policy.searchBudget,
+    nodes:Number(host&&host.nodes)||0,depth:Number(host&&host.depth)||0,
+  };
 }
 
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
@@ -2235,6 +2289,32 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     if(report.shadowFullScore>shadowWinner.shadowFullScore)shadowWinner=report;
   }
 
+  const proposedWinner=winner;
+  const proposedCausalChange=!stonefishV5SameMove(
+    proposedWinner.entry.raw,shadowWinner.entry.raw
+  );
+  const proposedReport=reports.find(report=>report===proposedWinner)||proposedWinner;
+  const shadowReport=reports.find(report=>report===shadowWinner)||shadowWinner;
+  const proposalSignal=Math.max(
+    Math.abs(Number(proposedReport&&proposedReport.learnedSignal)||0),
+    Math.abs(Number(shadowReport&&shadowReport.learnedSignal)||0)
+  );
+  let causalVerification={
+    attempted:false,accepted:true,reason:'strong-signal',
+    proposalSignal,
+  };
+  // Do not disturb the proven >=0.15 path. Only newly admitted weak causal
+  // proposals pay for verification, keeping both behavior and overhead focused.
+  if(proposedCausalChange&&proposalSignal<ARMX_CAUSAL_STRONG_SIGNAL){
+    causalVerification={
+      ...armxCausalVerifyIntervention(
+        game,proposedWinner.entry,shadowWinner.entry,perspective
+      ),
+      proposalSignal,
+    };
+    if(!causalVerification.accepted)winner=shadowWinner;
+  }
+
   const maturity=armxPreviewClamp(observedPlies/24,0,1);
   return {
     model:ARMX_FULL.name,version:ARMX_FULL.version,style,reset:ARMX_FULL.reset,
@@ -2251,7 +2331,10 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     causal:armxCausalSummary(causalBook,profile,false,causalEffectCache),
     reports,
     winner:winner.entry,
+    winnerBeforeVerification:proposedWinner.entry,
     winnerWithoutCausal:shadowWinner.entry,
+    causalVerification,
+    causalProposedChange:proposedCausalChange,
     causalChangedWinner:!stonefishV5SameMove(winner.entry.raw,shadowWinner.entry.raw),
   };
 }

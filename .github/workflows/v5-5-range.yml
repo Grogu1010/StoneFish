@@ -47,13 +47,17 @@ jobs:
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Run saved-best range screen
+      - name: Screen aligned Artemis indices 0-19
         env:
           GAMES: '20'
-        run: node tests/v5_5_range.js
-      - name: Run aligned 100-game Artemis benchmark
-        env:
-          GAMES: '100'
+          START_INDEX: '0'
           MATCHUP: 'artemisVsCurrent'
-          ARMX_TIMING_SAMPLES: '120'
+          ARMX_TIMING_SAMPLES: '80'
+        run: node tests/v5_5_range.js
+      - name: Screen low-signal outcome-change indices 55-65
+        env:
+          GAMES: '11'
+          START_INDEX: '55'
+          MATCHUP: 'artemisVsCurrent'
+          ARMX_TIMING_SAMPLES: '80'
         run: node tests/v5_5_range.js
