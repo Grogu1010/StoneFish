@@ -198,6 +198,32 @@ function review(game) {
   assert.equal(snapshot(game), before);
 }
 
+// Opponent causal rows use Preview's existing opportunity plies, not a
+// second legal-move scan. Candidate-specific reply value combines observed
+// choice likelihood with treatment/control outcome evidence.
+{
+  const map = new Map();
+  const available = new Set(['capture']);
+  armxCausalUpdateRows(map, available, new Set(), 0.25, 1);
+  armxCausalUpdateRows(map, available, new Set(['capture']), -0.25, 3);
+  armxCausalRecordHorizon(map, available, new Set(), 60, 1, 1, 'short');
+  armxCausalRecordHorizon(map, available, new Set(['capture']), -60, 1, 3, 'short');
+  const profile = armxPreviewNewProfile(1);
+  profile.opponentOpportunities.capture = 4;
+  profile.opponentChoices.capture = 3;
+  const book = armxCausalNewBook(1, new Chess());
+  book.opponent = map;
+  const reply = armxCausalOpponentReplyReport(
+    book, profile, { replyFeaturesAvailable: ['capture'] }, new Map()
+  );
+  assert.equal(reply.rows.length, 1);
+  assert.ok(reply.confidence > 0);
+  assert.ok(reply.value < 0);
+  assert.equal(armxCausalOpponentAvailability({
+    opponentOpportunityPlies: { capture: new Set([7]) }
+  }, 7).has('capture'), true);
+}
+
 // Full ARMX causal voting is live again, but trust is explicitly gated by
 // measured opponent-prediction reliability. Zero predictive reliability must
 // contribute zero causal finalist adjustment; trusted evidence stays bounded.
@@ -210,14 +236,17 @@ function review(game) {
   const game = play(new Chess(),
     'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
   game.armxObservationStartPly = 0;
-  const learned = armxCausalSync(game, game.side);
+  const previewProfile = armxPreviewSyncProfile(game, game.side);
+  const learned = armxCausalSync(game, game.side, previewProfile);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-3-preview-reliability');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-4-opponent-replies-delayed');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
   assert.ok(learned.our.size > 0);
-  assert.equal(learned.opponent.size, 0);
+  // This quiet opening may not yield mature opponent treatment/control rows,
+  // but any rows that do exist must come from Preview's recorded opportunities.
+  for(const key of learned.opponent.keys())assert.ok(ARMX_PREVIEW_REPLY_FEATURES.includes(key));
   assert.equal(learned.predictionCount, 0);
   assert.equal(
     armxCausalPredictionReliability(learned, { quietPolicy: { qualityWeight: 8, qualitySum: -8 } }),
