@@ -52,6 +52,8 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 
 - Reliability-normalized scale experiment: raising ARMX_CAUSAL_DECISION_SCALE from 202 to 640 (while retaining the linear reliability multiplier, hard reliability gate, and +/-70 cap) increased causal final-move changes to 36 but dropped aligned 100-game Artemis to 51.5% (48W/45L/7D). Artemis overhead stayed ~1.87x, Athena ~1.99x, but Ares rose to ~2.07x. Rejected; causal amplitude is not the current bottleneck.
 
+- Preview candidate reply metadata was re-exposed without changing move selection or search behavior, so Full ARMX can reuse candidate-specific reply availability without a second reply scan. The frozen Preview source hash was advanced accordingly; parity contracts remain the behavior guard.
+
 ## Test units and promotion rule
 
 `v5.5 Athena (testunit)`, `v5.5 Ares (testunit)`, and `v5.5 Artemis (testunit)` in Dev Test are rolling aliases for the saved best-known candidate of each profile. Whenever a candidate is demonstrably better and promoted, update these registrations and this checkpoint with its settings and evidence. Current test units are available for comparison; they do not pass the strength or pace gates.
