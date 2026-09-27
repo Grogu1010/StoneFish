@@ -47,7 +47,7 @@ jobs:
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Screen mature pairwise finalist causal on indices 58-60
+      - name: Screen pairwise refinement on indices 58-60
         env:
           GAMES: '3'
           START_INDEX: '58'

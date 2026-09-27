@@ -238,7 +238,7 @@ function review(game) {
   game.armxObservationStartPly = 0;
   const learned = armxCausalSync(game, game.side);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-4-pairwise-finalists');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-4-pairwise-refinement');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
