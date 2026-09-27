@@ -56,6 +56,8 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 
 - Candidate-specific opponent causal reply experiment (#210): reusing Preview opportunity plies produced 7,072 reply-valued candidate reports at average absolute reply value ~0.122 with no extra reply scan, but aligned Artemis remained exactly 53.5% (50W/43L/7D). Versus the saved 53.5% logic, only game 74 gained one additional causal final-move change and it remained a loss; all 100 outcomes were otherwise identical. Athena/Ares overhead rose to ~2.09x/~2.06x (Artemis ~1.86x). Not promoted.
 
+- Delayed-only opponent causal reply experiment (#211): removing immediate opponent evaluation credit raised average absolute reply value to ~0.204, but aligned Artemis again stayed exactly 53.5% (50W/43L/7D) with 16 causal final-move changes. Athena/Ares overhead was ~2.01x/~2.09x (Artemis ~1.86x). Delayed trajectory evidence alone did not convert the coarse five-feature reply model into additional wins; not promoted.
+
 ## Test units and promotion rule
 
 `v5.5 Athena (testunit)`, `v5.5 Ares (testunit)`, and `v5.5 Artemis (testunit)` in Dev Test are rolling aliases for the saved best-known candidate of each profile. Whenever a candidate is demonstrably better and promoted, update these registrations and this checkpoint with its settings and evidence. Current test units are available for comparison; they do not pass the strength or pace gates.
