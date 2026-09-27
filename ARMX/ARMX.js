@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-opponent-replies';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-opponent-replies-single-confidence';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -751,7 +751,10 @@ function armxCausalCandidateReport(
   const ownEvidence=ownRows.reduce((s,r)=>s+r.evidence,0);
   const ownDelayedEvidence=ownRows.reduce((s,r)=>s+(Number(r.delayedEvidence)||0),0);
   const reply=armxCausalOpponentReplyReport(book,previewProfile,previewReport,effectCache);
-  const replyContribution=ARMX_CAUSAL_REPLY_SIGNAL_WEIGHT*reply.value*reply.confidence;
+  // Reply effect rows are already confidence-weighted when combined. Apply
+  // confidence once through the shared causal trust below instead of shrinking
+  // candidate-specific reply value a second time here.
+  const replyContribution=ARMX_CAUSAL_REPLY_SIGNAL_WEIGHT*reply.value;
   const signal=armxFullClamp(ownValue+replyContribution,-1,1);
   const confidence=Math.max(ownConfidence,reply.confidence);
   const reliability=armxCausalPredictionReliability(book,previewProfile);
