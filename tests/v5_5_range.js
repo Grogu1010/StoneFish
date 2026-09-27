@@ -282,6 +282,12 @@ function compactCausalCandidate(report){
     replyValue:Number(causal.replyValue)||0,
     replyConfidence:Number(causal.replyConfidence)||0,
     replyReliability:Number(causal.replyReliability)||0,
+    interactionAdjustment:Number(report.interactionAdjustment)||0,
+    interactionValue:Number(causal.interactionValue)||0,
+    interactionConfidence:Number(causal.interactionConfidence)||0,
+    interactionReliability:Number(causal.interactionReliability)||0,
+    interactionEvidence:Number(causal.interactionEvidence)||0,
+    interactionDelayedEvidence:Number(causal.interactionDelayedEvidence)||0,
     gate:{
       allowed:Boolean(gate.allowed),
       ownAllowed:Boolean(gate.ownAllowed),
@@ -292,7 +298,26 @@ function compactCausalCandidate(report){
       replySignal:Number(gate.replySignal)||0,
       replyConfidence:Number(gate.replyConfidence)||0,
       replyReliability:Number(gate.replyReliability)||0,
+      interactionAllowed:Boolean(gate.interactionAllowed),
+      interactionSignal:Number(gate.interactionSignal)||0,
+      interactionConfidence:Number(gate.interactionConfidence)||0,
+      interactionEvidence:Number(gate.interactionEvidence)||0,
     },
+    interactionEffects:(Array.isArray(causal.interactionEffects)?causal.interactionEffects:[])
+      .slice(0,3).map(row=>({
+        key:row&&row.key||null,
+        plan:row&&row.plan||null,
+        reply:row&&row.reply||null,
+        offerContext:row&&row.offerContext||null,
+        conditionalRate:Number(row&&row.conditionalRate)||0,
+        pooledRate:Number(row&&row.pooledRate)||0,
+        rateConfidence:Number(row&&row.rateConfidence)||0,
+        outcomeValue:Number(row&&row.outcomeValue)||0,
+        outcomeConfidence:Number(row&&row.outcomeConfidence)||0,
+        outcomeEvidence:Number(row&&row.outcomeEvidence)||0,
+        value:Number(row&&row.value)||0,
+        confidence:Number(row&&row.confidence)||0,
+      })),
     ownEffects:(Array.isArray(causal.ownEffects)?causal.ownEffects:[])
       .slice(0,4).map(row=>({
         key:row&&row.key||null,
@@ -324,8 +349,8 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   let contenderThinkMs=0,opponentThinkMs=0,contenderMoves=0,opponentMoves=0;
   const contenderStyle=emptyStyleCounts(),opponentStyle=emptyStyleCounts();
   const contenderFullStyle=fullArmxStyleFor(contenderFn),opponentFullStyle=fullArmxStyleFor(opponentFn);
-  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,causalChangeDetails:[],maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
-  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,causalChangeDetails:[],maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
+  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,causalChangeDetails:[],maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,interactionValuedChallengers:0,interactionAllowedChallengers:0,absoluteInteractionValueTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
+  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,causalChangeDetails:[],maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,interactionValuedChallengers:0,interactionAllowedChallengers:0,absoluteInteractionValueTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
   return withSeed(seed,()=>{
     while(!game.game_over()&&plies<maxPlies){
       const contenderTurn=(game.side===1)===contenderIsWhite;
@@ -364,6 +389,14 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
               bucket.noteLeadTotal+=noteLead;
               bucket.absoluteNoteLeadTotal+=Math.abs(noteLead);
               bucket.absoluteLearnedSignalTotal+=Math.abs(learnedSignal);
+              const interactionValue=Number(report.causal&&report.causal.interactionValue)||0;
+              if(Math.abs(interactionValue)>1e-12){
+                bucket.interactionValuedChallengers++;
+                bucket.absoluteInteractionValueTotal+=Math.abs(interactionValue);
+              }
+              if(report.fullNoteGate&&report.fullNoteGate.interactionAllowed){
+                bucket.interactionAllowedChallengers++;
+              }
               bucket.maxNoteLead=Math.max(bucket.maxNoteLead,noteLead);
               bucket.maxAbsoluteLearnedSignal=Math.max(
                 bucket.maxAbsoluteLearnedSignal,Math.abs(learnedSignal)
@@ -422,7 +455,7 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   });
 }
 function matchup(games,label,contenderFn,opponentFn,startIndex=0){
-  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0}};
+  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,interactionValuedChallengers:0,interactionAllowedChallengers:0,absoluteInteractionValueTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,interactionValuedChallengers:0,interactionAllowedChallengers:0,absoluteInteractionValueTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0}};
   for(let local=0;local<games;local++){
     const i=startIndex+local,pair=Math.floor(i/2);
     const opening=generateOpening(pair,10);
@@ -438,7 +471,7 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
       out.contenderStyle[feature]+=row.contenderStyle[feature]||0;
       out.opponentStyle[feature]+=row.opponentStyle[feature]||0;
     }
-    for(const key of ['moves','rootWidthTotal','changedMoves','causalChangedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal','fullNoteAllowed','styleAllowed','previewAllowed','winnerFullNoteAllowed','winnerStyleAllowed','winnerPreviewAllowed','challengers','noteAllowedChallengers','positiveNoteLeadChallengers','noteLeadTotal','absoluteNoteLeadTotal','absoluteLearnedSignalTotal','patientTotal','activatedPatientTotal','patientSamples']){
+    for(const key of ['moves','rootWidthTotal','changedMoves','causalChangedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal','fullNoteAllowed','styleAllowed','previewAllowed','winnerFullNoteAllowed','winnerStyleAllowed','winnerPreviewAllowed','challengers','noteAllowedChallengers','positiveNoteLeadChallengers','noteLeadTotal','absoluteNoteLeadTotal','absoluteLearnedSignalTotal','interactionValuedChallengers','interactionAllowedChallengers','absoluteInteractionValueTotal','patientTotal','activatedPatientTotal','patientSamples']){
       out.contenderArmx[key]+=row.contenderArmx[key]||0;
       out.opponentArmx[key]+=row.opponentArmx[key]||0;
     }
@@ -478,6 +511,10 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.contenderArmx.averageNoteLead=out.contenderArmx.challengers?out.contenderArmx.noteLeadTotal/out.contenderArmx.challengers:0;
   out.contenderArmx.averageAbsoluteNoteLead=out.contenderArmx.challengers?out.contenderArmx.absoluteNoteLeadTotal/out.contenderArmx.challengers:0;
   out.contenderArmx.averageAbsoluteLearnedSignal=out.contenderArmx.challengers?out.contenderArmx.absoluteLearnedSignalTotal/out.contenderArmx.challengers:0;
+  out.contenderArmx.averageAbsoluteInteractionValue=out.contenderArmx.interactionValuedChallengers
+    ?out.contenderArmx.absoluteInteractionValueTotal/out.contenderArmx.interactionValuedChallengers:0;
+  out.contenderArmx.interactionAllowedRate=out.contenderArmx.challengers
+    ?out.contenderArmx.interactionAllowedChallengers/out.contenderArmx.challengers:0;
   out.contenderArmx.averagePatientTendency=out.contenderArmx.patientSamples?out.contenderArmx.patientTotal/out.contenderArmx.patientSamples:0;
   out.contenderArmx.averageActivatedPatient=out.contenderArmx.patientSamples?out.contenderArmx.activatedPatientTotal/out.contenderArmx.patientSamples:0;
   out.opponentArmx.averageRootWidth=out.opponentArmx.moves?out.opponentArmx.rootWidthTotal/out.opponentArmx.moves:0;
@@ -498,6 +535,10 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.opponentArmx.averageNoteLead=out.opponentArmx.challengers?out.opponentArmx.noteLeadTotal/out.opponentArmx.challengers:0;
   out.opponentArmx.averageAbsoluteNoteLead=out.opponentArmx.challengers?out.opponentArmx.absoluteNoteLeadTotal/out.opponentArmx.challengers:0;
   out.opponentArmx.averageAbsoluteLearnedSignal=out.opponentArmx.challengers?out.opponentArmx.absoluteLearnedSignalTotal/out.opponentArmx.challengers:0;
+  out.opponentArmx.averageAbsoluteInteractionValue=out.opponentArmx.interactionValuedChallengers
+    ?out.opponentArmx.absoluteInteractionValueTotal/out.opponentArmx.interactionValuedChallengers:0;
+  out.opponentArmx.interactionAllowedRate=out.opponentArmx.challengers
+    ?out.opponentArmx.interactionAllowedChallengers/out.opponentArmx.challengers:0;
   out.opponentArmx.averagePatientTendency=out.opponentArmx.patientSamples?out.opponentArmx.patientTotal/out.opponentArmx.patientSamples:0;
   out.opponentArmx.averageActivatedPatient=out.opponentArmx.patientSamples?out.opponentArmx.activatedPatientTotal/out.opponentArmx.patientSamples:0;
   return out;
@@ -552,7 +593,7 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
       }
       if(style==='artemis'){
         const review=armxFullReview(game,host.finished,style,game.side);
-        if(!review.causal||review.causal.version!=='causal-preview-foundation-3-preview-reliability'){
+        if(!review.causal||review.causal.version!=='causal-preview-foundation-7-contextual-offer-policy'){
           throw new Error('Full ARMX live review must expose the causal notebook');
         }
         if(!Array.isArray(review.causal.effects)||review.causal.effects.length!==0){
