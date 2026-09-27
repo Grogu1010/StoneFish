@@ -47,10 +47,10 @@ jobs:
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Screen pairwise finalist causal on indices 58-60
+      - name: Trace premature pairwise flip at index 59
         env:
-          GAMES: '3'
-          START_INDEX: '58'
+          GAMES: '1'
+          START_INDEX: '59'
           MATCHUP: 'artemisVsCurrent'
-          ARMX_TIMING_SAMPLES: '20'
+          ARMX_TIMING_SAMPLES: '10'
         run: node tests/v5_5_range.js

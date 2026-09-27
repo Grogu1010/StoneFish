@@ -305,6 +305,22 @@ function compactCausalCandidate(report){
         shortValue:Number(row&&row.short&&row.short.value)||0,
         longValue:Number(row&&row.long&&row.long.value)||0,
       })),
+    pairwise:report.pairwiseCausal?{
+      signal:Number(report.pairwiseCausal.signal)||0,
+      reliability:Number(report.pairwiseCausal.reliability)||0,
+      adjustment:Number(report.pairwiseCausal.adjustment)||0,
+      rows:(Array.isArray(report.pairwiseCausal.rows)?report.pairwiseCausal.rows:[])
+        .slice(0,4).map(row=>({
+          key:row&&row.key||null,
+          family:row&&row.family||null,
+          direction:Number(row&&row.direction)||0,
+          value:Number(row&&row.value)||0,
+          confidence:Number(row&&row.confidence)||0,
+          evidence:Number(row&&row.evidence)||0,
+          delayedEvidence:Number(row&&row.delayedEvidence)||0,
+          agreement:Number(row&&row.agreement)||0,
+        })),
+    }:null,
     predictedReplies:(Array.isArray(causal.predictedReplies)?causal.predictedReplies:[])
       .slice(0,3).map(row=>({
         raw:compactRawMove(row&&row.raw),
