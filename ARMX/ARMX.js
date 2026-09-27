@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-opponent-replies';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-opponent-replies-delayed';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -638,9 +638,10 @@ function armxCausalSync(game,perspective=game.side,previewProfile=null){
       book.replay.fastApply(move);
       replayApplied=true;
       const actualAfter=armxPreviewStateSnapshot(book.replay,perspective).score;
-      const residual=armxFullClamp(
-        (actualAfter-trajectoryScore)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1
-      );
+      // For opponent behavior, immediate evaluation swings are especially
+      // confounded by forced tactics. Keep immediate rows only as treatment/
+      // control opportunity accounting; let short/long trajectories supply value.
+      const residual=0;
       armxCausalUpdateRows(book.opponent,opponentAvailable,chosen,residual,index);
       armxCausalQueueTrajectory(
         book,book.opponent,opponentAvailable,chosen,actualAfter,index

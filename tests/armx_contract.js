@@ -239,7 +239,7 @@ function review(game) {
   const previewProfile = armxPreviewSyncProfile(game, game.side);
   const learned = armxCausalSync(game, game.side, previewProfile);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-4-opponent-replies');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-4-opponent-replies-delayed');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
