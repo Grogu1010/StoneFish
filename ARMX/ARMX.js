@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-plan-response';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-5-offered-plan-response';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -262,12 +262,17 @@ function armxCausalInteractionPlanFeatures(game,move){
   const base=armxCausalBaseFeatures(game,move);
   return new Set([...base].filter(feature=>ARMX_CAUSAL_INTERACTION_PLAN_FEATURES.includes(feature)));
 }
-function armxCausalInteractionReplyFeatures(previewProfile,index){
+function armxCausalInteractionReplyFeatures(previewProfile,index,targetSquare,side){
   const out=new Set();
-  if(!previewProfile||!previewProfile.opponentOpportunityPlies)return out;
-  for(const feature of ARMX_PREVIEW_REPLY_FEATURES){
-    const plies=previewProfile.opponentOpportunityPlies[feature];
-    if(plies&&plies.has(index))out.add(feature);
+  const legal=previewProfile&&previewProfile.opponentLegalMovesByPly
+    &&previewProfile.opponentLegalMovesByPly[index];
+  if(!Array.isArray(legal)||!Number.isInteger(targetSquare))return out;
+  for(const reply of legal){
+    if(armxPreviewCapturedSquare(reply,side)!==targetSquare)continue;
+    const features=armxPreviewCheapFeatureSet(reply);
+    for(const feature of ARMX_PREVIEW_REPLY_FEATURES){
+      if(features.has(feature))out.add(feature);
+    }
   }
   return out;
 }
@@ -373,7 +378,7 @@ function armxCausalNewBook(perspective,game){
     observationStartPly:Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)),
     processedPlies:0,lastHistoryState:null,initialPositionKey:replay.fastPositionKey(),replay,
     our:new Map(),opponent:new Map(),interactions:new Map(),
-    lastOurInteractionFeatures:new Set(),
+    lastOurInteractionFeatures:new Set(),lastOurInteractionTarget:null,
     predictionQualitySum:0,predictionQualityWeight:0,predictionCount:0,
     lastPredictionProbability:0,lastPredictionRank:0,
     pendingTrajectories:[],
@@ -638,7 +643,9 @@ function armxCausalSync(game,perspective=game.side,previewProfile=null){
     if(!move)break;
     const actor=book.replay.side;
     const interactionReplies=index>=observationStartPly&&actor===-perspective
-      ?armxCausalInteractionReplyFeatures(previewProfile,index):new Set();
+      ?armxCausalInteractionReplyFeatures(
+        previewProfile,index,book.lastOurInteractionTarget,actor
+      ):new Set();
     const hasInteraction=interactionReplies.size>0&&book.lastOurInteractionFeatures.size>0;
     const needsTrajectoryScore=book.pendingTrajectories.length>0
       ||(index>=observationStartPly&&actor===perspective)||hasInteraction;
@@ -647,13 +654,14 @@ function armxCausalSync(game,perspective=game.side,previewProfile=null){
     if(book.pendingTrajectories.length)armxCausalResolveTrajectories(book,index,trajectoryScore);
     let replayApplied=false;
 
-    // Learn the outcome of the opponent's chosen response specifically under
-    // the plan family we just played. Availability comes from Preview's
-    // already-recorded opportunity ledger, so this adds no legal-move scan.
+    // Learn only responses to the piece we actually offered with the prior
+    // move. This removes unrelated board-wide captures/trades from the causal
+    // treatment/control comparison while reusing Preview's cached legal list.
     if(hasInteraction){
-      const chosenReply=new Set(
+      const acceptedOffer=armxPreviewCapturedSquare(move,actor)===book.lastOurInteractionTarget;
+      const chosenReply=acceptedOffer?new Set(
         [...armxPreviewCheapFeatureSet(move)].filter(feature=>ARMX_PREVIEW_REPLY_FEATURES.includes(feature))
-      );
+      ):new Set();
       const availablePairs=armxCausalInteractionKeys(
         book.lastOurInteractionFeatures,interactionReplies
       );
@@ -703,6 +711,7 @@ function armxCausalSync(game,perspective=game.side,previewProfile=null){
         armxCausalQueueTrajectory(book,map,available,chosen,actualAfter,index);
       }
       book.lastOurInteractionFeatures=armxCausalInteractionPlanFeatures(book.replay,move);
+      book.lastOurInteractionTarget=move.to;
     }
     if(!replayApplied)book.replay.fastApply(move);
     book.processedPlies++;
@@ -729,7 +738,7 @@ function armxCausalPlanResponseReport(
   game,entry,book,previewProfile,previewReport,effectCache=null
 ){
   const plans=armxCausalInteractionPlanFeatures(game,entry&&entry.raw);
-  const available=new Set(previewReport&&previewReport.replyFeaturesAvailable||[]);
+  const available=new Set(previewReport&&previewReport.replyFeaturesOffered||[]);
   if(!plans.size||!available.size||!book.interactions.size){
     return {value:0,confidence:0,evidence:0,delayedEvidence:0,rows:[]};
   }

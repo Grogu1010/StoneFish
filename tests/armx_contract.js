@@ -241,7 +241,7 @@ function review(game) {
   const previewProfile = armxPreviewSyncProfile(game, game.side);
   const learned = armxCausalSync(game, game.side, previewProfile);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-4-plan-response');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-5-offered-plan-response');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
@@ -281,7 +281,7 @@ function review(game) {
   };
   const interactionReport=armxCausalPlanResponseReport(
     interactionGame,{raw:quietMove},interactionBook,interactionProfile,
-    {replyFeaturesAvailable:['capture']},new Map()
+    {replyFeaturesOffered:['capture']},new Map()
   );
   assert.ok(interactionReport.confidence>0);
   assert.ok(interactionReport.value>0);
