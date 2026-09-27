@@ -47,10 +47,9 @@ jobs:
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Screen pairwise refinement on indices 58-60
+      - name: Run aligned 100-game pairwise refinement benchmark
         env:
-          GAMES: '3'
-          START_INDEX: '58'
+          GAMES: '100'
           MATCHUP: 'artemisVsCurrent'
-          ARMX_TIMING_SAMPLES: '20'
+          ARMX_TIMING_SAMPLES: '120'
         run: node tests/v5_5_range.js
