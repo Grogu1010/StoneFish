@@ -233,8 +233,10 @@ function review(game) {
   const trusted = armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 1 });
   assert.ok(trusted > 0 && trusted <= 70);
 
+  // Force a real tracked response opportunity: after e4xd5 the opponent
+  // has capture available and chooses Qxd5, so plan>capture must be observed.
   const game = play(new Chess(),
-    'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
+    'e2e4', 'd7d5', 'e4d5', 'd8d5', 'g1f3', 'b8c6');
   game.armxObservationStartPly = 0;
   const previewProfile = armxPreviewSyncProfile(game, game.side);
   const learned = armxCausalSync(game, game.side, previewProfile);
