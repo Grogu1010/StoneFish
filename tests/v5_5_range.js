@@ -285,6 +285,7 @@ function compactCausalCandidate(report){
     interactionAdjustment:Number(report.interactionAdjustment)||0,
     interactionValue:Number(causal.interactionValue)||0,
     interactionConfidence:Number(causal.interactionConfidence)||0,
+    interactionReliability:Number(causal.interactionReliability)||0,
     interactionEvidence:Number(causal.interactionEvidence)||0,
     interactionDelayedEvidence:Number(causal.interactionDelayedEvidence)||0,
     gate:{
@@ -588,7 +589,7 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
       }
       if(style==='artemis'){
         const review=armxFullReview(game,host.finished,style,game.side);
-        if(!review.causal||review.causal.version!=='causal-preview-foundation-5-offered-plan-response'){
+        if(!review.causal||review.causal.version!=='causal-preview-foundation-6-conditional-offer-policy'){
           throw new Error('Full ARMX live review must expose the causal notebook');
         }
         if(!Array.isArray(review.causal.effects)||review.causal.effects.length!==0){

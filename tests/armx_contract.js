@@ -241,13 +241,14 @@ function review(game) {
   const previewProfile = armxPreviewSyncProfile(game, game.side);
   const learned = armxCausalSync(game, game.side, previewProfile);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-5-offered-plan-response');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-6-conditional-offer-policy');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
   assert.ok(learned.our.size > 0);
   assert.equal(learned.opponent.size, 0);
   assert.ok(learned.interactions.size > 0);
+  assert.ok(learned.offers.size > 0);
   assert.equal(learned.predictionCount, 0);
   assert.equal(
     armxCausalPredictionReliability(learned, { quietPolicy: { qualityWeight: 8, qualitySum: -8 } }),
@@ -261,34 +262,36 @@ function review(game) {
   // Plan-response treatment/control is candidate-specific and only uses reply
   // behaviors known to have been available to the opponent.
   const interactionRow=armxCausalFreshRow();
-  interactionRow.opportunities=8;interactionRow.choices=4;
-  interactionRow.treatedWeight=4;interactionRow.treatedImpact=2;interactionRow.treatedImpactSq=1;
-  interactionRow.controlWeight=4;interactionRow.controlImpact=-2;interactionRow.controlImpactSq=1;
-  interactionRow.shortTreatedWeight=4;interactionRow.shortTreatedImpact=2;interactionRow.shortTreatedImpactSq=1;
-  interactionRow.shortControlWeight=4;interactionRow.shortControlImpact=-2;interactionRow.shortControlImpactSq=1;
-  interactionRow.longTreatedWeight=4;interactionRow.longTreatedImpact=2;interactionRow.longTreatedImpactSq=1;
-  interactionRow.longControlWeight=4;interactionRow.longControlImpact=-2;interactionRow.longControlImpactSq=1;
-  interactionRow.treatedObservations=new Set([1,2,3,4]);
-  interactionRow.controlObservations=new Set([5,6,7,8]);
+  interactionRow.opportunities=8;interactionRow.choices=6;
+  const offerRow=armxCausalFreshRow();
+  offerRow.opportunities=12;offerRow.choices=4;
   const interactionGame=new Chess();
   const quietMove=interactionGame.fastMoves().find(move=>!move.captured);
-  const interactionBook={perspective:interactionGame.side,interactions:new Map()};
+  const interactionBook={
+    perspective:interactionGame.side,
+    interactions:new Map(),offers:new Map()
+  };
   const quietFeature=[...armxCausalInteractionPlanFeatures(interactionGame,quietMove)][0];
   assert.ok(quietFeature);
   interactionBook.interactions.set(quietFeature+'>capture',interactionRow);
-  const interactionProfile={
-    opponentOpportunities:{capture:6},opponentChoices:{capture:3}
-  };
+  interactionBook.offers.set('capture',offerRow);
+  const acceptedResponseEffects=armxPreviewFreshStats();
+  acceptedResponseEffects.capture.weight=4;
+  acceptedResponseEffects.capture.impact=2;
+  acceptedResponseEffects.capture.positive=4;
+  acceptedResponseEffects.capture.observations=new Set([1,2,3,4]);
+  const interactionProfile={acceptedResponseEffects};
   const interactionReport=armxCausalPlanResponseReport(
     interactionGame,{raw:quietMove},interactionBook,interactionProfile,
     {replyFeaturesOffered:['capture']},new Map()
   );
   assert.ok(interactionReport.confidence>0);
+  assert.ok(interactionReport.reliability>0);
   assert.ok(interactionReport.value>0);
   assert.ok(armxCausalInteractionDecisionAdjustment({
     interactionValue:interactionReport.value,
     interactionConfidence:interactionReport.confidence,
-    reliability:1
+    interactionReliability:interactionReport.reliability
   })>0);
 
   game.reset();

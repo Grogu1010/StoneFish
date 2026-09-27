@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-5-offered-plan-response';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-6-conditional-offer-policy';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -377,7 +377,7 @@ function armxCausalNewBook(perspective,game){
     perspective,
     observationStartPly:Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)),
     processedPlies:0,lastHistoryState:null,initialPositionKey:replay.fastPositionKey(),replay,
-    our:new Map(),opponent:new Map(),interactions:new Map(),
+    our:new Map(),opponent:new Map(),interactions:new Map(),offers:new Map(),
     lastOurInteractionFeatures:new Set(),lastOurInteractionTarget:null,
     predictionQualitySum:0,predictionQualityWeight:0,predictionCount:0,
     lastPredictionProbability:0,lastPredictionRank:0,
@@ -648,15 +648,15 @@ function armxCausalSync(game,perspective=game.side,previewProfile=null){
       ):new Set();
     const hasInteraction=interactionReplies.size>0&&book.lastOurInteractionFeatures.size>0;
     const needsTrajectoryScore=book.pendingTrajectories.length>0
-      ||(index>=observationStartPly&&actor===perspective)||hasInteraction;
+      ||(index>=observationStartPly&&actor===perspective);
     const trajectoryScore=needsTrajectoryScore
       ?armxPreviewStateSnapshot(book.replay,perspective).score:0;
     if(book.pendingTrajectories.length)armxCausalResolveTrajectories(book,index,trajectoryScore);
     let replayApplied=false;
 
-    // Learn only responses to the piece we actually offered with the prior
-    // move. This removes unrelated board-wide captures/trades from the causal
-    // treatment/control comparison while reusing Preview's cached legal list.
+    // Factor the response model: these rows learn only whether an offered
+    // reply was accepted under this plan. Outcome value stays pooled in
+    // Preview's delayed acceptedResponseEffects, which is much less sparse.
     if(hasInteraction){
       const acceptedOffer=armxPreviewCapturedSquare(move,actor)===book.lastOurInteractionTarget;
       const chosenReply=acceptedOffer?new Set(
@@ -668,16 +668,8 @@ function armxCausalSync(game,perspective=game.side,previewProfile=null){
       const chosenPairs=armxCausalInteractionKeys(
         book.lastOurInteractionFeatures,chosenReply
       );
-      book.replay.fastApply(move);
-      replayApplied=true;
-      const actualAfter=armxPreviewStateSnapshot(book.replay,perspective).score;
-      const residual=armxFullClamp(
-        (actualAfter-trajectoryScore)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1
-      );
-      armxCausalUpdateRows(book.interactions,availablePairs,chosenPairs,residual,index);
-      armxCausalQueueTrajectory(
-        book,book.interactions,availablePairs,chosenPairs,actualAfter,index
-      );
+      armxCausalUpdateRows(book.interactions,availablePairs,chosenPairs,0,index);
+      armxCausalUpdateRows(book.offers,interactionReplies,chosenReply,0,index);
     }
 
     if(index>=observationStartPly&&actor===perspective){
@@ -734,49 +726,88 @@ function armxCausalTopEffects(map,keys,limit=4,effectCache=null){
   rows.sort((a,b)=>b.confidence*Math.abs(b.value)-a.confidence*Math.abs(a.value));
   return rows.slice(0,limit);
 }
+function armxCausalAcceptanceRateConfidence(conditional,pooled){
+  const conditionalEvidence=Number(conditional&&conditional.evidence)||0;
+  const pooledEvidence=Number(pooled&&pooled.evidence)||0;
+  if(conditionalEvidence<2||pooledEvidence<2)return 0;
+  const conditionalRate=armxFullClamp(Number(conditional.rate)||0,0,1);
+  const pooledRate=armxFullClamp(Number(pooled.rate)||0,0,1);
+  const separation=Math.abs(conditionalRate-pooledRate);
+  const se=Math.sqrt(
+    conditionalRate*(1-conditionalRate)/(conditionalEvidence+3)
+    +pooledRate*(1-pooledRate)/(pooledEvidence+3)
+  );
+  const separationConfidence=separation/(separation+se+0.08);
+  const maturity=Math.sqrt(
+    armxFullClamp(conditionalEvidence/5,0,1)
+    *armxFullClamp(pooledEvidence/8,0,1)
+  );
+  return armxFullClamp(separationConfidence*maturity,0,1);
+}
 function armxCausalPlanResponseReport(
   game,entry,book,previewProfile,previewReport,effectCache=null
 ){
   const plans=armxCausalInteractionPlanFeatures(game,entry&&entry.raw);
-  const available=new Set(previewReport&&previewReport.replyFeaturesOffered||[]);
-  if(!plans.size||!available.size||!book.interactions.size){
-    return {value:0,confidence:0,evidence:0,delayedEvidence:0,rows:[]};
+  const offered=new Set(previewReport&&previewReport.replyFeaturesOffered||[]);
+  if(!plans.size||!offered.size||!book.interactions.size||!book.offers.size){
+    return {value:0,confidence:0,reliability:0,evidence:0,delayedEvidence:0,rows:[]};
   }
   const rows=[];
-  for(const reply of available){
-    const choice=armxPreviewOpponentChoiceRate(previewProfile,reply);
-    if(choice.evidence<2)continue;
+  for(const reply of offered){
+    const pooled=armxCausalChoiceRate(book.offers.get(reply));
+    if(pooled.evidence<2)continue;
+    const acceptedSource=previewProfile&&previewProfile.acceptedResponseEffects
+      &&previewProfile.acceptedResponseEffects[reply];
+    const accepted=armxPreviewEffect(
+      previewProfile&&previewProfile.acceptedResponseEffects,reply
+    );
+    if(!accepted||accepted.evidence<ARMX_PREVIEW.minEvidence||Math.abs(accepted.value)<0.04)continue;
+    const effectMaturity=armxFullClamp(
+      accepted.evidence/(Number(ARMX_PREVIEW.fullConfidenceEvidence)||8),0,1
+    );
+    const acceptedWeight=Number(acceptedSource&&acceptedSource.weight)||0;
+    const acceptedPositive=Number(acceptedSource&&acceptedSource.positive)||0;
+    const effectConsistency=acceptedWeight
+      ?Math.abs((2*acceptedPositive-acceptedWeight)/acceptedWeight):0;
+    const effectConfidence=effectMaturity*(0.5+0.5*effectConsistency);
     let best=null;
     for(const plan of plans){
       const key=plan+'>'+reply;
-      const source=book.interactions.get(key);
-      if(!source)continue;
-      let effect=effectCache&&effectCache.get(source);
-      if(!effect){
-        effect=armxCausalEffect(source);
-        if(effectCache)effectCache.set(source,effect);
+      const conditional=armxCausalChoiceRate(book.interactions.get(key));
+      if(conditional.evidence<2)continue;
+      const rateConfidence=armxCausalAcceptanceRateConfidence(conditional,pooled);
+      if(rateConfidence<=0)continue;
+      const rateDelta=conditional.rate-pooled.rate;
+      const value=rateDelta*accepted.value;
+      const confidence=rateConfidence*effectConfidence;
+      const strength=Math.abs(value)*confidence;
+      if(!best||strength>best.strength){
+        best={
+          key,plan,reply,strength,value,confidence,rateConfidence,
+          conditionalRate:conditional.rate,conditionalEvidence:conditional.evidence,
+          pooledRate:pooled.rate,pooledEvidence:pooled.evidence,
+          acceptedValue:accepted.value,acceptedEvidence:accepted.evidence,
+          effectConsistency,
+        };
       }
-      if(!effect||effect.confidence<=0||effect.delayedEvidence<=0)continue;
-      const strength=Math.abs(effect.value)*effect.confidence;
-      if(!best||strength>best.strength)best={key,plan,reply,strength,...effect};
     }
-    if(!best)continue;
-    const choiceConfidence=armxFullClamp(choice.evidence/6,0,1);
-    const weight=choice.rate*choiceConfidence*best.confidence;
-    if(weight<=0)continue;
-    rows.push({...best,choiceRate:choice.rate,choiceEvidence:choice.evidence,weight});
+    if(best)rows.push(best);
   }
-  rows.sort((a,b)=>b.weight*Math.abs(b.value)-a.weight*Math.abs(a.value));
+  rows.sort((a,b)=>b.strength-a.strength);
   const selected=rows.slice(0,3);
-  const totalWeight=selected.reduce((sum,row)=>sum+row.weight,0);
-  const value=totalWeight
-    ?selected.reduce((sum,row)=>sum+row.value*row.weight,0)/totalWeight:0;
+  const totalConfidence=selected.reduce((sum,row)=>sum+row.confidence,0);
+  const value=totalConfidence
+    ?selected.reduce((sum,row)=>sum+row.value*row.confidence,0)/totalConfidence:0;
   const confidence=selected.length
-    ?armxFullClamp(totalWeight/Math.sqrt(selected.length),0,1):0;
+    ?armxFullClamp(totalConfidence/Math.sqrt(selected.length),0,1):0;
+  const reliability=selected.length
+    ?armxFullClamp(
+      selected.reduce((sum,row)=>sum+row.rateConfidence,0)/selected.length,0,1
+    ):0;
   return {
-    value:armxFullClamp(value,-1,1),confidence,
-    evidence:selected.reduce((sum,row)=>sum+(Number(row.evidence)||0),0),
-    delayedEvidence:selected.reduce((sum,row)=>sum+(Number(row.delayedEvidence)||0),0),
+    value:armxFullClamp(value,-1,1),confidence,reliability,
+    evidence:selected.reduce((sum,row)=>sum+(Number(row.conditionalEvidence)||0),0),
+    delayedEvidence:selected.reduce((sum,row)=>sum+(Number(row.acceptedEvidence)||0),0),
     rows:selected,
   };
 }
@@ -808,6 +839,7 @@ function armxCausalCandidateReport(
     evidence:ownRows.reduce((s,r)=>s+r.evidence,0),delayedEvidence,
     interactionValue:interaction.value,
     interactionConfidence:interaction.confidence,
+    interactionReliability:interaction.reliability,
     interactionEvidence:interaction.evidence,
     interactionDelayedEvidence:interaction.delayedEvidence,
     interactionEffects:interaction.rows,
@@ -2186,6 +2218,7 @@ const ARMX_CAUSAL_MIN_SIGNAL=0.15;
 // turning coincidental treatment/control splits into a finalist vote.
 const ARMX_CAUSAL_MIN_RELIABILITY=0.10;
 const ARMX_CAUSAL_MIN_OBSERVED_PLIES=8;
+const ARMX_CAUSAL_INTERACTION_MIN_SIGNAL=0.06;
 
 function armxCausalDecisionTrust(causal){
   const confidence=armxFullClamp(Number(causal&&causal.confidence)||0,0,1);
@@ -2202,7 +2235,7 @@ function armxCausalDecisionAdjustment(causal){
 function armxCausalInteractionDecisionAdjustment(causal){
   const signal=Number(causal&&causal.interactionValue)||0;
   const confidence=armxFullClamp(Number(causal&&causal.interactionConfidence)||0,0,1);
-  const reliability=armxFullClamp(Number(causal&&causal.reliability)||0,0,1);
+  const reliability=armxFullClamp(Number(causal&&causal.interactionReliability)||0,0,1);
   return armxFullClamp(signal*confidence*reliability*ARMX_CAUSAL_DECISION_SCALE,-35,35);
 }
 
@@ -2341,6 +2374,10 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       Math.abs(Number(report.causal&&report.causal.interactionValue)||0),
       Math.abs(Number(provisional.causal&&provisional.causal.interactionValue)||0)
     );
+    const interactionReliability=Math.max(
+      Number(report.causal&&report.causal.interactionReliability)||0,
+      Number(provisional.causal&&provisional.causal.interactionReliability)||0
+    );
     const interactionEvidence=Math.max(
       Number(report.causal&&report.causal.interactionEvidence)||0,
       Number(provisional.causal&&provisional.causal.interactionEvidence)||0
@@ -2351,8 +2388,8 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     );
     const interactionAllowed=observedPlies>=ARMX_CAUSAL_MIN_OBSERVED_PLIES
       &&interactionConfidence>=ARMX_CAUSAL_MIN_CONFIDENCE
-      &&interactionSignal>=ARMX_CAUSAL_MIN_SIGNAL
-      &&causalReliability>=ARMX_CAUSAL_MIN_RELIABILITY
+      &&interactionSignal>=ARMX_CAUSAL_INTERACTION_MIN_SIGNAL
+      &&interactionReliability>=ARMX_CAUSAL_MIN_RELIABILITY
       &&interactionEvidence>=0.8&&interactionDelayedEvidence>=0.5;
     const interactionLead=interactionAllowed
       ?(Number(report.interactionAdjustment)||0)
@@ -2363,7 +2400,8 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       ownAllowed:causalAllowed,interactionAllowed,
       confidence:causalConfidence,signal:causalSignal,evidence:causalEvidence,
       delayedEvidence:causalDelayedEvidence,reliability:causalReliability,
-      interactionConfidence,interactionSignal,interactionEvidence,interactionDelayedEvidence,
+      interactionConfidence,interactionSignal,interactionReliability,
+      interactionEvidence,interactionDelayedEvidence,
     };
     report.noteLead=causalLead+interactionLead;
 
