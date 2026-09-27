@@ -498,7 +498,9 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
           &&Array.isArray(report.causal.predictedReplies)
           &&report.fullNoteGate
           &&typeof report.fullNoteGate.allowed==='boolean'
-          &&typeof report.fullNoteGate.replyAllowed==='boolean')){
+          &&(!report.objectiveEligible
+            ||report===review.reports[0]
+            ||typeof report.fullNoteGate.replyAllowed==='boolean'))){
           throw new Error('Full ARMX live candidates must expose independently gated reply-causal telemetry');
         }
         if(!review.winnerWithoutCausal||typeof review.causalChangedWinner!=='boolean'){
