@@ -588,7 +588,7 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
       }
       if(style==='artemis'){
         const review=armxFullReview(game,host.finished,style,game.side);
-        if(!review.causal||review.causal.version!=='causal-preview-foundation-4-plan-response'){
+        if(!review.causal||review.causal.version!=='causal-preview-foundation-5-offered-plan-response'){
           throw new Error('Full ARMX live review must expose the causal notebook');
         }
         if(!Array.isArray(review.causal.effects)||review.causal.effects.length!==0){
