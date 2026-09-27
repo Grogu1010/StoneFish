@@ -224,6 +224,18 @@ function review(game) {
   );
 }
 
+// Cheap reply keys are move-local and cannot mutate the board. They retain
+// enough structure to distinguish piece type, direction and tactical categories.
+{
+  const game = play(new Chess(), 'e2e4', 'e7e5');
+  const before = snapshot(game);
+  const move = game.fastMoves().find(raw=>raw.piece===2)||game.fastMoves()[0];
+  const features = armxCausalReplyFeatures(move, game.side);
+  assert.ok(features.size > 0);
+  for(const feature of features)assert.ok(ARMX_CAUSAL_REPLY_FEATURES.includes(feature));
+  assert.equal(snapshot(game), before);
+}
+
 // Full ARMX causal voting is live again, but trust is explicitly gated by
 // measured opponent-prediction reliability. Zero predictive reliability must
 // contribute zero causal finalist adjustment; trusted evidence stays bounded.
@@ -233,18 +245,31 @@ function review(game) {
   const trusted = armxCausalDecisionAdjustment({ signal: 0.8, confidence: 0.8, reliability: 1 });
   assert.ok(trusted > 0 && trusted <= 70);
 
+  const replyTrusted = armxCausalDecisionAdjustment({
+    ownValue: 0, ownConfidence: 0, reliability: 0,
+    replyValue: 0.8, replyConfidence: 0.8, replyReliability: 1
+  });
+  assert.ok(replyTrusted > 0 && replyTrusted <= 35);
+  const replyUntrusted = armxCausalDecisionAdjustment({
+    ownValue: 0, ownConfidence: 0, reliability: 0,
+    replyValue: 0.8, replyConfidence: 0.8, replyReliability: 0
+  });
+  assert.equal(replyUntrusted, 0);
+
   const game = play(new Chess(),
     'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
   game.armxObservationStartPly = 0;
-  const learned = armxCausalSync(game, game.side);
+  const previewProfile = armxPreviewSyncProfile(game, game.side);
+  const learned = armxCausalSync(game, game.side, previewProfile);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-3-preview-reliability');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-5-cheap-predicted-replies');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
   assert.ok(learned.our.size > 0);
-  assert.equal(learned.opponent.size, 0);
-  assert.equal(learned.predictionCount, 0);
+  assert.ok(learned.opponent.size > 0);
+  assert.ok(learned.predictionCount > 0);
+  assert.ok(Number.isFinite(armxCausalNotebookPredictionReliability(learned)));
   assert.equal(
     armxCausalPredictionReliability(learned, { quietPolicy: { qualityWeight: 8, qualitySum: -8 } }),
     0
@@ -255,7 +280,8 @@ function review(game) {
   );
 
   game.reset();
-  const fresh = armxCausalSync(game, game.side);
+  const freshProfile = armxPreviewSyncProfile(game, game.side);
+  const fresh = armxCausalSync(game, game.side, freshProfile);
   assert.notEqual(fresh, learned);
   assert.equal(fresh.processedPlies, 0);
   assert.equal(fresh.predictionCount, 0);
