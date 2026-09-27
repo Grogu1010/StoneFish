@@ -486,7 +486,7 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
       }
       if(style==='artemis'){
         const review=armxFullReview(game,host.finished,style,game.side);
-        if(!review.causal||review.causal.version!=='causal-preview-foundation-3-preview-reliability'){
+        if(!review.causal||review.causal.version!=='causal-preview-foundation-4-rich-opponent-replies'){
           throw new Error('Full ARMX live review must expose the causal notebook');
         }
         if(!Array.isArray(review.causal.effects)||review.causal.effects.length!==0){
@@ -494,9 +494,12 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
         }
         if(!review.reports.every(report=>report.causal
           &&Number.isFinite(report.causal.reliability)
+          &&Number.isFinite(report.causal.replyReliability)
+          &&Array.isArray(report.causal.predictedReplies)
           &&report.fullNoteGate
-          &&typeof report.fullNoteGate.allowed==='boolean')){
-          throw new Error('Full ARMX live candidates must expose reliability-gated causal telemetry');
+          &&typeof report.fullNoteGate.allowed==='boolean'
+          &&typeof report.fullNoteGate.replyAllowed==='boolean')){
+          throw new Error('Full ARMX live candidates must expose independently gated reply-causal telemetry');
         }
         if(!review.winnerWithoutCausal||typeof review.causalChangedWinner!=='boolean'){
           throw new Error('Full ARMX live review must expose causal-only winner attribution');
