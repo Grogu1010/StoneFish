@@ -760,8 +760,6 @@ function armxCausalCheapReplyReport(book,previewReport,effectCache=null){
 }
 function armxCausalCandidateReport(
   game,entry,book,knownContexts=null,previewProfile=null,previewReport=null,effectCache=null
-){function armxCausalCandidateReport(
-  game,entry,book,knownContexts=null,previewProfile=null,previewReport=null,effectCache=null
 ){
   // Full ARMX keeps Preview as the opponent-prediction/search layer. The saved
   // own-plan causal vote stays intact; candidate-specific opponent replies reuse
@@ -778,7 +776,7 @@ function armxCausalCandidateReport(
   const delayedEvidence=ownRows.reduce((s,r)=>s+(Number(r.delayedEvidence)||0),0);
   const reply=armxCausalCheapReplyReport(book,previewReport,effectCache);
   return {
-    // Preserve the saved own-causal signal and trust exactly. Rich reply
+    // Preserve the saved own-causal signal and trust exactly. Cheap reply
     // evidence is gated and adjusted independently below.
     signal:ownValue,confidence:ownConfidence,
     reliability:armxCausalPredictionReliability(book,previewProfile),
