@@ -21,7 +21,7 @@ function bundledSource(bundle,file){
   return match[1];
 }
 const FROZEN_CURRENT_V55_HASHES=Object.freeze({
-  'ARMX/ARMX-preview.js':'6db906654420eccae2ac05005551425bfb1e576aed673b95421bff515b918527',
+  'ARMX/ARMX-preview.js':'6314647b40e826f29d5cd8f3864baa0d7db8a8c5a5b1dcf4922b2d5a258f2c43',
   'Stonefish_v5_5.js':'ce867135cdd2462c5793565d4e310fd893763809f75cee8e8bea6814d1e66b40',
 });
 const sourceByFile=Object.fromEntries(loadedSources.map(row=>[row.file,row.source]));
@@ -269,8 +269,8 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   let contenderThinkMs=0,opponentThinkMs=0,contenderMoves=0,opponentMoves=0;
   const contenderStyle=emptyStyleCounts(),opponentStyle=emptyStyleCounts();
   const contenderFullStyle=fullArmxStyleFor(contenderFn),opponentFullStyle=fullArmxStyleFor(opponentFn);
-  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
-  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
+  const contenderArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,richReplyCandidates:0,richReplyRows:0,richReplyConfidenceTotal:0,absoluteRichReplyValueTotal:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
+  const opponentArmx={moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,richReplyCandidates:0,richReplyRows:0,richReplyConfidenceTotal:0,absoluteRichReplyValueTotal:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0};
   return withSeed(seed,()=>{
     while(!game.game_over()&&plies<maxPlies){
       const contenderTurn=(game.side===1)===contenderIsWhite;
@@ -305,6 +305,16 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
               if(report.fullNoteGate&&report.fullNoteGate.allowed)bucket.noteAllowedChallengers++;
               const noteLead=Number(report.noteLead)||0;
               const learnedSignal=Number(report.learnedSignal)||0;
+              const replyConfidence=Number(report.causal&&report.causal.replyConfidence)||0;
+              const replyValue=Number(report.causal&&report.causal.replyValue)||0;
+              const replyRows=Array.isArray(report.causal&&report.causal.predictedReplies)
+                ?report.causal.predictedReplies.length:0;
+              if(replyRows>0){
+                bucket.richReplyCandidates++;
+                bucket.richReplyRows+=replyRows;
+                bucket.richReplyConfidenceTotal+=replyConfidence;
+                bucket.absoluteRichReplyValueTotal+=Math.abs(replyValue);
+              }
               if(noteLead>0)bucket.positiveNoteLeadChallengers++;
               bucket.noteLeadTotal+=noteLead;
               bucket.absoluteNoteLeadTotal+=Math.abs(noteLead);
@@ -356,7 +366,7 @@ function simulateGame(contenderIsWhite,opening,seed,contenderFn,opponentFn,maxPl
   });
 }
 function matchup(games,label,contenderFn,opponentFn,startIndex=0){
-  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0}};
+  const out={label,win:0,loss:0,draw:0,plies:0,playedPlies:0,records:[],contenderThinkMs:0,opponentThinkMs:0,contenderMoves:0,opponentMoves:0,contenderStyle:emptyStyleCounts(),opponentStyle:emptyStyleCounts(),contenderArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,richReplyCandidates:0,richReplyRows:0,richReplyConfidenceTotal:0,absoluteRichReplyValueTotal:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0},opponentArmx:{moves:0,rootWidthTotal:0,rootWidthMax:0,changedMoves:0,causalChangedMoves:0,richReplyCandidates:0,richReplyRows:0,richReplyConfidenceTotal:0,absoluteRichReplyValueTotal:0,maturityTotal:0,noteBreadthTotal:0,searchBudgetTotal:0,depthLimitTotal:0,noteUsefulnessTotal:0,learnedStrengthTotal:0,surpriseTotal:0,fullNoteAllowed:0,styleAllowed:0,previewAllowed:0,winnerFullNoteAllowed:0,winnerStyleAllowed:0,winnerPreviewAllowed:0,challengers:0,noteAllowedChallengers:0,positiveNoteLeadChallengers:0,noteLeadTotal:0,absoluteNoteLeadTotal:0,absoluteLearnedSignalTotal:0,maxNoteLead:0,maxAbsoluteLearnedSignal:0,patientTotal:0,activatedPatientTotal:0,patientSamples:0}};
   for(let local=0;local<games;local++){
     const i=startIndex+local,pair=Math.floor(i/2);
     const opening=generateOpening(pair,10);
@@ -372,7 +382,7 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
       out.contenderStyle[feature]+=row.contenderStyle[feature]||0;
       out.opponentStyle[feature]+=row.opponentStyle[feature]||0;
     }
-    for(const key of ['moves','rootWidthTotal','changedMoves','causalChangedMoves','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal','fullNoteAllowed','styleAllowed','previewAllowed','winnerFullNoteAllowed','winnerStyleAllowed','winnerPreviewAllowed','challengers','noteAllowedChallengers','positiveNoteLeadChallengers','noteLeadTotal','absoluteNoteLeadTotal','absoluteLearnedSignalTotal','patientTotal','activatedPatientTotal','patientSamples']){
+    for(const key of ['moves','rootWidthTotal','changedMoves','causalChangedMoves','richReplyCandidates','richReplyRows','richReplyConfidenceTotal','absoluteRichReplyValueTotal','maturityTotal','noteBreadthTotal','searchBudgetTotal','depthLimitTotal','noteUsefulnessTotal','learnedStrengthTotal','surpriseTotal','fullNoteAllowed','styleAllowed','previewAllowed','winnerFullNoteAllowed','winnerStyleAllowed','winnerPreviewAllowed','challengers','noteAllowedChallengers','positiveNoteLeadChallengers','noteLeadTotal','absoluteNoteLeadTotal','absoluteLearnedSignalTotal','patientTotal','activatedPatientTotal','patientSamples']){
       out.contenderArmx[key]+=row.contenderArmx[key]||0;
       out.opponentArmx[key]+=row.opponentArmx[key]||0;
     }
@@ -397,6 +407,12 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.contenderArmx.averageRootWidth=out.contenderArmx.moves?out.contenderArmx.rootWidthTotal/out.contenderArmx.moves:0;
   out.contenderArmx.changedMoveRate=out.contenderArmx.moves?out.contenderArmx.changedMoves/out.contenderArmx.moves:0;
   out.contenderArmx.causalChangedMoveRate=out.contenderArmx.moves?out.contenderArmx.causalChangedMoves/out.contenderArmx.moves:0;
+  out.contenderArmx.averageRichReplyRows=out.contenderArmx.richReplyCandidates
+    ?out.contenderArmx.richReplyRows/out.contenderArmx.richReplyCandidates:0;
+  out.contenderArmx.averageRichReplyConfidence=out.contenderArmx.richReplyCandidates
+    ?out.contenderArmx.richReplyConfidenceTotal/out.contenderArmx.richReplyCandidates:0;
+  out.contenderArmx.averageAbsoluteRichReplyValue=out.contenderArmx.richReplyCandidates
+    ?out.contenderArmx.absoluteRichReplyValueTotal/out.contenderArmx.richReplyCandidates:0;
   out.contenderArmx.averageMaturity=out.contenderArmx.moves?out.contenderArmx.maturityTotal/out.contenderArmx.moves:0;
   out.contenderArmx.averageNoteBreadth=out.contenderArmx.moves?out.contenderArmx.noteBreadthTotal/out.contenderArmx.moves:0;
   out.contenderArmx.averageSearchBudget=out.contenderArmx.moves?out.contenderArmx.searchBudgetTotal/out.contenderArmx.moves:0;
@@ -417,6 +433,12 @@ function matchup(games,label,contenderFn,opponentFn,startIndex=0){
   out.opponentArmx.averageRootWidth=out.opponentArmx.moves?out.opponentArmx.rootWidthTotal/out.opponentArmx.moves:0;
   out.opponentArmx.changedMoveRate=out.opponentArmx.moves?out.opponentArmx.changedMoves/out.opponentArmx.moves:0;
   out.opponentArmx.causalChangedMoveRate=out.opponentArmx.moves?out.opponentArmx.causalChangedMoves/out.opponentArmx.moves:0;
+  out.opponentArmx.averageRichReplyRows=out.opponentArmx.richReplyCandidates
+    ?out.opponentArmx.richReplyRows/out.opponentArmx.richReplyCandidates:0;
+  out.opponentArmx.averageRichReplyConfidence=out.opponentArmx.richReplyCandidates
+    ?out.opponentArmx.richReplyConfidenceTotal/out.opponentArmx.richReplyCandidates:0;
+  out.opponentArmx.averageAbsoluteRichReplyValue=out.opponentArmx.richReplyCandidates
+    ?out.opponentArmx.absoluteRichReplyValueTotal/out.opponentArmx.richReplyCandidates:0;
   out.opponentArmx.averageMaturity=out.opponentArmx.moves?out.opponentArmx.maturityTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averageNoteBreadth=out.opponentArmx.moves?out.opponentArmx.noteBreadthTotal/out.opponentArmx.moves:0;
   out.opponentArmx.averageSearchBudget=out.opponentArmx.moves?out.opponentArmx.searchBudgetTotal/out.opponentArmx.moves:0;
@@ -486,7 +508,7 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
       }
       if(style==='artemis'){
         const review=armxFullReview(game,host.finished,style,game.side);
-        if(!review.causal||review.causal.version!=='causal-preview-foundation-3-preview-reliability'){
+        if(!review.causal||review.causal.version!=='causal-preview-foundation-4-rich-cached-replies'){
           throw new Error('Full ARMX live review must expose the causal notebook');
         }
         if(!Array.isArray(review.causal.effects)||review.causal.effects.length!==0){
