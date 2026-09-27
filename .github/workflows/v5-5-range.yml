@@ -51,9 +51,10 @@ jobs:
         env:
           GAMES: '20'
         run: node tests/v5_5_range.js
-      - name: Run aligned 100-game Artemis benchmark
+      - name: Trace regressed Artemis game 58
         env:
-          GAMES: '100'
+          GAMES: '1'
+          START_INDEX: '58'
           MATCHUP: 'artemisVsCurrent'
-          ARMX_TIMING_SAMPLES: '120'
+          ARMX_TIMING_SAMPLES: '20'
         run: node tests/v5_5_range.js
