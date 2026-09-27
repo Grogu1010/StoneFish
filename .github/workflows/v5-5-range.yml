@@ -47,10 +47,10 @@ jobs:
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Trace premature pairwise flip at index 59
+      - name: Trace successful pairwise flips at index 60
         env:
           GAMES: '1'
-          START_INDEX: '59'
+          START_INDEX: '60'
           MATCHUP: 'artemisVsCurrent'
           ARMX_TIMING_SAMPLES: '10'
         run: node tests/v5_5_range.js
