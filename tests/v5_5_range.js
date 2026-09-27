@@ -293,6 +293,18 @@ function compactCausalCandidate(report){
       replyConfidence:Number(gate.replyConfidence)||0,
       replyReliability:Number(gate.replyReliability)||0,
     },
+    ownEffects:(Array.isArray(causal.ownEffects)?causal.ownEffects:[])
+      .slice(0,4).map(row=>({
+        key:row&&row.key||null,
+        value:Number(row&&row.value)||0,
+        confidence:Number(row&&row.confidence)||0,
+        evidence:Number(row&&row.evidence)||0,
+        delayedEvidence:Number(row&&row.delayedEvidence)||0,
+        agreement:Number(row&&row.agreement)||0,
+        immediateValue:Number(row&&row.immediate&&row.immediate.value)||0,
+        shortValue:Number(row&&row.short&&row.short.value)||0,
+        longValue:Number(row&&row.long&&row.long.value)||0,
+      })),
     predictedReplies:(Array.isArray(causal.predictedReplies)?causal.predictedReplies:[])
       .slice(0,3).map(row=>({
         raw:compactRawMove(row&&row.raw),
