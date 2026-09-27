@@ -308,11 +308,15 @@ function compactCausalCandidate(report){
         key:row&&row.key||null,
         plan:row&&row.plan||null,
         reply:row&&row.reply||null,
-        choiceRate:Number(row&&row.choiceRate)||0,
+        offerContext:row&&row.offerContext||null,
+        conditionalRate:Number(row&&row.conditionalRate)||0,
+        pooledRate:Number(row&&row.pooledRate)||0,
+        rateConfidence:Number(row&&row.rateConfidence)||0,
+        outcomeValue:Number(row&&row.outcomeValue)||0,
+        outcomeConfidence:Number(row&&row.outcomeConfidence)||0,
+        outcomeEvidence:Number(row&&row.outcomeEvidence)||0,
         value:Number(row&&row.value)||0,
         confidence:Number(row&&row.confidence)||0,
-        evidence:Number(row&&row.evidence)||0,
-        delayedEvidence:Number(row&&row.delayedEvidence)||0,
       })),
     ownEffects:(Array.isArray(causal.ownEffects)?causal.ownEffects:[])
       .slice(0,4).map(row=>({
@@ -589,7 +593,7 @@ if(ARMX_FULL.baseSearchNodes!==SF55C.nodes||ARMX_FULL.baseDepth!==SF55C.maxDepth
       }
       if(style==='artemis'){
         const review=armxFullReview(game,host.finished,style,game.side);
-        if(!review.causal||review.causal.version!=='causal-preview-foundation-6-conditional-offer-policy'){
+        if(!review.causal||review.causal.version!=='causal-preview-foundation-7-contextual-offer-policy'){
           throw new Error('Full ARMX live review must expose the causal notebook');
         }
         if(!Array.isArray(review.causal.effects)||review.causal.effects.length!==0){

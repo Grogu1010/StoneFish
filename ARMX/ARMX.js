@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-6-conditional-offer-policy';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-7-contextual-offer-policy';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -276,10 +276,30 @@ function armxCausalInteractionReplyFeatures(previewProfile,index,targetSquare,si
   }
   return out;
 }
-function armxCausalInteractionKeys(planFeatures,replyFeatures){
+function armxCausalOfferClass(game,move){
+  const piece=(move&&move.promotion)||(move&&move.piece)
+    ||Math.abs(game&&move&&game.boardState[move.from]||0);
+  if(piece===1)return 'pawn';
+  if(piece===2||piece===3)return 'minor';
+  if(piece===4)return 'rook';
+  if(piece===5)return 'queen';
+  return 'other';
+}
+function armxCausalOfferContext(game,move,perspective,knownScore=NaN){
+  const score=Number.isFinite(knownScore)
+    ?knownScore:armxPreviewStateSnapshot(game,perspective).score;
+  const band=score>=180?'ahead':score<=-180?'behind':'equal';
+  return armxCausalOfferClass(game,move)+'-'+band;
+}
+function armxCausalOfferReplyKey(reply,offerContext){
+  return reply+'@'+offerContext;
+}
+function armxCausalInteractionKeys(planFeatures,replyFeatures,offerContext=null){
   const out=new Set();
   for(const plan of planFeatures||[]){
-    for(const reply of replyFeatures||[])out.add(plan+'>'+reply);
+    for(const reply of replyFeatures||[]){
+      out.add(plan+'>'+reply+(offerContext?'@'+offerContext:''));
+    }
   }
   return out;
 }
@@ -378,10 +398,12 @@ function armxCausalNewBook(perspective,game){
     observationStartPly:Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0)),
     processedPlies:0,lastHistoryState:null,initialPositionKey:replay.fastPositionKey(),replay,
     our:new Map(),opponent:new Map(),interactions:new Map(),offers:new Map(),
+    offerOutcomes:new Map(),
     lastOurInteractionFeatures:new Set(),lastOurInteractionTarget:null,
+    lastOurInteractionContext:null,lastOurInteractionBeforeScore:0,lastOurInteractionIndex:-1,
     predictionQualitySum:0,predictionQualityWeight:0,predictionCount:0,
     lastPredictionProbability:0,lastPredictionRank:0,
-    pendingTrajectories:[],
+    pendingTrajectories:[],pendingOfferOutcomes:[],
   };
 }
 function armxCausalRow(map,key){
@@ -625,6 +647,63 @@ function armxCausalResolveTrajectories(book,currentPly,currentScore){
   }
   book.pendingTrajectories=keep;
 }
+function armxCausalFreshOfferOutcome(){
+  return {
+    weight:0,impact:0,impactSq:0,positiveWeight:0,negativeWeight:0,
+    observations:new Set()
+  };
+}
+function armxCausalOfferOutcomeRow(map,key){
+  let row=map.get(key);
+  if(!row){row=armxCausalFreshOfferOutcome();map.set(key,row);}
+  return row;
+}
+function armxCausalRecordOfferOutcome(map,key,impact,weight,observationId){
+  const normalized=armxFullClamp(
+    impact/(Number(ARMX_PREVIEW.effectScale)||360),-1,1
+  );
+  const row=armxCausalOfferOutcomeRow(map,key);
+  row.weight+=weight;
+  row.impact+=normalized*weight;
+  row.impactSq+=normalized*normalized*weight;
+  if(normalized>0.015)row.positiveWeight+=weight;
+  else if(normalized<-0.015)row.negativeWeight+=weight;
+  row.observations.add(observationId);
+}
+function armxCausalResolveOfferOutcomes(book,currentPly,currentScore){
+  if(!book.pendingOfferOutcomes.length)return;
+  const keep=[];
+  for(const event of book.pendingOfferOutcomes){
+    if(currentPly<event.resolveAt){keep.push(event);continue;}
+    armxCausalRecordOfferOutcome(
+      book.offerOutcomes,event.key,currentScore-event.beforeScore,
+      event.weight,event.observationId
+    );
+  }
+  book.pendingOfferOutcomes=keep;
+}
+function armxCausalOfferOutcomeEffect(map,key){
+  const row=map&&map.get(key);
+  const weight=Number(row&&row.weight)||0;
+  const independent=row&&row.observations?row.observations.size:0;
+  if(weight<1.25||independent<2){
+    return {value:0,evidence:weight,confidence:0,observations:independent};
+  }
+  const mean=row.impact/weight;
+  const variance=Math.max(0,row.impactSq/weight-mean*mean);
+  const se=Math.sqrt(variance/Math.max(1,weight));
+  const directional=(Number(row.positiveWeight)||0)+(Number(row.negativeWeight)||0);
+  const consistency=directional
+    ?Math.abs((Number(row.positiveWeight)||0)-(Number(row.negativeWeight)||0))/directional
+    :0;
+  const maturity=armxFullClamp(weight/4,0,1)*armxFullClamp(independent/4,0,1);
+  const signalConfidence=Math.abs(mean)/(Math.abs(mean)+se+0.08);
+  return {
+    value:armxFullClamp(mean,-1,1),evidence:weight,observations:independent,
+    confidence:armxFullClamp(maturity*signalConfidence*(0.5+0.5*consistency),0,1),
+    consistency,se
+  };
+}
 
 function armxCausalSync(game,perspective=game.side,previewProfile=null){
   let books=ARMX_CAUSAL_GAME_NOTES.get(game);
@@ -648,28 +727,55 @@ function armxCausalSync(game,perspective=game.side,previewProfile=null){
       ):new Set();
     const hasInteraction=interactionReplies.size>0&&book.lastOurInteractionFeatures.size>0;
     const needsTrajectoryScore=book.pendingTrajectories.length>0
+      ||book.pendingOfferOutcomes.length>0
       ||(index>=observationStartPly&&actor===perspective);
     const trajectoryScore=needsTrajectoryScore
       ?armxPreviewStateSnapshot(book.replay,perspective).score:0;
     if(book.pendingTrajectories.length)armxCausalResolveTrajectories(book,index,trajectoryScore);
+    if(book.pendingOfferOutcomes.length)armxCausalResolveOfferOutcomes(book,index,trajectoryScore);
     let replayApplied=false;
 
-    // Factor the response model: these rows learn only whether an offered
-    // reply was accepted under this plan. Outcome value stays pooled in
-    // Preview's delayed acceptedResponseEffects, which is much less sparse.
-    if(hasInteraction){
+    // Learn acceptance probability and delayed accepted-response outcome in
+    // the same offer class + advantage state. This prevents outcomes from one
+    // kind of offer contaminating a materially different candidate.
+    if(hasInteraction&&book.lastOurInteractionContext){
       const acceptedOffer=armxPreviewCapturedSquare(move,actor)===book.lastOurInteractionTarget;
       const chosenReply=acceptedOffer?new Set(
         [...armxPreviewCheapFeatureSet(move)].filter(feature=>ARMX_PREVIEW_REPLY_FEATURES.includes(feature))
       ):new Set();
       const availablePairs=armxCausalInteractionKeys(
-        book.lastOurInteractionFeatures,interactionReplies
+        book.lastOurInteractionFeatures,interactionReplies,book.lastOurInteractionContext
       );
       const chosenPairs=armxCausalInteractionKeys(
-        book.lastOurInteractionFeatures,chosenReply
+        book.lastOurInteractionFeatures,chosenReply,book.lastOurInteractionContext
+      );
+      const availableOffers=new Set(
+        [...interactionReplies].map(reply=>armxCausalOfferReplyKey(
+          reply,book.lastOurInteractionContext
+        ))
+      );
+      const chosenOffers=new Set(
+        [...chosenReply].map(reply=>armxCausalOfferReplyKey(
+          reply,book.lastOurInteractionContext
+        ))
       );
       armxCausalUpdateRows(book.interactions,availablePairs,chosenPairs,0,index);
-      armxCausalUpdateRows(book.offers,interactionReplies,chosenReply,0,index);
+      armxCausalUpdateRows(book.offers,availableOffers,chosenOffers,0,index);
+      if(acceptedOffer){
+        for(const reply of chosenReply){
+          const key=armxCausalOfferReplyKey(reply,book.lastOurInteractionContext);
+          book.pendingOfferOutcomes.push({
+            key,beforeScore:book.lastOurInteractionBeforeScore,
+            observationId:index,resolveAt:book.lastOurInteractionIndex+ARMX_CAUSAL_SHORT_PLIES,
+            weight:0.65
+          });
+          book.pendingOfferOutcomes.push({
+            key,beforeScore:book.lastOurInteractionBeforeScore,
+            observationId:index,resolveAt:book.lastOurInteractionIndex+ARMX_CAUSAL_LONG_PLIES,
+            weight:0.35
+          });
+        }
+      }
     }
 
     if(index>=observationStartPly&&actor===perspective){
@@ -704,10 +810,19 @@ function armxCausalSync(game,perspective=game.side,previewProfile=null){
       }
       book.lastOurInteractionFeatures=armxCausalInteractionPlanFeatures(book.replay,move);
       book.lastOurInteractionTarget=move.to;
+      book.lastOurInteractionContext=armxCausalOfferContext(
+        book.replay,move,perspective,trajectoryScore
+      );
+      book.lastOurInteractionBeforeScore=trajectoryScore;
+      book.lastOurInteractionIndex=index;
     }
     if(!replayApplied)book.replay.fastApply(move);
     book.processedPlies++;
     book.lastHistoryState=state;
+  }
+  if(book.pendingOfferOutcomes.length){
+    const finalScore=armxPreviewStateSnapshot(book.replay,perspective).score;
+    armxCausalResolveOfferOutcomes(book,book.processedPlies,finalScore);
   }
   return book;
 }
@@ -749,45 +864,37 @@ function armxCausalPlanResponseReport(
 ){
   const plans=armxCausalInteractionPlanFeatures(game,entry&&entry.raw);
   const offered=new Set(previewReport&&previewReport.replyFeaturesOffered||[]);
-  if(!plans.size||!offered.size||!book.interactions.size||!book.offers.size){
+  if(!plans.size||!offered.size||!book.interactions.size
+      ||!book.offers.size||!book.offerOutcomes.size){
     return {value:0,confidence:0,reliability:0,evidence:0,delayedEvidence:0,rows:[]};
   }
+  const score=armxPreviewStateSnapshot(game,book.perspective).score;
+  const offerContext=armxCausalOfferContext(game,entry&&entry.raw,book.perspective,score);
   const rows=[];
   for(const reply of offered){
-    const pooled=armxCausalChoiceRate(book.offers.get(reply));
+    const offerKey=armxCausalOfferReplyKey(reply,offerContext);
+    const pooled=armxCausalChoiceRate(book.offers.get(offerKey));
     if(pooled.evidence<2)continue;
-    const acceptedSource=previewProfile&&previewProfile.acceptedResponseEffects
-      &&previewProfile.acceptedResponseEffects[reply];
-    const accepted=armxPreviewEffect(
-      previewProfile&&previewProfile.acceptedResponseEffects,reply
-    );
-    if(!accepted||accepted.evidence<ARMX_PREVIEW.minEvidence||Math.abs(accepted.value)<0.04)continue;
-    const effectMaturity=armxFullClamp(
-      accepted.evidence/(Number(ARMX_PREVIEW.fullConfidenceEvidence)||8),0,1
-    );
-    const acceptedWeight=Number(acceptedSource&&acceptedSource.weight)||0;
-    const acceptedPositive=Number(acceptedSource&&acceptedSource.positive)||0;
-    const effectConsistency=acceptedWeight
-      ?Math.abs((2*acceptedPositive-acceptedWeight)/acceptedWeight):0;
-    const effectConfidence=effectMaturity*(0.5+0.5*effectConsistency);
+    const outcome=armxCausalOfferOutcomeEffect(book.offerOutcomes,offerKey);
+    if(outcome.confidence<=0||Math.abs(outcome.value)<0.04)continue;
     let best=null;
     for(const plan of plans){
-      const key=plan+'>'+reply;
+      const key=plan+'>'+reply+'@'+offerContext;
       const conditional=armxCausalChoiceRate(book.interactions.get(key));
       if(conditional.evidence<2)continue;
       const rateConfidence=armxCausalAcceptanceRateConfidence(conditional,pooled);
       if(rateConfidence<=0)continue;
       const rateDelta=conditional.rate-pooled.rate;
-      const value=rateDelta*accepted.value;
-      const confidence=rateConfidence*effectConfidence;
+      const value=rateDelta*outcome.value;
+      const confidence=rateConfidence*outcome.confidence;
       const strength=Math.abs(value)*confidence;
       if(!best||strength>best.strength){
         best={
-          key,plan,reply,strength,value,confidence,rateConfidence,
+          key,plan,reply,offerContext,strength,value,confidence,rateConfidence,
           conditionalRate:conditional.rate,conditionalEvidence:conditional.evidence,
           pooledRate:pooled.rate,pooledEvidence:pooled.evidence,
-          acceptedValue:accepted.value,acceptedEvidence:accepted.evidence,
-          effectConsistency,
+          outcomeValue:outcome.value,outcomeEvidence:outcome.evidence,
+          outcomeConfidence:outcome.confidence,outcomeConsistency:outcome.consistency,
         };
       }
     }
@@ -807,7 +914,7 @@ function armxCausalPlanResponseReport(
   return {
     value:armxFullClamp(value,-1,1),confidence,reliability,
     evidence:selected.reduce((sum,row)=>sum+(Number(row.conditionalEvidence)||0),0),
-    delayedEvidence:selected.reduce((sum,row)=>sum+(Number(row.acceptedEvidence)||0),0),
+    delayedEvidence:selected.reduce((sum,row)=>sum+(Number(row.outcomeEvidence)||0),0),
     rows:selected,
   };
 }
