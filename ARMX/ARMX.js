@@ -1138,6 +1138,11 @@ function armxFullObserveHistoricalOpponent(book,features,available,legalCount,in
   }
   return chosenPairKeys;
 }
+function armxFullCachedOpponentLegalMoves(book,previewProfile,index){
+  const cached=previewProfile&&previewProfile.opponentLegalMovesByPly
+    &&previewProfile.opponentLegalMovesByPly[index];
+  return Array.isArray(cached)?cached:book.replay.fastMoves();
+}
 function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
   let books=ARMX_FULL_GAME_NOTES.get(game);
   if(!books){books=new Map();ARMX_FULL_GAME_NOTES.set(game,books);}
@@ -1176,7 +1181,9 @@ function armxFullSyncNotebook(game,perspective=game.side,previewProfile=null){
         const stride=Math.max(1,ARMX_FULL.opportunityScanStride||1);
         const sampleOpportunity=(book.opponentMoves%stride)===0;
         if(sampleOpportunity){
-          const legal=book.replay.fastMoves();
+          const legal=armxFullCachedOpponentLegalMoves(
+            book,book.previewProfile,index
+          );
           const available=new Set(features);
           for(const option of legal){
             for(const feature of armxFullPredictiveMoveFeatures(book.replay,option)){

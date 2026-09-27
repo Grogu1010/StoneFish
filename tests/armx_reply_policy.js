@@ -78,7 +78,22 @@ const metadataReport = armxPreviewCandidateReport(
 assert.ok(Array.isArray(metadataReport.replyFeaturesAvailable));
 assert.ok(Array.isArray(metadataReport.replyFeaturesOffered));
 assert.ok(metadataReport.replyCount > 0);
+assert.ok(Array.isArray(metadataReport.replyMoves));
+assert.equal(metadataReport.replyMoves.length, metadataReport.replyCount);
 assert.equal(snapshot(metadataGame), metadataBefore);
+
+// Historical opponent legal replies are retained from Preview's existing
+// opportunity scan so Full can reuse them without calling fastMoves again.
+const cachedGame = play(new Chess(), 'e2e4', 'e7e5', 'g1f3', 'b8c6');
+const cachedBefore = snapshot(cachedGame);
+const cachedProfile = armxPreviewSyncProfile(cachedGame, cachedGame.side);
+const cachedPlies = Object.keys(cachedProfile.opponentLegalMovesByPly).map(Number);
+assert.ok(cachedPlies.length > 0);
+for (const ply of cachedPlies) {
+  assert.ok(Array.isArray(cachedProfile.opponentLegalMovesByPly[ply]));
+  assert.ok(cachedProfile.opponentLegalMovesByPly[ply].length > 0);
+}
+assert.equal(snapshot(cachedGame), cachedBefore);
 
 // Callback failures unwind the board and do not leave a policy active for the
 // next call. The No-ARMX search uses the same unmodified evaluation and budget.

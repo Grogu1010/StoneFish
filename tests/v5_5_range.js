@@ -21,7 +21,7 @@ function bundledSource(bundle,file){
   return match[1];
 }
 const FROZEN_CURRENT_V55_HASHES=Object.freeze({
-  'ARMX/ARMX-preview.js':'6db906654420eccae2ac05005551425bfb1e576aed673b95421bff515b918527',
+  'ARMX/ARMX-preview.js':'6314647b40e826f29d5cd8f3864baa0d7db8a8c5a5b1dcf4922b2d5a258f2c43',
   'Stonefish_v5_5.js':'ce867135cdd2462c5793565d4e310fd893763809f75cee8e8bea6814d1e66b40',
 });
 const sourceByFile=Object.fromEntries(loadedSources.map(row=>[row.file,row.source]));

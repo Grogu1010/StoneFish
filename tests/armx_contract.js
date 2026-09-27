@@ -198,6 +198,32 @@ function review(game) {
   assert.equal(snapshot(game), before);
 }
 
+// Full style learning reuses Preview's already-generated opponent legal
+// replies when available. The cache must match a fresh generator exactly, and
+// missing cache entries must preserve the old fallback path.
+{
+  const game = play(new Chess(), 'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6');
+  game.armxObservationStartPly = 0;
+  const perspective = game.side;
+  const profile = armxPreviewSyncProfile(game, perspective);
+  const plies = Object.keys(profile.opponentLegalMovesByPly).map(Number).sort((a,b)=>a-b);
+  assert.ok(plies.length > 0);
+  const index = plies[0];
+  const replay = armxFullReplayFromGameStart(game);
+  for(let ply=0;ply<index;ply++)replay.fastApply(game.historyStack[ply].move);
+  const expected = replay.fastMoves().map(armxCausalMoveOrderKey).sort((a,b)=>a-b);
+  const book = { replay };
+  const reused = armxFullCachedOpponentLegalMoves(book, profile, index)
+    .map(armxCausalMoveOrderKey).sort((a,b)=>a-b);
+  assert.deepEqual(reused, expected);
+  const fallbackProfile = { opponentLegalMovesByPly: Object.create(null) };
+  assert.deepEqual(
+    armxFullCachedOpponentLegalMoves(book, fallbackProfile, index)
+      .map(armxCausalMoveOrderKey).sort((a,b)=>a-b),
+    expected
+  );
+}
+
 // Full ARMX causal voting is live again, but trust is explicitly gated by
 // measured opponent-prediction reliability. Zero predictive reliability must
 // contribute zero causal finalist adjustment; trusted evidence stays bounded.

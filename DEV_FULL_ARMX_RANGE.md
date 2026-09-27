@@ -62,6 +62,8 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 
 - Candidate-specific opponent causal reply experiment: reused Preview's recorded reply opportunities (no second legal-reply scan) to estimate chosen-vs-declined causal effects and apply them only where the reply behavior was available. Aligned 100-game Artemis stayed flat at 53.5% (50W/43L/7D), with 16 causal finalist changes, 7,072 reply-valued challenger reports and average absolute reply effect ~0.122. Artemis overhead was ~1.86x, but Athena ~2.09x and Ares ~2.06x exceeded the ceiling. Rejected; candidate-specific reply value is present, but needs better response-specific trust/calibration rather than more weight.
 
+- Promoted behavior-neutral cached-reply foundation: Preview now retains legal replies it already generated and Full's Athena/Ares style notebook reuses them instead of generating the same opponent legal list twice. The aligned Artemis benchmark stayed exactly 53.5% (50W/43L/7D) with the same 15 causal final-move changes. In the six-pair timing screen attributed Full/Preview overhead improved to Athena ~1.96x, Ares ~1.97x, Artemis ~1.78x, putting all three profiles below the 2x ceiling in that screen. Contracts include exact cached-vs-fresh legal-move parity and board-purity checks.
+
 ## Test units and promotion rule
 
 `v5.5 Athena (testunit)`, `v5.5 Ares (testunit)`, and `v5.5 Artemis (testunit)` in Dev Test are rolling aliases for the saved best-known candidate of each profile. Whenever a candidate is demonstrably better and promoted, update these registrations and this checkpoint with its settings and evidence. Current test units are available for comparison; they do not pass the strength or pace gates.

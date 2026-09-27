@@ -352,6 +352,10 @@ function armxPreviewNewProfile(perspective, game = null, observationStartPly = 0
     opponentChoices: Object.create(null),
     opponentOpportunities: Object.create(null),
     opponentOpportunityPlies: Object.create(null),
+    // Preview already generates these legal replies to learn opponent
+    // opportunities. Retain them by ply so Full can reuse the exact list
+    // instead of regenerating opponent moves during the same review.
+    opponentLegalMovesByPly: Object.create(null),
     notes: [],
     quietPolicy: null,
   };
@@ -413,6 +417,7 @@ function armxPreviewResolvePending(profile, currentPly, currentSnapshot = profil
 
 function armxPreviewObserveOpponentOpportunity(profile, game, chosenMove) {
   const legal = game.fastMoves();
+  profile.opponentLegalMovesByPly[profile.processedPlies] = legal;
   let availableMask = 0;
   for (const move of legal) availableMask |= armxPreviewCheapFeatureMask(move);
   const chosenMask = armxPreviewCheapFeatureMask(chosenMove);
@@ -570,8 +575,8 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
   const features = new Set();
   const available = new Set();
   const offered = new Set();
-  let count = 0;
-  if (!raw) return { features, replyOptions: { available, offered, count } };
+  let count = 0, moves = [];
+  if (!raw) return { features, replyOptions: { available, offered, count, moves } };
 
   const historyDepth = game.historyStack.length;
   const actor = game.side;
@@ -605,6 +610,7 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
 
     if (includeReplyOptions) {
       const replies = game.fastMoves();
+      moves = replies;
       count = replies.length;
       for (const reply of replies) {
         const replyMask = armxPreviewCheapFeatureMask(reply);
@@ -618,7 +624,7 @@ function armxPreviewCandidateContext(game, raw, includeReplyOptions) {
     while (game.historyStack.length > historyDepth) game.fastUndo();
   }
 
-  return { features, replyOptions: { available, offered, count } };
+  return { features, replyOptions: { available, offered, count, moves } };
 }
 
 function armxPreviewCandidateReplyOpportunities(game, raw) {
@@ -629,7 +635,7 @@ function armxPreviewCandidateReport(game, entry, profile) {
   const includeReplyOptions = armxPreviewHasUsefulReplyEvidence(profile);
   const context = includeReplyOptions
     ? armxPreviewCandidateContext(game, entry.raw, true)
-    : { features: armxPreviewFeatureSet(game, entry.raw), replyOptions: { available: new Set(), offered: new Set(), count: 0 } };
+    : { features: armxPreviewFeatureSet(game, entry.raw), replyOptions: { available: new Set(), offered: new Set(), count: 0, moves: [] } };
   const features = context.features;
   const replyOptions = context.replyOptions;
   let signal = 0;
@@ -719,6 +725,7 @@ function armxPreviewCandidateReport(game, entry, profile) {
     replyFeaturesAvailable: Array.from(replyOptions.available),
     replyFeaturesOffered: Array.from(replyOptions.offered),
     replyCount: Number(replyOptions.count) || 0,
+    replyMoves: Array.isArray(replyOptions.moves) ? replyOptions.moves : [],
   };
 }
 
