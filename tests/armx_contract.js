@@ -198,6 +198,41 @@ function review(game) {
   assert.equal(snapshot(game), before);
 }
 
+// Rich opponent causal replies reuse Preview's cached legal moves. The
+// candidate report keeps only the strongest few reply effects and caps
+// correlated-label evidence instead of summing it.
+{
+  const game = play(new Chess(), 'e2e4', 'e7e5', 'g1f3', 'b8c6');
+  game.armxObservationStartPly = 0;
+  const profile = armxPreviewSyncProfile(game, game.side);
+  const plies = Object.keys(profile.opponentLegalMovesByPly).map(Number);
+  assert.ok(plies.length > 0);
+  const index = plies[0];
+  const available = armxCausalCachedReplyAvailability(profile,index,-game.side);
+  assert.ok(available.size > 0);
+  for(const feature of available)assert.ok(ARMX_CAUSAL_REPLY_FEATURES.includes(feature));
+
+  const book = armxCausalNewBook(game.side, game);
+  const map = book.opponent;
+  for(const feature of ['pawnMove','knightMove']){
+    const row=armxCausalRow(map,feature);
+    armxCausalUpdateRows(map,new Set([feature]),new Set(),0.25,1);
+    armxCausalUpdateRows(map,new Set([feature]),new Set([feature]),-0.25,3);
+    armxCausalRecordHorizon(map,new Set([feature]),new Set(),60,1,1,'short');
+    armxCausalRecordHorizon(map,new Set([feature]),new Set([feature]),-60,1,3,'short');
+    assert.equal(row.opportunities,2);
+  }
+  const report = armxCausalRichReplyReport(book,{
+    replyMoves:[
+      {from:8,to:16,piece:1,captured:0,promotion:0,flags:0},
+      {from:1,to:18,piece:2,captured:0,promotion:0,flags:0},
+    ]
+  },new Map());
+  assert.ok(report.rows.length > 0);
+  assert.ok(report.rows.length <= 4);
+  assert.ok(report.evidence > 0);
+}
+
 // Full ARMX causal voting is live again, but trust is explicitly gated by
 // measured opponent-prediction reliability. Zero predictive reliability must
 // contribute zero causal finalist adjustment; trusted evidence stays bounded.
@@ -210,14 +245,15 @@ function review(game) {
   const game = play(new Chess(),
     'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6');
   game.armxObservationStartPly = 0;
-  const learned = armxCausalSync(game, game.side);
+  const previewProfile = armxPreviewSyncProfile(game, game.side);
+  const learned = armxCausalSync(game, game.side, previewProfile);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-3-preview-reliability');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-4-rich-cached-replies');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
   assert.ok(learned.our.size > 0);
-  assert.equal(learned.opponent.size, 0);
+  for(const key of learned.opponent.keys())assert.ok(ARMX_CAUSAL_REPLY_FEATURES.includes(key));
   assert.equal(learned.predictionCount, 0);
   assert.equal(
     armxCausalPredictionReliability(learned, { quietPolicy: { qualityWeight: 8, qualitySum: -8 } }),
