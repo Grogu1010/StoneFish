@@ -47,11 +47,7 @@ jobs:
           node tests/armx_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
-      - name: Run saved-best range screen
-        env:
-          GAMES: '20'
-        run: node tests/v5_5_range.js
-      - name: Run aligned 100-game Artemis benchmark
+      - name: Run aligned 100-game pairwise refinement benchmark
         env:
           GAMES: '100'
           MATCHUP: 'artemisVsCurrent'

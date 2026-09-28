@@ -240,7 +240,7 @@ function armxFullMoveFeatures(game, move) {
 // Each observation is scored against the median one-ply trajectory of the legal
 // alternatives from the same position. This makes the learned value a bounded
 // counterfactual residual rather than raw evaluation drift.
-const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-3-preview-reliability';
+const ARMX_CAUSAL_FEATURE_VERSION='causal-preview-foundation-4-pairwise-refinement';
 const ARMX_CAUSAL_BASELINE_SAMPLE_LIMIT=6;
 const ARMX_CAUSAL_GAME_NOTES=new WeakMap();
 const ARMX_CAUSAL_PIECE_NAMES=Object.freeze(['','pawn','knight','bishop','rook','queen','king']);
@@ -694,7 +694,7 @@ function armxCausalCandidateReport(
     reliability:armxCausalPredictionReliability(book,previewProfile),
     ownValue,replyValue:0,ownConfidence,replyConfidence:0,replyTrustedConfidence:0,
     evidence:ownRows.reduce((s,r)=>s+r.evidence,0),delayedEvidence,
-    ownEffects:ownRows,predictedReplies:[],
+    ownKeys:Array.from(ownKeys),ownEffects:ownRows,predictedReplies:[],
     predictionCount:book.predictionCount,
     predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
   };
@@ -2082,6 +2082,89 @@ function armxCausalDecisionAdjustment(causal){
   );
 }
 
+function armxCausalPairwiseFamily(key){
+  const text=String(key||'');
+  const at=text.indexOf('@');
+  return at>=0?text.slice(0,at):text;
+}
+function armxCausalPairGate(reference,candidate,observedPlies){
+  const causalConfidence=Math.max(
+    Number(reference&&reference.noteConfidence)||0,
+    Number(candidate&&candidate.noteConfidence)||0
+  );
+  const causalSignal=Math.max(
+    Math.abs(Number(reference&&reference.learnedSignal)||0),
+    Math.abs(Number(candidate&&candidate.learnedSignal)||0)
+  );
+  const causalEvidence=Math.max(
+    Number(reference&&reference.causal&&reference.causal.evidence)||0,
+    Number(candidate&&candidate.causal&&candidate.causal.evidence)||0
+  );
+  const causalDelayedEvidence=Math.max(
+    Number(reference&&reference.causal&&reference.causal.delayedEvidence)||0,
+    Number(candidate&&candidate.causal&&candidate.causal.delayedEvidence)||0
+  );
+  const causalReliability=Math.max(
+    Number(reference&&reference.causal&&reference.causal.reliability)||0,
+    Number(candidate&&candidate.causal&&candidate.causal.reliability)||0
+  );
+  return {
+    allowed:observedPlies>=ARMX_CAUSAL_MIN_OBSERVED_PLIES
+      &&causalConfidence>=ARMX_CAUSAL_MIN_CONFIDENCE
+      &&causalSignal>=ARMX_CAUSAL_MIN_SIGNAL
+      &&causalReliability>=ARMX_CAUSAL_MIN_RELIABILITY
+      &&causalEvidence>=0.8&&causalDelayedEvidence>=0.5,
+    confidence:causalConfidence,signal:causalSignal,evidence:causalEvidence,
+    delayedEvidence:causalDelayedEvidence,reliability:causalReliability,
+  };
+}
+function armxCausalPairwiseDifferential(reference,candidate,book,effectCache=null,limit=4){
+  const referenceKeys=new Set(reference&&reference.causal&&reference.causal.ownKeys||[]);
+  const candidateKeys=new Set(candidate&&candidate.causal&&candidate.causal.ownKeys||[]);
+  const families=new Map();
+  const union=new Set([...referenceKeys,...candidateKeys]);
+  for(const key of union){
+    const inReference=referenceKeys.has(key),inCandidate=candidateKeys.has(key);
+    if(inReference===inCandidate)continue;
+    const source=book&&book.our&&book.our.get(key);
+    if(!source)continue;
+    let effect=effectCache&&effectCache.get(source);
+    if(!effect){
+      effect=armxCausalEffect(source);
+      if(effectCache)effectCache.set(source,effect);
+    }
+    if(!effect
+        ||effect.confidence<ARMX_CAUSAL_MIN_CONFIDENCE
+        ||Number(effect.evidence)<2
+        ||Number(effect.delayedEvidence)<0.5)continue;
+    const direction=inCandidate?1:-1;
+    const strength=effect.confidence*Math.abs(effect.value);
+    const family=armxCausalPairwiseFamily(key);
+    const row={key,family,direction,strength,...effect};
+    const prior=families.get(family);
+    if(!prior||strength>prior.strength)families.set(family,row);
+  }
+  const rows=[...families.values()]
+    .sort((a,b)=>b.strength-a.strength).slice(0,Math.max(1,limit));
+  const signedEvidence=rows.reduce(
+    (sum,row)=>sum+row.direction*row.value*row.confidence,0
+  );
+  // Divide by sqrt(N), not N: independent discriminators can reinforce each
+  // other, while correlated context labels are already collapsed by family.
+  const differential=rows.length?signedEvidence/Math.sqrt(rows.length):0;
+  const reliability=Math.max(
+    Number(reference&&reference.causal&&reference.causal.reliability)||0,
+    Number(candidate&&candidate.causal&&candidate.causal.reliability)||0
+  );
+  return {
+    signal:differential,reliability,
+    adjustment:armxFullClamp(
+      differential*reliability*ARMX_CAUSAL_DECISION_SCALE,-70,70
+    ),
+    rows,
+  };
+}
+
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const preview=armxPreviewOpponentPolicy(game,perspective);
   if(!preview)return null;
@@ -2164,8 +2247,13 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const provisional=reports[0];
   provisional.fullScore=provisional.hostScore;
   provisional.shadowFullScore=provisional.hostScore;
+  provisional.savedFullScore=provisional.hostScore;
+  provisional.savedCausalAllowed=false;
   let winner=provisional;
   let shadowWinner=provisional;
+
+  // First reproduce the saved 53.5% decision path exactly. This remains the
+  // authority for whether Full ARMX is allowed to intervene at all.
   for(let i=1;i<reports.length;i++){
     const report=reports[i];
     if(!report.objectiveEligible)continue;
@@ -2211,6 +2299,8 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       confidence:causalConfidence,signal:causalSignal,evidence:causalEvidence,
       delayedEvidence:causalDelayedEvidence,reliability:causalReliability,
     };
+    report.savedCausalAllowed=causalAllowed;
+    report.savedCausalLead=causalLead;
     report.noteLead=causalLead;
 
     const styleLead=(Number(report.styleAdjustment)||0)
@@ -2226,13 +2316,48 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       +(styleAllowed?styleLead:0);
     const effectiveLead=nonCausalLead+causalLead;
     report.decisionLead=effectiveLead;
-    report.fullScore=report.objectiveEligible&&(gate.allowed||causalAllowed||styleAllowed)&&effectiveLead>0
+    report.savedFullScore=report.objectiveEligible&&(gate.allowed||causalAllowed||styleAllowed)&&effectiveLead>0
       ?provisional.hostScore+effectiveLead:-Infinity;
+    report.fullScore=report.savedFullScore;
     report.shadowDecisionLead=nonCausalLead;
     report.shadowFullScore=report.objectiveEligible&&(gate.allowed||styleAllowed)&&nonCausalLead>0
       ?provisional.hostScore+nonCausalLead:-Infinity;
     if(report.fullScore>winner.fullScore)winner=report;
     if(report.shadowFullScore>shadowWinner.shadowFullScore)shadowWinner=report;
+  }
+
+  const savedWinner=winner;
+
+  // Pairwise evidence is now a refinement only. It cannot create an
+  // intervention where the saved causal path stayed with the non-causal
+  // finalist, and it cannot cancel a saved intervention. It may only choose a
+  // better member of the same saved-causal-eligible candidate set.
+  if(savedWinner!==shadowWinner){
+    let refinedWinner=savedWinner;
+    let refinedScore=Number(savedWinner.savedFullScore);
+    for(const report of reports){
+      if(report===savedWinner||!report.savedCausalAllowed
+          ||!Number.isFinite(report.savedFullScore))continue;
+      const pairwise=armxCausalPairwiseDifferential(
+        savedWinner,report,causalBook,causalEffectCache
+      );
+      report.pairwiseCausal=pairwise;
+      if(!pairwise.rows.length)continue;
+      const score=Number(report.savedFullScore)+pairwise.adjustment;
+      report.pairwiseRefinementScore=score;
+      if(score>refinedScore){
+        refinedScore=score;
+        refinedWinner=report;
+      }
+    }
+    if(refinedWinner!==savedWinner){
+      refinedWinner.pairwiseRefinedFrom=savedWinner.raw;
+      refinedWinner.fullScore=refinedScore;
+      refinedWinner.decisionLead=refinedScore-provisional.hostScore;
+      winner=refinedWinner;
+    }else{
+      savedWinner.pairwiseRefinementScore=refinedScore;
+    }
   }
 
   const maturity=armxPreviewClamp(observedPlies/24,0,1);

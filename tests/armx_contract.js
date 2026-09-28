@@ -238,7 +238,7 @@ function review(game) {
   game.armxObservationStartPly = 0;
   const learned = armxCausalSync(game, game.side);
   const compactSummary = armxCausalSummary(learned);
-  assert.equal(compactSummary.version, 'causal-preview-foundation-3-preview-reliability');
+  assert.equal(compactSummary.version, 'causal-preview-foundation-4-pairwise-refinement');
   assert.deepEqual(compactSummary.effects, []);
   assert.ok(Array.isArray(armxCausalSummary(learned, null, true).effects));
   assert.ok(learned.processedPlies > 0);
@@ -253,6 +253,45 @@ function review(game) {
     armxCausalPredictionReliability(learned, { quietPolicy: { qualityWeight: 8, qualitySum: 4.8 } })
     > 0.99
   );
+
+  // Pairwise finalist arbitration cancels shared keys and collapses correlated
+  // context variants to one causal family before scoring the difference.
+  const synthetic = armxCausalFreshRow();
+  synthetic.opportunities=8;synthetic.choices=4;
+  synthetic.treatedWeight=4;synthetic.treatedImpact=2;synthetic.treatedImpactSq=1;
+  synthetic.controlWeight=4;synthetic.controlImpact=-2;synthetic.controlImpactSq=1;
+  synthetic.shortTreatedWeight=4;synthetic.shortTreatedImpact=2;synthetic.shortTreatedImpactSq=1;
+  synthetic.shortControlWeight=4;synthetic.shortControlImpact=-2;synthetic.shortControlImpactSq=1;
+  synthetic.longTreatedWeight=4;synthetic.longTreatedImpact=2;synthetic.longTreatedImpactSq=1;
+  synthetic.longControlWeight=4;synthetic.longControlImpact=-2;synthetic.longControlImpactSq=1;
+  synthetic.treatedObservations=new Set([1,2,3,4]);
+  synthetic.controlObservations=new Set([5,6,7,8]);
+  const pairBook={our:new Map([
+    ['captureWithKnight',synthetic],
+    ['captureWithKnight@phaseMiddle',synthetic],
+  ])};
+  const reference={causal:{ownKeys:[],reliability:1},noteConfidence:0.5,learnedSignal:0.5};
+  const candidate={causal:{
+    ownKeys:['captureWithKnight','captureWithKnight@phaseMiddle'],reliability:1
+  },noteConfidence:0.5,learnedSignal:0.5};
+  const pair=armxCausalPairwiseDifferential(reference,candidate,pairBook,new Map());
+  assert.equal(pair.rows.length,1);
+  assert.equal(pair.rows[0].family,'captureWithKnight');
+  assert.ok(pair.adjustment>0);
+
+  const weak=armxCausalFreshRow();
+  weak.opportunities=2;weak.choices=1;
+  weak.treatedWeight=1;weak.treatedImpact=0.2;weak.treatedImpactSq=0.04;
+  weak.controlWeight=1;weak.controlImpact=-0.2;weak.controlImpactSq=0.04;
+  weak.shortTreatedWeight=1;weak.shortTreatedImpact=0.2;weak.shortTreatedImpactSq=0.04;
+  weak.shortControlWeight=1;weak.shortControlImpact=-0.2;weak.shortControlImpactSq=0.04;
+  weak.treatedObservations=new Set([1]);weak.controlObservations=new Set([2]);
+  const weakPair=armxCausalPairwiseDifferential(
+    reference,{causal:{ownKeys:['advance'],reliability:1},noteConfidence:0.5,learnedSignal:0.5},
+    {our:new Map([['advance',weak]])},new Map()
+  );
+  assert.equal(weakPair.rows.length,0);
+  assert.equal(weakPair.adjustment,0);
 
   game.reset();
   const fresh = armxCausalSync(game, game.side);
