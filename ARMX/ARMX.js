@@ -1398,6 +1398,59 @@ function armxFullPreviewPolicyFromSyncedProfile(profile,perspective){
     isLowPriority:move=>score(move)<0,
   };
 }
+// Extra native analysis is earned only by a mature, opponent-specific causal
+// proposal. Both alternatives share one bounded budget and the same evaluator.
+function armxCausalVerifyPair(game,incumbent,challenger,depth,nodeLimit=2400){
+  if(typeof sf55cSearch!=='function')return {complete:false,nodes:0};
+  const ctx={nodes:0,limit:nodeLimit,depth:Math.max(3,Math.trunc(depth)),abort:false,
+    tt:new Map(),pathCounts:[],pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),
+    positionIds:new Map(),killers:[],history:new Int32Array(32768),orderPriorities:[],moveBuffers:[],replyPolicy:null};
+  ctx.material=0;
+  for(const piece of game.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
+  const active=game._sf55cKernelSearchActive;
+  game._sf55cKernelSearchActive=true;game._sf55cKernelDirty=true;
+  const scores=[];
+  try{
+    for(const entry of [incumbent,challenger]){
+      const delta=sf55cMaterialMoveDelta(entry.raw);
+      ctx.material-=delta;sf55cApply(game,ctx,entry.raw,1);
+      try{scores.push(-sf55cSearch(game,ctx,ctx.depth-1,-SF55C.mate,SF55C.mate,1));}
+      finally{sf55cUndo(game,ctx,entry.raw,1);ctx.material+=delta;}
+      if(ctx.abort)return {complete:false,nodes:ctx.nodes,depth:ctx.depth};
+    }
+    return {complete:true,nodes:ctx.nodes,depth:ctx.depth,incumbentScore:scores[0],challengerScore:scores[1]};
+  }finally{game._sf55cKernelSearchActive=active;game._sf55cKernelDirty=true;}
+}
+function armxCausalVerifiedProposal(game,reports,winner,observedPlies,host){
+  const incumbent=reports[0];
+  // Verification belongs to shared Full ARMX, before numeric style voting.
+  // A style-only winner must not suppress shared analysis for its siblings.
+  const hasSharedWinner=reports.slice(1).some(report=>
+    ((report.previewGate&&report.previewGate.allowed)||(report.fullNoteGate&&report.fullNoteGate.allowed))
+    &&report.decisionLead-(report.styleLead||0)>0);
+  if(hasSharedWinner||observedPlies<ARMX_CAUSAL_MIN_OBSERVED_PLIES)return null;
+  let proposal=null;
+  for(const report of reports.slice(1)){
+    const c=report.causal||{},p=incumbent.causal||{};
+    const lead=report.noteAdjustment-incumbent.noteAdjustment;
+    if(!report.objectiveEligible||lead<=0
+      ||Math.max(c.confidence||0,p.confidence||0)<ARMX_CAUSAL_MIN_CONFIDENCE
+      ||Math.max(Math.abs(c.signal||0),Math.abs(p.signal||0))<0.10
+      ||Math.max(c.reliability||0,p.reliability||0)<ARMX_CAUSAL_MIN_RELIABILITY
+      ||Math.max(c.evidence||0,p.evidence||0)<0.8
+      ||Math.max(c.delayedEvidence||0,p.delayedEvidence||0)<0.5)continue;
+    if(!proposal||lead>proposal.lead)proposal={report,lead};
+  }
+  if(!proposal)return null;
+  const verification=armxCausalVerifyPair(game,incumbent.entry,proposal.report.entry,
+    Math.max(3,(Number(host&&host.depth)||SF55C.maxDepth)+1));
+  const accepted=verification.complete
+    &&Math.abs(verification.incumbentScore)<SF55C.mate-100
+    &&Math.abs(verification.challengerScore)<SF55C.mate-100
+    &&verification.challengerScore>verification.incumbentScore+8;
+  return {...verification,accepted,raw:proposal.report.raw,causalLead:proposal.lead,report:proposal.report};
+}
+
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   // Style is deliberately ignored: all three models receive the same Full ARMX.
   const previewProfile=armxPreviewSyncProfile(game,perspective);
@@ -1835,7 +1888,7 @@ function armxFullMateScale(entry){
   return (Number.isFinite(entry.deep)&&Math.abs(entry.deep)>=mate*0.9)
     ||(Number.isFinite(entry.score)&&Math.abs(entry.score)>=mate*0.9);
 }
-function armxFullReview(game,finished,style='artemis',perspective=game.side){
+function armxFullReview(game,finished,style='artemis',perspective=game.side,host=null){
   let book=armxFullSyncNotebook(game,perspective);
   let previewProfile=book.previewProfile;
   if(!previewProfile){
@@ -2037,7 +2090,7 @@ function armxFullRankHost(game,host,style='artemis'){
   const finished=host&&Array.isArray(host.finished)?host.finished:[];
   if(!finished.length){ARMX_FULL_LAST[style]=null;return finished;}
   const original=finished[0];
-  const review=armxFullReview(game,finished,style,game.side);
+  const review=armxFullReview(game,finished,style,game.side,host);
   const winner=review.winner||original;
   const index=finished.indexOf(winner);
   if(index>0){finished.splice(index,1);finished.unshift(winner);}
@@ -2100,7 +2153,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   };
 }
 
-function armxFullReview(game,finished,style='artemis',perspective=game.side){
+function armxFullReview(game,finished,style='artemis',perspective=game.side,host=null){
   const profile=armxPreviewSyncProfile(game,perspective);
   const candidates=(finished||[]).filter(entry=>entry&&Number.isFinite(entry.score))
     .slice(0,Math.max(ARMX_PREVIEW.candidateLimit,ARMX_FULL.candidateLimit));
@@ -2250,6 +2303,14 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     if(report.shadowFullScore>shadowWinner.shadowFullScore)shadowWinner=report;
   }
 
+  const verifiedProposal=armxCausalVerifiedProposal(game,reports,winner,observedPlies,host);
+  if(verifiedProposal&&verifiedProposal.accepted
+    &&verifiedProposal.challengerScore-verifiedProposal.incumbentScore
+      +verifiedProposal.causalLead+(verifiedProposal.report.styleLead||0)>(winner.decisionLead||0)){
+    winner=verifiedProposal.report;
+    winner.verifiedProposal=true;
+  }
+
   const maturity=armxPreviewClamp(observedPlies/24,0,1);
   return {
     model:ARMX_FULL.name,version:ARMX_FULL.version,style,reset:ARMX_FULL.reset,
@@ -2265,6 +2326,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     // top-effect expansion is diagnostic-only and can be requested explicitly.
     causal:armxCausalSummary(causalBook,profile,false,causalEffectCache),
     reports,
+    verifiedProposal:verifiedProposal?{...verifiedProposal,report:undefined}:null,
     winner:winner.entry,
     winnerWithoutCausal:shadowWinner.entry,
     causalChangedWinner:!stonefishV5SameMove(winner.entry.raw,shadowWinner.entry.raw),
