@@ -2087,6 +2087,11 @@ function sf55cReplyPolicyDepthLimit(replyPolicy,requested){
 function sf55cNativeAcceleratedHost(g,replyPolicy){
   const k=SF55C_KERNEL;
   if(!k||!k.api.search_all||!k.scores||!k.policyWeights||!replyPolicy)return null;
+  // Mode 2 preserves learned ordering while verifying low-priority replies.
+  // Older embedded kernels must use the matching JavaScript fallback.
+  const verifyReplies=replyPolicy.verifyLowPriorityReplies===true;
+  if(verifyReplies&&(!k.api.policy_mode_version||k.api.policy_mode_version()<2))return null;
+  const policyMode=verifyReplies?2:1;
   k.board.set(g.boardState);
   k.policyWeights.fill(0);
   if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
@@ -2115,7 +2120,7 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     }
     const count=k.api.search_all(
       g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
+      depthLimit,limit,SF55C.qDepth,policyMode,publicHistoryCount);
     const finished=new Array(count);
     for(let i=0;i<count;i++){
       const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
@@ -2130,7 +2135,7 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
       refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
       nodes:k.api.search_nodes?k.api.search_nodes():limit,
       depth:k.api.search_depth?k.api.search_depth():depthLimit,
-      searchBudget:limit,depthLimit};
+      searchBudget:limit,depthLimit,verifyLowPriorityReplies:verifyReplies};
   }
 
   const limit=sf55cReplyPolicyNodeLimit(replyPolicy,replyPolicy.searchBudget);
@@ -2154,10 +2159,10 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   const count = supportsRequestedWidth
     ? searchAll(
       g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount,rootWidth)
+      depthLimit,limit,SF55C.qDepth,policyMode,publicHistoryCount,rootWidth)
     : searchAll(
       g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
+      depthLimit,limit,SF55C.qDepth,policyMode,publicHistoryCount);
   const finished=new Array(count);
   for(let i=0;i<count;i++){
     const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
@@ -2172,7 +2177,7 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     refutationGuard:{eligible:false,verified:false,nativeFullWidth:true,compiledSearch:true},
     nodes:k.api.search_nodes?k.api.search_nodes():limit,
     depth:k.api.search_depth?k.api.search_depth():depthLimit,
-    searchBudget:limit,depthLimit,
+    searchBudget:limit,depthLimit,verifyLowPriorityReplies:verifyReplies,
     requestedRootWidth:rootWidth,
     rootWidth:supportsRequestedWidth?rootWidth:SF55C.multiPV};
   return result;
@@ -2223,6 +2228,7 @@ function sf55cHost(g,replyPolicy=null){
   result.searchBudget=ctx.limit;
   result.depthLimit=depthLimit;
   result.rootWidth=rootWidth;
+  result.verifyLowPriorityReplies=Boolean(replyPolicy&&replyPolicy.verifyLowPriorityReplies);
   globalThis.SF55C_LAST=result;
   g._sf55cKernelSearchActive=false;g._sf55cKernelDirty=true;
   return result;

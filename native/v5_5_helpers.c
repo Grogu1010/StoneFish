@@ -279,6 +279,7 @@ static int search_eval_masks_ready;
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
 int exact_ptr(void){return (int)(unsigned long)root_exact;}
 int policy_ptr(void){return (int)(unsigned long)policy_weights;}
+int policy_mode_version(void){return 2;}
 int public_keys_ptr(void){return (int)(unsigned long)search_public_keys_input;}
 int public_counts_ptr(void){return (int)(unsigned long)search_public_counts_input;}
 int search_nodes(void){return search_nodes_count;}
@@ -909,7 +910,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
 
 static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 last_move){
   if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
-  if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
+  if(search_policy_enabled==1&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
     &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6){
     int king=s->side>0?s->wk:s->bk;
     if(!search_attacked_occ(king,-s->side,search_white_occ|search_black_occ)&&policy_direct_entry(last_move)->low){

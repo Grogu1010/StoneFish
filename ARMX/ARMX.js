@@ -2048,6 +2048,7 @@ function armxFullRankHost(game,host,style='artemis'){
     depthLimit:host.depthLimit,
     rootWidth:host.rootWidth||ARMX_FULL.baseRootWidth,
     requestedRootWidth:host.requestedRootWidth||host.rootWidth||ARMX_FULL.baseRootWidth,
+    verifiedReplyMode:host.verifyLowPriorityReplies===true,
     changedMove:Boolean(original&&winner&&!stonefishV5SameMove(original.raw,winner.raw)),
     provisionalRaw:original&&original.raw,
     recommendedRaw:winner&&winner.raw,
@@ -2092,8 +2093,17 @@ function armxCausalDecisionAdjustment(causal){
 function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const preview=armxPreviewOpponentPolicy(game,perspective);
   if(!preview)return null;
+  const profile=armxPreviewSyncProfile(game,perspective),model=profile.quietPolicy;
+  const meanGain=model&&model.qualityWeight?model.qualitySum/model.qualityWeight:0;
+  // A predictor that has not beaten uniform choice has not earned selective
+  // reply reductions. Keep its frozen ordering and earned budget, but verify
+  // low-priority replies with the existing native search/evaluation instead.
+  const verifyReplies=model.count>=4&&model.qualityWeight>=2&&meanGain<=0;
   return {
     ...preview,
+    verifyLowPriorityReplies:verifyReplies,
+    isLowPriority:verifyReplies?()=>false:preview.isLowPriority,
+    predictionVerification:{observations:model.count,meanGain,enabled:verifyReplies},
     model:ARMX_FULL.name,
     version:ARMX_FULL.version,
     fullFoundation:'preview',
