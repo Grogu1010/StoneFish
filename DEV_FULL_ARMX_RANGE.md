@@ -103,3 +103,31 @@ The final six-pair 20-game screen on indices 0–19 scored Athena/Ares/Artemis 5
 
 Use `node tests/v5_5_range.js` for the six-pairing screen and the checks under `tests/` for regressions. CI runs these checks. Temporary raw result bundles and the one-off decomposition harness were removed after preserving their concise findings here.
 
+
+
+### Continued search and reply-learning experiments (2026-10-01)
+
+The independent-evidence foundation remains the saved candidate. These experiments
+were measured without changing the frozen Preview getter and were rejected:
+
+| Experiment | Games / index range | Artemis score | Decision |
+| --- | --- | --- | --- |
+| Strict native challenger verification | 100 / 0–99 | 53.5% | All outcomes unchanged; 22 of 136 checks completed, only 3 accepted. |
+| Broader native challenger verification | 40 / 0–39 | 56.25% | Same outcomes as matched control; additional overhead. |
+| 77-feature reply learner with native 13-feature projection | 100 / 0–99 | 53.5% | Offset win/loss changes, worse prediction quality and overhead. |
+| Geometry residual learner | 20 / 100–119 | 55% | No trusted native activations; predictions worse than Preview. |
+| Board-context residual learner | 20 / 100–119 | 55% | No trusted native activations; predictions worse than Preview. |
+| Prediction-gated full verification of low-priority replies | 100 / 0–99 | 51.5% | 46W–43L–11D versus foundation 50W–43L–7D; all styles exceeded 2× overhead. |
+
+The verification mode preserved evaluator, weights, budgets and learned ordering.
+It activated on 2,990 Full turns and passed compiled/JavaScript parity, but removing
+unearned selective reductions weakened the aligned match. Do not promote it.
+
+Reproducible code is preserved on `dev/armx-verified-proposals`,
+`dev/armx-rich-reply-policy`, and `dev/armx-prediction-verified-search` (closed PR #228).
+`tests/fixtures/armx-rejected-search-experiments.json` records source hashes,
+activation counts, timing ratios and individual game results. Timings were serial;
+these experimental scores do not satisfy the >85% release requirement.
+
+The range harness now canonicalizes line endings before finding model boundaries,
+so CRLF source files receive the same frozen-source hash verification as LF files.
