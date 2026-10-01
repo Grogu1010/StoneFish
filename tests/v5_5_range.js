@@ -26,7 +26,7 @@ const FROZEN_CURRENT_V55_HASHES=Object.freeze({
 });
 const sourceByFile=Object.fromEntries(loadedSources.map(row=>[row.file,row.source]));
 function markedModelSegment(file,name,nextName){
-  const source=sourceByFile[file];
+  const source=sourceByFile[file].replace(/\r\n/g,'\n');
   const start=source.indexOf(`// ${name}\n`);
   const end=source.indexOf(`// ${nextName}\n`,start+1);
   if(start<0||end<0)throw new Error(`Missing model source boundary: ${name}`);

@@ -1,12 +1,27 @@
 # Full ARMX range: active development checkpoint
 
-The active draft is PR #133, `dev/full-armx-v55-range`. Each playable model has its own source file in `models/`; ARMX Preview and Full ARMX have separate files in `ARMX/`. The frozen current v5.5 comparison remains in `models/v5_5.js` and `ARMX/ARMX.js`, checked by source hashes in the range harness. Dev Test exposes the three rolling best-known test units.
+The range was introduced in merged PR #133, `dev/full-armx-v55-range`. Each playable model has its own source file in `models/`; ARMX Preview and Full ARMX have separate files in `ARMX/`. The frozen current v5.5 comparison remains in `models/v5_5.js` and `ARMX/ARMX.js`, checked by source hashes in the range harness. Dev Test exposes the three rolling best-known test units.
 
 ## Required outcomes
 
 Each of Athena, Ares, and Artemis must score **strictly above 85%** over at least 100 color-balanced games against frozen current v5.5, with draws worth half. The six-pairing gate also includes every sibling matchup. Athena and Ares must achieve played-move ratios of 3x and 0.5x Artemis (±25%), respectively, maintain the peer-relationship bounds, and keep Full ARMX attributed overhead at or below 2x Preview. These goals are not met; the models are not release-ready.
 
 Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ares share Artemis's Full ARMX machinery and differ only in numeric playstyle values. Experimental branches have been reverted unless explicitly recorded here.
+
+## Independent-evidence validation (2026-10-02)
+
+The `dev/armx-independent-evidence` candidate corrects causal finalist evidence accounting: correlated feature/context rows no longer sum their treatment/control support, and short/long outcomes of the same observations no longer sum their support. The saved confidence-weighted signal blend and all native search/evaluation settings remain unchanged. A synthetic contract duplicates one observation ledger across candidate labels and checks identical signal, confidence, evidence, delayed evidence and adjustment.
+
+Athena/Ares defer the style notebook when no challenger can enter the native safety window. The next necessary sync still replays the entire history. The new `tests/armx_finalists.js` verifies blocked and mate-scale choices, unchanged board state, and exact eager/deferred notebook outcome-table parity; CI runs it.
+
+Fresh aligned 100-game results on opening indices 0–99:
+- Saved main: 50W/43L/7D, 53.5%.
+- Rejected strongest-explanation ranking: 49W/43L/8D, 53.0%. Replacing the signal blend was not a demonstrated strength improvement; that ranking change is absent from the candidate.
+- Accounting-only correction: 50W/43L/7D, 53.5%, with all 100 outcomes identical to saved main and the same 15 causal final-move changes. This is a correctness foundation, not a strength promotion.
+
+The final six-pair 20-game screen on indices 0–19 scored Athena/Ares/Artemis 55%/65%/62.5% against current v5.5. Sibling scores were Ares-over-Athena 50%, Artemis-over-Athena 52.5%, and Artemis-over-Ares 42.5%. Played-move ratios were 0.901x Athena and 0.959x Ares relative to Artemis. Serial attributed-overhead timing across 120 shared positions measured 1.85x/1.89x/1.85x Preview for Athena/Ares/Artemis. Strength, pace and sibling qualification are still unmet. A separate serial 120-position timing run on saved main measured 2.01x/2.10x/1.93x for Athena/Ares/Artemis; these are same-position timing screens, not a universal latency guarantee.
+
+`tests/fixtures/armx-evidence-validation.json` preserves tested source hashes, per-game outcomes and compact metrics. Run `GAMES=100 MATCHUP=artemisVsCurrent node tests/v5_5_range.js` for aligned strength, and `GAMES=20 ARMX_TIMING_SAMPLES=120 node tests/v5_5_range.js` for the six-pair screen. Kernel, native, reply-policy, opponent-memory and finalist contracts passed. No release or testunit strength promotion is justified by these results.
 
 ## Preserved findings
 
@@ -88,3 +103,31 @@ Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ar
 
 Use `node tests/v5_5_range.js` for the six-pairing screen and the checks under `tests/` for regressions. CI runs these checks. Temporary raw result bundles and the one-off decomposition harness were removed after preserving their concise findings here.
 
+
+
+### Continued search and reply-learning experiments (2026-10-01)
+
+The independent-evidence foundation remains the saved candidate. These experiments
+were measured without changing the frozen Preview getter and were rejected:
+
+| Experiment | Games / index range | Artemis score | Decision |
+| --- | --- | --- | --- |
+| Strict native challenger verification | 100 / 0–99 | 53.5% | All outcomes unchanged; 22 of 136 checks completed, only 3 accepted. |
+| Broader native challenger verification | 40 / 0–39 | 56.25% | Same outcomes as matched control; additional overhead. |
+| 77-feature reply learner with native 13-feature projection | 100 / 0–99 | 53.5% | Offset win/loss changes, worse prediction quality and overhead. |
+| Geometry residual learner | 20 / 100–119 | 55% | No trusted native activations; predictions worse than Preview. |
+| Board-context residual learner | 20 / 100–119 | 55% | No trusted native activations; predictions worse than Preview. |
+| Prediction-gated full verification of low-priority replies | 100 / 0–99 | 51.5% | 46W–43L–11D versus foundation 50W–43L–7D; all styles exceeded 2× overhead. |
+
+The verification mode preserved evaluator, weights, budgets and learned ordering.
+It activated on 2,990 Full turns and passed compiled/JavaScript parity, but removing
+unearned selective reductions weakened the aligned match. Do not promote it.
+
+Reproducible code is preserved on `dev/armx-verified-proposals`,
+`dev/armx-rich-reply-policy`, and `dev/armx-prediction-verified-search` (closed PR #228).
+`tests/fixtures/armx-rejected-search-experiments.json` records source hashes,
+activation counts, timing ratios and individual game results. Timings were serial;
+these experimental scores do not satisfy the >85% release requirement.
+
+The range harness now canonicalizes line endings before finding model boundaries,
+so CRLF source files receive the same frozen-source hash verification as LF files.

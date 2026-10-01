@@ -688,12 +688,19 @@ function armxCausalCandidateReport(
   if(ownWeight)ownValue/=ownWeight;
   const ownConfidence=ownRows.length
     ?Math.min(1,ownRows.reduce((s,r)=>s+r.confidence,0)/ownRows.length):0;
-  const delayedEvidence=ownRows.reduce((s,r)=>s+(Number(r.delayedEvidence)||0),0);
+  // Different labels can describe identical treatment/control observations.
+  // Keep the saved signal blend, but authorize it only with the support of
+  // one matched explanation. Neither labels nor repeated horizons add observations.
+  const evidence=ownRows.reduce((best,row)=>Math.max(best,row.evidence),0);
+  const delayedEvidence=ownRows.reduce((best,row)=>Math.max(best,
+    Number(row.short&&row.short.evidence)||0,
+    Number(row.long&&row.long.evidence)||0
+  ),0);
   return {
     signal:ownValue,confidence:ownConfidence,
     reliability:armxCausalPredictionReliability(book,previewProfile),
     ownValue,replyValue:0,ownConfidence,replyConfidence:0,replyTrustedConfidence:0,
-    evidence:ownRows.reduce((s,r)=>s+r.evidence,0),delayedEvidence,
+    evidence,delayedEvidence,
     ownEffects:ownRows,predictedReplies:[],
     predictionCount:book.predictionCount,
     predictionMeanGain:book.predictionQualityWeight?book.predictionQualitySum/book.predictionQualityWeight:0,
@@ -2105,7 +2112,15 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const causalContexts=armxCausalContexts(game,perspective);
   const causalEffectCache=new Map();
   const hostBest=candidates[0];
-  const legacyStyleBook=style==='artemis'?null:armxFullSyncNotebook(game,perspective,profile);
+  // Style cannot affect a move when every challenger is outside the native
+  // safety window. Defer its expensive replay until there is a usable choice;
+  // sync then consumes the complete history, including the deferred turns.
+  const needsStyle=style!=='artemis'&&!armxFullMateScale(hostBest)
+    &&candidates.slice(1).some(entry=>!armxFullMateScale(entry)
+      &&hostBest.score-entry.score<=ARMX_FULL.maxHostGap
+      &&(Number.isFinite(hostBest.deep)&&Number.isFinite(entry.deep)
+        ?hostBest.deep-entry.deep:hostBest.score-entry.score)<=ARMX_FULL.maxDeepSacrifice);
+  const legacyStyleBook=needsStyle?armxFullSyncNotebook(game,perspective,profile):null;
   const reports=baseReports.map((base,index)=>{
     const entry=candidates[index];
     const adjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
@@ -2119,7 +2134,7 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
       replyCount:0,forcingReplyRate:0,kingAttackReplyRate:0,captureReplyRate:0,
       repetitionPressure:0,
     };
-    const styleResult=style==='artemis'
+    const styleResult=!needsStyle
       ?{signal:0,scale:0,adjustment:0,tendencies:null,activatedPatient:0}
       :armxFullStyleAdjustment(game,entry,response,style,hostBest,legacyStyleBook);
     const hostGap=(Number(hostBest.score)||0)-(Number(entry.score)||0);

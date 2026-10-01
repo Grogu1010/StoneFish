@@ -261,4 +261,39 @@ function review(game) {
   assert.equal(fresh.predictionCount, 0);
 }
 
+// Context labels and repeated outcome horizons are explanations of the same
+// decisions. They must not multiply the evidence used to authorize a vote.
+{
+  const game = new Chess();
+  const raw = game.fastMoves()[0];
+  const keys = [...armxCausalKeys(game, raw, game.side)];
+  assert.ok(keys.length > 4);
+  const row = armxCausalFreshRow();
+  for (let i = 0; i < 8; i++) {
+    armxCausalUpdateRows(new Map([['fixture', row]]), new Set(['fixture']),
+      new Set(i < 4 ? ['fixture'] : []), i < 4 ? 0.8 : -0.2, i);
+    for (const horizon of ['short', 'long']) {
+      armxCausalRecordHorizon(new Map([['fixture', row]]), new Set(['fixture']),
+        new Set(i < 4 ? ['fixture'] : []), i < 4 ? 288 : -72, 1, i, horizon);
+    }
+  }
+  const profile = {quietPolicy: {qualityWeight: 8, qualitySum: 4.8}};
+  const book = armxCausalNewBook(game.side, game);
+  book.our.set(keys[0], row);
+  const entry = {raw, score: 0, deep: 0};
+  const before = snapshot(game);
+  const single = armxCausalCandidateReport(game, entry, book, null, profile);
+  for (const key of keys) book.our.set(key, row);
+  const repeated = armxCausalCandidateReport(game, entry, book, null, profile);
+  for (const field of ['signal', 'confidence', 'evidence', 'delayedEvidence']) {
+    assert.equal(repeated[field], single[field], field);
+  }
+  assert.equal(repeated.evidence, 4);
+  assert.equal(repeated.delayedEvidence, 4);
+  assert.equal(armxCausalDecisionAdjustment(repeated), armxCausalDecisionAdjustment(single));
+  assert.equal(snapshot(game), before);
+
+
+}
+
 console.log('ARMX_CONTRACT passed: per-round reset, side isolation, undo, opening exclusion, attribution, evidence, board purity');
