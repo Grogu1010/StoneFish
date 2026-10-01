@@ -45,6 +45,7 @@ jobs:
       - name: Verify Full ARMX contracts
         run: |
           node tests/armx_contract.js
+          node tests/armx_finalists.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
       - name: Run saved-best range screen
