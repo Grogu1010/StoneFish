@@ -49,3 +49,41 @@ process.env.ARMX_COMPILED_EXPERIMENT='0';
 try{assert.deepEqual(summarize(stonefishV55HostSearch(parityGame,parityPolicy)),compiled);}
 finally{if(env===undefined)delete process.env.ARMX_COMPILED_EXPERIMENT;else process.env.ARMX_COMPILED_EXPERIMENT=env;}
 console.log('ARMX_RICH_NATIVE_PARITY passed');
+
+// Context features must describe the pre-move board in both ordering and the
+// post-move low-priority probe. Reconstruct the quiet move without leaking state.
+const contextGame=new Chess();
+for(let ply=0;ply<16;ply++){
+ const legal=contextGame.fastMoves();if(!legal.length)break;
+ for(const raw of legal.filter(m=>!m.captured&&!m.promotion&&!(m.flags&12))){
+  const side=contextGame.side,fen=contextGame.fen();
+  const before=Array.from(armxRichQuietFeatures(contextGame,raw,side));
+  contextGame.fastApply(raw);
+  try{assert.deepEqual(Array.from(armxRichQuietFeatures(contextGame,raw,side)),before);}
+  finally{contextGame.fastUndo();}
+  assert.equal(contextGame.fen(),fen);
+ }
+ contextGame.fastApply(legal[(ply*7+3)%legal.length]);
+}
+console.log('ARMX_RICH_CONTEXT passed: pre/post quiet-move feature identity and board restoration');
+if(SF55C_KERNEL.api.policy_feature_count){
+ const positions=new Chess();let checked=0;
+ for(let ply=0;ply<24;ply++){
+  if(ply%2===0){
+   const perspective=positions.side,weights=new Float64Array(15);
+   for(let i=0;i<13;i++)weights[i]=((i*7+ply)%11-5)/10;
+   weights[13]=0.8;weights[14]=-1.1;
+   const logit=move=>armxRichSparseLogit(armxRichSparseFeatures(positions,move,-perspective),weights);
+   const policy={weights,searchBudget:1600,maxDepth:4,priority:move=>Math.round(300*logit(move)),isLowPriority:move=>logit(move)<0};
+   const fen=positions.fen(),native=summarize(stonefishV55HostSearch(positions,policy));
+   const old=process.env.ARMX_COMPILED_EXPERIMENT;process.env.ARMX_COMPILED_EXPERIMENT='0';
+   try{assert.deepEqual(summarize(stonefishV55HostSearch(positions,policy)),native);}
+   finally{if(old===undefined)delete process.env.ARMX_COMPILED_EXPERIMENT;else process.env.ARMX_COMPILED_EXPERIMENT=old;}
+   assert.equal(positions.fen(),fen);checked++;
+  }
+  const legal=positions.fastMoves();if(!legal.length)break;
+  positions.fastApply(legal[(ply*13+5)%legal.length]);
+ }
+ assert.ok(checked>=8);
+ console.log('ARMX_RICH_CONTEXT_NATIVE passed: '+checked+' positions with nonzero attack weights, exact roots, depth, nodes and board restoration');
+}
