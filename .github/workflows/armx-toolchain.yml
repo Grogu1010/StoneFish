@@ -1,0 +1,36 @@
+name: ARMX pinned portable toolchain
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/armx-toolchain.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch and verify official Zig 0.14.1
+        run: |
+          curl --fail --location --retry 3 https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz -o zig.tar.xz
+          printf '%s  %s\n' 24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c zig.tar.xz | sha256sum -c -
+          split -b 16M zig.tar.xz zig-part-
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zig-0141-aa
+          path: zig-part-aa
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zig-0141-ab
+          path: zig-part-ab
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zig-0141-ac
+          path: zig-part-ac
+          compression-level: 0
+          retention-days: 1
