@@ -32,6 +32,11 @@ jobs:
         env:
           STONEFISH_CC: clang
         run: node build_v5_5_kernel.cjs
+      - name: Upload compiled kernel source
+        uses: actions/upload-artifact@v4
+        with:
+          name: v55-context-kernel
+          path: models/v5_5.js
       - name: Check active files
         run: |
           node --check ARMX/ARMX-preview.js
@@ -46,6 +51,7 @@ jobs:
         run: |
           node tests/armx_contract.js
           node tests/armx_finalists.js
+          REQUIRE_CONTEXT_KERNEL=1 node tests/armx_rich_policy.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
       - name: Run saved-best range screen

@@ -2087,6 +2087,9 @@ function sf55cReplyPolicyDepthLimit(replyPolicy,requested){
 function sf55cNativeAcceleratedHost(g,replyPolicy){
   const k=SF55C_KERNEL;
   if(!k||!k.api.search_all||!k.scores||!k.policyWeights||!replyPolicy)return null;
+  const requestedFeatures=replyPolicy.weights&&replyPolicy.weights.length||13;
+  if(requestedFeatures>k.policyWeights.length)return null;
+  const policyMode=requestedFeatures>13?2:1;
   k.board.set(g.boardState);
   k.policyWeights.fill(0);
   if(replyPolicy.weights)k.policyWeights.set(replyPolicy.weights);
@@ -2115,7 +2118,7 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
     }
     const count=k.api.search_all(
       g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
+      depthLimit,limit,SF55C.qDepth,policyMode,publicHistoryCount);
     const finished=new Array(count);
     for(let i=0;i<count;i++){
       const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
@@ -2154,10 +2157,10 @@ function sf55cNativeAcceleratedHost(g,replyPolicy){
   const count = supportsRequestedWidth
     ? searchAll(
       g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount,rootWidth)
+      depthLimit,limit,SF55C.qDepth,policyMode,publicHistoryCount,rootWidth)
     : searchAll(
       g.side,g.castling,g.ep,g.kingSq[1],g.kingSq[-1],g.halfmove,
-      depthLimit,limit,SF55C.qDepth,1,publicHistoryCount);
+      depthLimit,limit,SF55C.qDepth,policyMode,publicHistoryCount);
   const finished=new Array(count);
   for(let i=0;i<count;i++){
     const m=k.moves[i],raw={from:m&63,to:(m>>>6)&63,piece:(m>>>12)&7,
@@ -2815,7 +2818,7 @@ try {
    moves:new Uint32Array(api.memory.buffer,api.moves_ptr(),512),
    scores:api.scores_ptr?new Int32Array(api.memory.buffer,api.scores_ptr(),512):null,
    exact:api.exact_ptr?new Int32Array(api.memory.buffer,api.exact_ptr(),512):null,
-   policyWeights:api.policy_ptr?new Float64Array(api.memory.buffer,api.policy_ptr(),13):null,
+   policyWeights:api.policy_ptr?new Float64Array(api.memory.buffer,api.policy_ptr(),api.policy_feature_count?api.policy_feature_count():13):null,
    publicKeys:api.public_keys_ptr?new Uint16Array(api.memory.buffer,api.public_keys_ptr(),512*17):null,
    publicCounts:api.public_counts_ptr?new Int32Array(api.memory.buffer,api.public_counts_ptr(),512):null};
  }
