@@ -2100,6 +2100,13 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   };
 }
 
+const ARMX_CAUSAL_EMPTY_SUMMARY_BOOK=Object.freeze({predictionCount:0,predictionQualityWeight:0,
+  predictionQualitySum:0,lastPredictionProbability:0,lastPredictionRank:0});
+function armxCausalDeferredReport(){
+  return {signal:0,confidence:0,reliability:0,ownValue:0,replyValue:0,
+    ownConfidence:0,replyConfidence:0,replyTrustedConfidence:0,evidence:0,delayedEvidence:0,
+    ownEffects:[],predictedReplies:[],predictionCount:0,predictionMeanGain:0,deferred:true};
+}
 function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const profile=armxPreviewSyncProfile(game,perspective);
   const candidates=(finished||[]).filter(entry=>entry&&Number.isFinite(entry.score))
@@ -2108,25 +2115,25 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
   const observedPlies=Math.max(0,profile.processedPlies-profile.observationStartPly);
   const baseReports=candidates.map(entry=>armxPreviewCandidateReport(game,entry,profile));
-  const causalBook=armxCausalSync(game,perspective);
-  const causalContexts=armxCausalContexts(game,perspective);
-  const causalEffectCache=new Map();
   const hostBest=candidates[0];
+  const needsCausal=!armxFullMateScale(hostBest)&&candidates.slice(1).some(entry=>
+    !armxFullMateScale(entry)&&hostBest.score-entry.score<=ARMX_FULL.maxHostGap
+      &&(Number.isFinite(hostBest.deep)&&Number.isFinite(entry.deep)
+        ?hostBest.deep-entry.deep:hostBest.score-entry.score)<=ARMX_FULL.maxDeepSacrifice);
+  const causalBook=needsCausal?armxCausalSync(game,perspective,profile):null;
+  const causalContexts=needsCausal?armxCausalContexts(game,perspective):null;
+  const causalEffectCache=needsCausal?new Map():null;
   // Style cannot affect a move when every challenger is outside the native
   // safety window. Defer its expensive replay until there is a usable choice;
   // sync then consumes the complete history, including the deferred turns.
-  const needsStyle=style!=='artemis'&&!armxFullMateScale(hostBest)
-    &&candidates.slice(1).some(entry=>!armxFullMateScale(entry)
-      &&hostBest.score-entry.score<=ARMX_FULL.maxHostGap
-      &&(Number.isFinite(hostBest.deep)&&Number.isFinite(entry.deep)
-        ?hostBest.deep-entry.deep:hostBest.score-entry.score)<=ARMX_FULL.maxDeepSacrifice);
+  const needsStyle=style!=='artemis'&&needsCausal;
   const legacyStyleBook=needsStyle?armxFullSyncNotebook(game,perspective,profile):null;
   const reports=baseReports.map((base,index)=>{
     const entry=candidates[index];
     const adjustment=(Number(base.adjustment)||0)*ARMX_FULL_PREVIEW_ADJUSTMENT_SCALE;
-    const causal=armxCausalCandidateReport(
+    const causal=needsCausal?armxCausalCandidateReport(
       game,entry,causalBook,causalContexts,profile,causalEffectCache
-    );
+    ):armxCausalDeferredReport();
     const causalAdjustment=armxCausalDecisionAdjustment(causal);
     const response={
       contextFeatures:Array.isArray(base.features)?base.features:[],
@@ -2263,7 +2270,8 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     notes:armxPreviewProfileNotes(profile),
     // The live decision path only needs compact causal telemetry. Detailed
     // top-effect expansion is diagnostic-only and can be requested explicitly.
-    causal:armxCausalSummary(causalBook,profile,false,causalEffectCache),
+    causal:causalBook?armxCausalSummary(causalBook,profile,false,causalEffectCache):{...armxCausalSummary(ARMX_CAUSAL_EMPTY_SUMMARY_BOOK,profile,false),deferred:true},
+    causalDeferred:!needsCausal,
     reports,
     winner:winner.entry,
     winnerWithoutCausal:shadowWinner.entry,
