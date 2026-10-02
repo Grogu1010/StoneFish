@@ -1,0 +1,2195 @@
+{
+  "status": "research checkpoint; no strength promotion",
+  "learningRate": 0.2,
+  "weightLimit": 2,
+  "featureCount": 13,
+  "experiments": {
+    "calibrated-policy-100": {
+      "games": 100,
+      "startIndex": 0,
+      "sourceHashes": {
+        "StonefishChess.js": "8034a453c728e2f88e68227df484cb8f4d385de7f8073d031b310b16f05bb6ae",
+        "models/v1.js": "88fa3d7ac6bceb0ef0fbeefed4baf63fbd1aa7666182a8e62ede5d45bcb20cc1",
+        "models/v2.js": "7e33ea86af85dbb807bb766bc0e1c02a8b519eb1940e92313caa1918c61c461c",
+        "models/v3.js": "a3516ed5e9310ac0351da034cfa9b46b6acc1e4bbd216833a7b91f55806fc327",
+        "models/v4.js": "7cdc6a9ad78288e1edd7de1741a1fc498b63032248a1fc74f8ebe8fc9083e103",
+        "models/v4_5.js": "bc8a13effc9ce2fd5f3c5780a716239212cabf0cd00c1eccf13d75d08ceb42dc",
+        "models/v5.js": "94a23aa10ba189f0c2806b4763dabb7c5c5dc00f3c53dfd58a1019f89818a8bf",
+        "models/v5_pro.js": "43c00ffe80d60cf84be1042de8ef54ffc5c883374814379123415faa4d23ffc9",
+        "models/v5_5.js": "a48701d6aaa16db5a8129badb34bc9ae6172e5023993849d6f79bb5e44c1cd39",
+        "ARMX/ARMX-preview.js": "7ef46f986ff93cb93f11c97cb80fcaf7a265c27f6c4893f624b770ab8478a458",
+        "ARMX/ARMX.js": "bdbdd2eddc754e570dd2539b352f02ecb11da2468951a1ed38838ae55c0fe8bf"
+      },
+      "win": 49,
+      "loss": 42,
+      "draw": 9,
+      "score": 0.535,
+      "policyMoves": 1327,
+      "attributedOverheadRatio": {
+        "athena": 2.1119817467566726,
+        "ares": 2.119849278073361,
+        "artemis": 2.024864443481101
+      },
+      "records": [
+        {
+          "index": 0,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 109
+        },
+        {
+          "index": 1,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 2,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 54
+        },
+        {
+          "index": 3,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 38
+        },
+        {
+          "index": 4,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 69
+        },
+        {
+          "index": 5,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 6,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 201
+        },
+        {
+          "index": 7,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 188
+        },
+        {
+          "index": 8,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 139
+        },
+        {
+          "index": 9,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 168
+        },
+        {
+          "index": 10,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 95
+        },
+        {
+          "index": 11,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 138
+        },
+        {
+          "index": 12,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 82
+        },
+        {
+          "index": 13,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 82
+        },
+        {
+          "index": 14,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 15,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 16,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 119
+        },
+        {
+          "index": 17,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 72
+        },
+        {
+          "index": 18,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 19,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 131
+        },
+        {
+          "index": 20,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 21,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 85
+        },
+        {
+          "index": 22,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 23,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 139
+        },
+        {
+          "index": 24,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 101
+        },
+        {
+          "index": 25,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 86
+        },
+        {
+          "index": 26,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 27,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 28,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 65
+        },
+        {
+          "index": 29,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 106
+        },
+        {
+          "index": 30,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 31,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 101
+        },
+        {
+          "index": 32,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 33,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 34,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 55
+        },
+        {
+          "index": 35,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 75
+        },
+        {
+          "index": 36,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 65
+        },
+        {
+          "index": 37,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 38,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 39,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 40,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 41,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 96
+        },
+        {
+          "index": 42,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 99
+        },
+        {
+          "index": 43,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 99
+        },
+        {
+          "index": 44,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 103
+        },
+        {
+          "index": 45,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 46,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 73
+        },
+        {
+          "index": 47,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 79
+        },
+        {
+          "index": 48,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 176
+        },
+        {
+          "index": 49,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 50,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 124
+        },
+        {
+          "index": 51,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 110
+        },
+        {
+          "index": 52,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 112
+        },
+        {
+          "index": 53,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 114
+        },
+        {
+          "index": 54,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 109
+        },
+        {
+          "index": 55,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 109
+        },
+        {
+          "index": 56,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 58
+        },
+        {
+          "index": 57,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 203
+        },
+        {
+          "index": 58,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 59,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 74
+        },
+        {
+          "index": 60,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 61,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 123
+        },
+        {
+          "index": 62,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 8
+        },
+        {
+          "index": 63,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 8
+        },
+        {
+          "index": 64,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 137
+        },
+        {
+          "index": 65,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 179
+        },
+        {
+          "index": 66,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 66
+        },
+        {
+          "index": 67,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 66
+        },
+        {
+          "index": 68,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 69,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 94
+        },
+        {
+          "index": 70,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 158
+        },
+        {
+          "index": 71,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 70
+        },
+        {
+          "index": 72,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 142
+        },
+        {
+          "index": 73,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 133
+        },
+        {
+          "index": 74,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 75,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 86
+        },
+        {
+          "index": 76,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 97
+        },
+        {
+          "index": 77,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 123
+        },
+        {
+          "index": 78,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 235
+        },
+        {
+          "index": 79,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 190
+        },
+        {
+          "index": 80,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 81,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 82,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 83,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 84,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 135
+        },
+        {
+          "index": 85,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 135
+        },
+        {
+          "index": 86,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 76
+        },
+        {
+          "index": 87,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 67
+        },
+        {
+          "index": 88,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 230
+        },
+        {
+          "index": 89,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 100
+        },
+        {
+          "index": 90,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 129
+        },
+        {
+          "index": 91,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 111
+        },
+        {
+          "index": 92,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 114
+        },
+        {
+          "index": 93,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 94,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 95
+        },
+        {
+          "index": 95,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 69
+        },
+        {
+          "index": 96,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 91
+        },
+        {
+          "index": 97,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 79
+        },
+        {
+          "index": 98,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 55
+        },
+        {
+          "index": 99,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 55
+        }
+      ]
+    },
+    "calibrated-policy-holdout-100": {
+      "games": 100,
+      "startIndex": 100,
+      "sourceHashes": {
+        "StonefishChess.js": "8034a453c728e2f88e68227df484cb8f4d385de7f8073d031b310b16f05bb6ae",
+        "models/v1.js": "88fa3d7ac6bceb0ef0fbeefed4baf63fbd1aa7666182a8e62ede5d45bcb20cc1",
+        "models/v2.js": "7e33ea86af85dbb807bb766bc0e1c02a8b519eb1940e92313caa1918c61c461c",
+        "models/v3.js": "a3516ed5e9310ac0351da034cfa9b46b6acc1e4bbd216833a7b91f55806fc327",
+        "models/v4.js": "7cdc6a9ad78288e1edd7de1741a1fc498b63032248a1fc74f8ebe8fc9083e103",
+        "models/v4_5.js": "bc8a13effc9ce2fd5f3c5780a716239212cabf0cd00c1eccf13d75d08ceb42dc",
+        "models/v5.js": "94a23aa10ba189f0c2806b4763dabb7c5c5dc00f3c53dfd58a1019f89818a8bf",
+        "models/v5_pro.js": "43c00ffe80d60cf84be1042de8ef54ffc5c883374814379123415faa4d23ffc9",
+        "models/v5_5.js": "a48701d6aaa16db5a8129badb34bc9ae6172e5023993849d6f79bb5e44c1cd39",
+        "ARMX/ARMX-preview.js": "7ef46f986ff93cb93f11c97cb80fcaf7a265c27f6c4893f624b770ab8478a458",
+        "ARMX/ARMX.js": "441e9de1d696cf5ce5e23bbcad1d915c93d261bc3f35c598577d1605a717a9a8"
+      },
+      "win": 44,
+      "loss": 41,
+      "draw": 15,
+      "score": 0.515,
+      "policyMoves": 1645,
+      "attributedOverheadRatio": {
+        "athena": 2.3080843537829216,
+        "ares": 2.1702823067612407,
+        "artemis": 2.024233246304573
+      },
+      "records": [
+        {
+          "index": 100,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 129
+        },
+        {
+          "index": 101,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 143
+        },
+        {
+          "index": 102,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 156
+        },
+        {
+          "index": 103,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 150
+        },
+        {
+          "index": 104,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 122
+        },
+        {
+          "index": 105,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 80
+        },
+        {
+          "index": 106,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 106
+        },
+        {
+          "index": 107,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 112
+        },
+        {
+          "index": 108,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 118
+        },
+        {
+          "index": 109,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 130
+        },
+        {
+          "index": 110,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 105
+        },
+        {
+          "index": 111,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 112,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 100
+        },
+        {
+          "index": 113,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 168
+        },
+        {
+          "index": 114,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 70
+        },
+        {
+          "index": 115,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 170
+        },
+        {
+          "index": 116,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 136
+        },
+        {
+          "index": 117,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 134
+        },
+        {
+          "index": 118,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 133
+        },
+        {
+          "index": 119,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 130
+        },
+        {
+          "index": 120,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 121,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 113
+        },
+        {
+          "index": 122,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 168
+        },
+        {
+          "index": 123,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 97
+        },
+        {
+          "index": 124,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 81
+        },
+        {
+          "index": 125,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 126,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 97
+        },
+        {
+          "index": 127,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 98
+        },
+        {
+          "index": 128,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 55
+        },
+        {
+          "index": 129,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 73
+        },
+        {
+          "index": 130,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 26
+        },
+        {
+          "index": 131,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 26
+        },
+        {
+          "index": 132,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 159
+        },
+        {
+          "index": 133,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 189
+        },
+        {
+          "index": 134,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 201
+        },
+        {
+          "index": 135,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 188
+        },
+        {
+          "index": 136,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 137,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 138,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 80
+        },
+        {
+          "index": 139,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 140,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 143
+        },
+        {
+          "index": 141,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 157
+        },
+        {
+          "index": 142,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 72
+        },
+        {
+          "index": 143,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 98
+        },
+        {
+          "index": 144,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 101
+        },
+        {
+          "index": 145,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 153
+        },
+        {
+          "index": 146,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 67
+        },
+        {
+          "index": 147,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 67
+        },
+        {
+          "index": 148,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 138
+        },
+        {
+          "index": 149,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 108
+        },
+        {
+          "index": 150,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 151,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 152,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 153,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 154,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 117
+        },
+        {
+          "index": 155,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 156,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 71
+        },
+        {
+          "index": 157,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 158,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 159,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 137
+        },
+        {
+          "index": 160,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 94
+        },
+        {
+          "index": 161,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 162,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 33
+        },
+        {
+          "index": 163,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 111
+        },
+        {
+          "index": 164,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 165,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 142
+        },
+        {
+          "index": 166,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 104
+        },
+        {
+          "index": 167,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 146
+        },
+        {
+          "index": 168,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 71
+        },
+        {
+          "index": 169,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 170,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 89
+        },
+        {
+          "index": 171,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 118
+        },
+        {
+          "index": 172,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 166
+        },
+        {
+          "index": 173,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 166
+        },
+        {
+          "index": 174,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 125
+        },
+        {
+          "index": 175,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 75
+        },
+        {
+          "index": 176,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 60
+        },
+        {
+          "index": 177,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 60
+        },
+        {
+          "index": 178,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 105
+        },
+        {
+          "index": 179,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 105
+        },
+        {
+          "index": 180,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 118
+        },
+        {
+          "index": 181,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 57
+        },
+        {
+          "index": 182,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 67
+        },
+        {
+          "index": 183,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 138
+        },
+        {
+          "index": 184,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 221
+        },
+        {
+          "index": 185,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 151
+        },
+        {
+          "index": 186,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 187,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 74
+        },
+        {
+          "index": 188,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 189,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 73
+        },
+        {
+          "index": 190,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 91
+        },
+        {
+          "index": 191,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 91
+        },
+        {
+          "index": 192,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 154
+        },
+        {
+          "index": 193,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 66
+        },
+        {
+          "index": 194,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 183
+        },
+        {
+          "index": 195,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 129
+        },
+        {
+          "index": 196,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 86
+        },
+        {
+          "index": 197,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 90
+        },
+        {
+          "index": 198,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 148
+        },
+        {
+          "index": 199,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 205
+        }
+      ]
+    },
+    "calibrated-reused-100": {
+      "games": 100,
+      "startIndex": 0,
+      "sourceHashes": {
+        "StonefishChess.js": "8034a453c728e2f88e68227df484cb8f4d385de7f8073d031b310b16f05bb6ae",
+        "models/v1.js": "88fa3d7ac6bceb0ef0fbeefed4baf63fbd1aa7666182a8e62ede5d45bcb20cc1",
+        "models/v2.js": "7e33ea86af85dbb807bb766bc0e1c02a8b519eb1940e92313caa1918c61c461c",
+        "models/v3.js": "a3516ed5e9310ac0351da034cfa9b46b6acc1e4bbd216833a7b91f55806fc327",
+        "models/v4.js": "7cdc6a9ad78288e1edd7de1741a1fc498b63032248a1fc74f8ebe8fc9083e103",
+        "models/v4_5.js": "bc8a13effc9ce2fd5f3c5780a716239212cabf0cd00c1eccf13d75d08ceb42dc",
+        "models/v5.js": "94a23aa10ba189f0c2806b4763dabb7c5c5dc00f3c53dfd58a1019f89818a8bf",
+        "models/v5_pro.js": "43c00ffe80d60cf84be1042de8ef54ffc5c883374814379123415faa4d23ffc9",
+        "models/v5_5.js": "a48701d6aaa16db5a8129badb34bc9ae6172e5023993849d6f79bb5e44c1cd39",
+        "ARMX/ARMX-preview.js": "7ef46f986ff93cb93f11c97cb80fcaf7a265c27f6c4893f624b770ab8478a458",
+        "ARMX/ARMX.js": "9411b9685fc76579104e9da24597844bb6cc573db163974d50ea2aa43b0393e9"
+      },
+      "win": 49,
+      "loss": 42,
+      "draw": 9,
+      "score": 0.535,
+      "policyMoves": 1327,
+      "attributedOverheadRatio": {
+        "athena": 2.116281513240513,
+        "ares": 2.0455362447129897,
+        "artemis": 1.9959054977525486
+      },
+      "records": [
+        {
+          "index": 0,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 109
+        },
+        {
+          "index": 1,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 2,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 54
+        },
+        {
+          "index": 3,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 38
+        },
+        {
+          "index": 4,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 69
+        },
+        {
+          "index": 5,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 6,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 201
+        },
+        {
+          "index": 7,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 188
+        },
+        {
+          "index": 8,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 139
+        },
+        {
+          "index": 9,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 168
+        },
+        {
+          "index": 10,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 95
+        },
+        {
+          "index": 11,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 138
+        },
+        {
+          "index": 12,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 82
+        },
+        {
+          "index": 13,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 82
+        },
+        {
+          "index": 14,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 15,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 16,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 119
+        },
+        {
+          "index": 17,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 72
+        },
+        {
+          "index": 18,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 19,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 131
+        },
+        {
+          "index": 20,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 21,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 85
+        },
+        {
+          "index": 22,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 23,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 139
+        },
+        {
+          "index": 24,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 101
+        },
+        {
+          "index": 25,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 86
+        },
+        {
+          "index": 26,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 27,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 28,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 65
+        },
+        {
+          "index": 29,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 106
+        },
+        {
+          "index": 30,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 31,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 101
+        },
+        {
+          "index": 32,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 33,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 34,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 55
+        },
+        {
+          "index": 35,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 75
+        },
+        {
+          "index": 36,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 65
+        },
+        {
+          "index": 37,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 38,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 39,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 40,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 41,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 96
+        },
+        {
+          "index": 42,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 99
+        },
+        {
+          "index": 43,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 99
+        },
+        {
+          "index": 44,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 103
+        },
+        {
+          "index": 45,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 46,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 73
+        },
+        {
+          "index": 47,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 79
+        },
+        {
+          "index": 48,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 176
+        },
+        {
+          "index": 49,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 50,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 124
+        },
+        {
+          "index": 51,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 110
+        },
+        {
+          "index": 52,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 112
+        },
+        {
+          "index": 53,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 114
+        },
+        {
+          "index": 54,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 109
+        },
+        {
+          "index": 55,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 109
+        },
+        {
+          "index": 56,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 58
+        },
+        {
+          "index": 57,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 203
+        },
+        {
+          "index": 58,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 59,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 74
+        },
+        {
+          "index": 60,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 61,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 123
+        },
+        {
+          "index": 62,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 8
+        },
+        {
+          "index": 63,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 8
+        },
+        {
+          "index": 64,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 137
+        },
+        {
+          "index": 65,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 179
+        },
+        {
+          "index": 66,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 66
+        },
+        {
+          "index": 67,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 66
+        },
+        {
+          "index": 68,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 69,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 94
+        },
+        {
+          "index": 70,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 158
+        },
+        {
+          "index": 71,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 70
+        },
+        {
+          "index": 72,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 142
+        },
+        {
+          "index": 73,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 133
+        },
+        {
+          "index": 74,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 75,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 86
+        },
+        {
+          "index": 76,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 97
+        },
+        {
+          "index": 77,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 123
+        },
+        {
+          "index": 78,
+          "contenderIsWhite": true,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 235
+        },
+        {
+          "index": 79,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 190
+        },
+        {
+          "index": 80,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 81,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 82,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 83,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 84,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 135
+        },
+        {
+          "index": 85,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 135
+        },
+        {
+          "index": 86,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 76
+        },
+        {
+          "index": 87,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 67
+        },
+        {
+          "index": 88,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 230
+        },
+        {
+          "index": 89,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 100
+        },
+        {
+          "index": 90,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 129
+        },
+        {
+          "index": 91,
+          "contenderIsWhite": false,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 111
+        },
+        {
+          "index": 92,
+          "contenderIsWhite": true,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 114
+        },
+        {
+          "index": 93,
+          "contenderIsWhite": false,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 94,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 95
+        },
+        {
+          "index": 95,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 69
+        },
+        {
+          "index": 96,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 91
+        },
+        {
+          "index": 97,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 79
+        },
+        {
+          "index": 98,
+          "contenderIsWhite": true,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 55
+        },
+        {
+          "index": 99,
+          "contenderIsWhite": false,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 55
+        }
+      ]
+    }
+  }
+}
