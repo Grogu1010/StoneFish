@@ -131,3 +131,38 @@ these experimental scores do not satisfy the >85% release requirement.
 
 The range harness now canonicalizes line endings before finding model boundaries,
 so CRLF source files receive the same frozen-source hash verification as LF files.
+
+
+### Deferred causal replay checkpoint (2026-10-02)
+
+Full now defers the own-plan causal notebook as well as the style notebook when
+all native challengers fail the existing safety window or mate-scale protection.
+The next eligible choice replays the complete history. Opponent Preview learning
+continues normally. Native weights, evaluator, node budget, depth, candidate width
+and every decision gate remain unchanged. Deferred telemetry is explicit and retains
+the causal summary schema.
+
+`tests/armx_deferred_causal.js` compares eager and deferred treatment/control rows,
+pending short/long horizon events, replay state and finalist reports for all styles;
+it also checks blocked/mate paths, reset and board purity.
+
+Aligned Artemis 100 games: 50W–43L–7D, 53.5%; every outcome, reason and played length
+matches the saved foundation, with the same 15 causal changes. Replay was deferred
+on 1,959 turns. Serial 120-position overhead: Athena 1.619×, Ares 1.571×,
+Artemis 1.438× Preview. `tests/fixtures/armx-deferred-causal-validation.json` records
+the exact tested hashes and per-game outcomes. This is a performance promotion
+candidate; the >85% strength, style pace and sibling release gates remain unmet.
+
+Continued experiments are preserved separately. The slower 13-feature learner tied
+both aligned and disjoint 100-game scores (53.5% and 51.5%). A compact 15-feature
+attack-context model improved unique prequential reply log gain to +0.1163 nats but
+its native policy scored only 50.5% (closed #229). A learned tactical reply vote
+scored 52.5%; reusing choice accuracy as causal-plan trust scored 51.0%; independent
+delayed causal-outcome validation scored 52.0%. Those branches exceed at least one
+overhead limit and are not promoted. Better prediction alone is insufficient evidence
+that a causal intervention improves chess strength.
+
+Six-pair confirmation: all 120 individual outcomes, reasons and played lengths
+match the saved foundation. Athena/Ares/Artemis versus current score 55%/65%/62.5%;
+Ares–Athena 50%, Artemis–Athena 52.5%, Artemis–Ares 42.5%. A second serial
+120-position overhead run measured 1.547×/1.560×/1.517× for Athena/Ares/Artemis.
