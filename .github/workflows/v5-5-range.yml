@@ -46,6 +46,8 @@ jobs:
         run: |
           node tests/armx_contract.js
           node tests/armx_finalists.js
+          node tests/armx_context_learner.js
+          node tests/armx_learned_trust.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
       - name: Run saved-best range screen
