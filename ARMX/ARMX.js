@@ -521,6 +521,36 @@ function armxCausalAlternativeBaseline(game,legal,perspective,chosen=null){
   }
   return {baselineAfter:armxCausalMedian(after),actualAfter,sampleCount:sample.length};
 }
+function armxCausalOutcomePrediction(row,prefix,selected){
+  if(!row)return null;
+  const t=prefix?prefix+'Treated':'treated',c=prefix?prefix+'Control':'control';
+  const tw=Number(row[t+'Weight'])||0,cw=Number(row[c+'Weight'])||0;
+  if(tw<2||cw<2)return null;
+  const ti=Number(row[t+'Impact'])||0,ci=Number(row[c+'Impact'])||0;
+  const baseline=(ti+ci)/(tw+cw),weight=selected?tw:cw,impact=selected?ti:ci;
+  return {baseline,value:(impact+2*baseline)/(weight+2)};
+}
+function armxCausalScoreOutcome(row,prefix,prediction,actual,weight,observationId){
+  if(!prediction||!(weight>0))return;
+  if(!row.outcomeQuality)row.outcomeQuality=Object.create(null);
+  const q=row.outcomeQuality[prefix]||(row.outcomeQuality[prefix]={
+    gain:0,weight:0,baselineError:0,modelError:0,observations:new Set()});
+  if(q.observations.has(observationId))return;
+  const baselineError=(actual-prediction.baseline)**2,modelError=(actual-prediction.value)**2;
+  q.gain=q.gain*0.9+(baselineError-modelError)*weight;
+  q.baselineError=q.baselineError*0.9+baselineError*weight;
+  q.modelError=q.modelError*0.9+modelError*weight;
+  q.weight=q.weight*0.9+weight;q.observations.add(observationId);
+}
+function armxCausalOutcomeValidated(row){
+  // Choice prediction does not validate causal value. Short-horizon forecasts
+  // must beat the pooled no-feature forecast on four independent outcomes.
+  // A mature long-horizon contradiction vetoes that short-horizon result.
+  const short=row&&row.outcomeQuality&&row.outcomeQuality.short;
+  if(!short||short.observations.size<4||short.weight<2||short.gain<=0)return false;
+  const long=row.outcomeQuality.long;
+  return !long||long.observations.size<4||long.weight<2||long.gain>0;
+}
 function armxCausalUpdateRows(map,available,chosen,residual,observationId){
   for(const key of available){
     const row=armxCausalRow(map,key);
@@ -542,11 +572,13 @@ function armxCausalUpdateRows(map,available,chosen,residual,observationId){
 }
 const ARMX_CAUSAL_SHORT_PLIES=2;
 const ARMX_CAUSAL_LONG_PLIES=4;
-function armxCausalRecordHorizon(map,available,chosen,impact,weight,observationId,prefix){
+function armxCausalRecordHorizon(map,available,chosen,impact,weight,observationId,prefix,predictions=null){
   const normalized=armxFullClamp(impact/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
   for(const key of available){
     const row=armxCausalRow(map,key);
     const selected=chosen.has(key);
+    const prediction=predictions&&predictions.get(key);
+    armxCausalScoreOutcome(row,prefix,prediction,normalized,weight,observationId);
     const side=selected?'Treated':'Control';
     const wKey=prefix+side+'Weight';
     const iKey=prefix+side+'Impact';
@@ -562,10 +594,20 @@ function armxCausalTrajectoryWeight(maxStep){
   if(maxStep<=120)return 1;
   return armxFullClamp(1/(1+(maxStep-120)/400),0.25,1);
 }
+function armxCausalFreezeOutcomePredictions(map,available,chosen,prefix){
+  const predictions=new Map();
+  for(const key of available){
+    const prediction=armxCausalOutcomePrediction(map.get(key),prefix,chosen.has(key));
+    if(prediction)predictions.set(key,prediction);
+  }
+  return predictions;
+}
 function armxCausalQueueTrajectory(book,map,available,chosen,afterScore,index){
   book.pendingTrajectories.push({
     map,available:[...available],chosen:new Set(chosen),
     afterScore,lastScore:afterScore,maxStep:0,
+    shortPredictions:armxCausalFreezeOutcomePredictions(map,available,chosen,'short'),
+    longPredictions:armxCausalFreezeOutcomePredictions(map,available,chosen,'long'),
     observationId:index,shortAt:index+ARMX_CAUSAL_SHORT_PLIES,
     longAt:index+ARMX_CAUSAL_LONG_PLIES,shortDone:false,
   });
@@ -579,14 +621,14 @@ function armxCausalResolveTrajectories(book,currentPly,currentScore){
     if(!event.shortDone&&currentPly>=event.shortAt){
       armxCausalRecordHorizon(
         event.map,event.available,event.chosen,currentScore-event.afterScore,
-        armxCausalTrajectoryWeight(event.maxStep),event.observationId,'short'
+        armxCausalTrajectoryWeight(event.maxStep),event.observationId,'short',event.shortPredictions
       );
       event.shortDone=true;
     }
     if(currentPly>=event.longAt){
       armxCausalRecordHorizon(
         event.map,event.available,event.chosen,currentScore-event.afterScore,
-        armxCausalTrajectoryWeight(event.maxStep),event.observationId,'long'
+        armxCausalTrajectoryWeight(event.maxStep),event.observationId,'long',event.longPredictions
       );
       continue;
     }
@@ -656,10 +698,11 @@ function armxCausalSync(game,perspective=game.side){
   }
   return book;
 }
-function armxCausalTopEffects(map,keys,limit=4,effectCache=null){
+function armxCausalTopEffects(map,keys,limit=4,effectCache=null,validateOutcomes=false){
   const rows=[];
   for(const key of keys){
     const source=map.get(key);
+    if(validateOutcomes&&!armxCausalOutcomeValidated(source))continue;
     let effect=effectCache&&source?effectCache.get(source):null;
     if(!effect){
       effect=armxCausalEffect(source);
@@ -680,7 +723,7 @@ function armxCausalCandidateReport(
   // is deliberately omitted here because the broader direct causal vote tested
   // stronger and cleaner without it.
   const ownKeys=armxCausalKeys(game,entry.raw,book.perspective,knownContexts);
-  const ownRows=armxCausalTopEffects(book.our,ownKeys,4,effectCache);
+  const ownRows=armxCausalTopEffects(book.our,ownKeys,4,effectCache,true);
   let ownValue=0,ownWeight=0;
   for(const row of ownRows){
     ownValue+=row.value*row.confidence;ownWeight+=row.confidence;
