@@ -728,5 +728,54 @@
       "reason": "checkmate",
       "playedPlies": 55
     }
-  ]
+  ],
+  "sixPair20": {
+    "athenaVsCurrent": {
+      "win": 10,
+      "loss": 8,
+      "draw": 2,
+      "score": 0.55,
+      "sameOutcomesAndLengths": true
+    },
+    "aresVsCurrent": {
+      "win": 12,
+      "loss": 6,
+      "draw": 2,
+      "score": 0.65,
+      "sameOutcomesAndLengths": true
+    },
+    "artemisVsCurrent": {
+      "win": 11,
+      "loss": 6,
+      "draw": 3,
+      "score": 0.625,
+      "sameOutcomesAndLengths": true
+    },
+    "aresVsAthena": {
+      "win": 10,
+      "loss": 10,
+      "draw": 0,
+      "score": 0.5,
+      "sameOutcomesAndLengths": true
+    },
+    "artemisVsAthena": {
+      "win": 10,
+      "loss": 9,
+      "draw": 1,
+      "score": 0.525,
+      "sameOutcomesAndLengths": true
+    },
+    "artemisVsAres": {
+      "win": 8,
+      "loss": 11,
+      "draw": 1,
+      "score": 0.425,
+      "sameOutcomesAndLengths": true
+    }
+  },
+  "secondSerialOverhead120": {
+    "athena": 1.5469337964583385,
+    "ares": 1.5598373341214824,
+    "artemis": 1.5166686135227432
+  }
 }

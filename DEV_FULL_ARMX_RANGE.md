@@ -161,3 +161,8 @@ scored 52.5%; reusing choice accuracy as causal-plan trust scored 51.0%; indepen
 delayed causal-outcome validation scored 52.0%. Those branches exceed at least one
 overhead limit and are not promoted. Better prediction alone is insufficient evidence
 that a causal intervention improves chess strength.
+
+Six-pair confirmation: all 120 individual outcomes, reasons and played lengths
+match the saved foundation. Athena/Ares/Artemis versus current score 55%/65%/62.5%;
+Ares–Athena 50%, Artemis–Athena 52.5%, Artemis–Ares 42.5%. A second serial
+120-position overhead run measured 1.547×/1.560×/1.517× for Athena/Ares/Artemis.
