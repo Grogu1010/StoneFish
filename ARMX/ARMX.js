@@ -562,10 +562,10 @@ function armxCausalTrajectoryWeight(maxStep){
   if(maxStep<=120)return 1;
   return armxFullClamp(1/(1+(maxStep-120)/400),0.25,1);
 }
-function armxCausalQueueTrajectory(book,map,available,chosen,afterScore,index){
+function armxCausalQueueTrajectory(book,map,available,chosen,afterScore,index,expectedAfter=afterScore){
   book.pendingTrajectories.push({
     map,available:[...available],chosen:new Set(chosen),
-    afterScore,lastScore:afterScore,maxStep:0,
+    afterScore,expectedAfter,lastScore:afterScore,maxStep:0,
     observationId:index,shortAt:index+ARMX_CAUSAL_SHORT_PLIES,
     longAt:index+ARMX_CAUSAL_LONG_PLIES,shortDone:false,
   });
@@ -578,14 +578,14 @@ function armxCausalResolveTrajectories(book,currentPly,currentScore){
     event.lastScore=currentScore;
     if(!event.shortDone&&currentPly>=event.shortAt){
       armxCausalRecordHorizon(
-        event.map,event.available,event.chosen,currentScore-event.afterScore,
+        event.map,event.available,event.chosen,currentScore-event.expectedAfter,
         armxCausalTrajectoryWeight(event.maxStep),event.observationId,'short'
       );
       event.shortDone=true;
     }
     if(currentPly>=event.longAt){
       armxCausalRecordHorizon(
-        event.map,event.available,event.chosen,currentScore-event.afterScore,
+        event.map,event.available,event.chosen,currentScore-event.expectedAfter,
         armxCausalTrajectoryWeight(event.maxStep),event.observationId,'long'
       );
       continue;
@@ -647,7 +647,7 @@ function armxCausalSync(game,perspective=game.side){
         }
         const residual=armxFullClamp((actualAfter-baselineAfter)/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
         armxCausalUpdateRows(map,available,chosen,residual,index);
-        armxCausalQueueTrajectory(book,map,available,chosen,actualAfter,index);
+        armxCausalQueueTrajectory(book,map,available,chosen,actualAfter,index,baselineAfter);
       }
     }
     book.replay.fastApply(move);
