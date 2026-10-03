@@ -2208,7 +2208,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const profile=armxPreviewSyncProfile(game,perspective);
   const preview=armxPreviewOpponentPolicy(game,perspective),book=armxConfidenceSync(game,perspective,profile);
   if(!preview){book.lastPolicyActive=false;return null;}
-  const quality=armxConfidenceQuality(book),trusted=false; // Predictor-only screen; no exposure search guidance yet.
+  const quality=armxConfidenceQuality(book),trusted=quality.trusted;
   book.lastPolicyActive=trusted;
   const weights=trusted?new Float64Array(book.model.weights):preview.weights;
   const featureUndo={};
@@ -2223,6 +2223,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     // king and actor frame used by features; preserve all actual game history.
     const savedSide=game.side,savedKing=game.kingSq[side];
     const after=sf55cEvaluate(game)*(game.side===side?1:-1);
+    const exposure=game._isAttacked(move.to,-side)&&!game._isAttacked(move.to,side)?Math.min(4,SF55C.piece[move.piece]/100):0;
     const rookFrom=side>0?(move.flags&4?7:0):(move.flags&4?63:56);
     const rookTo=side>0?(move.flags&4?5:3):(move.flags&4?61:59);
     b[move.from]=b[move.to];b[move.to]=0;game.side=side;
@@ -2232,7 +2233,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
       if(game.in_check())return null;
       const row=new Float64Array(17);row.set(armxConfidenceFeatures(game,move,side));
       if(game._sf55cKernelSearchActive)game._sf55cKernelDirty=true;
-      row[15]=armxFullClamp((after-sf55cEvaluate(game))/25,-4,4);
+      row[15]=armxFullClamp((after-sf55cEvaluate(game))/25,-4,4);row[16]=exposure;
       return armxPreviewQuietLogit(row,weights);
     }finally{
       b[move.to]=b[move.from];b[move.from]=0;game.side=savedSide;game.kingSq[side]=savedKing;

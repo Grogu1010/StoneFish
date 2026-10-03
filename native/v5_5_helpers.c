@@ -219,7 +219,7 @@ int generate(int side,int castling,int ep,int king,int mode){
    every node. No persistent opponent state is stored here; JS supplies only
    the frozen per-search quiet-choice weights. */
 static int root_scores[512],root_exact[512];
-static double policy_weights[16];
+static double policy_weights[17];
 #define SEARCH_PUBLIC_INPUT_CAP 512
 #define SEARCH_PUBLIC_CAP 1024
 static u16 search_public_keys_input[SEARCH_PUBLIC_INPUT_CAP*17];
@@ -281,7 +281,7 @@ static int search_eval_masks_ready;
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
 int exact_ptr(void){return (int)(unsigned long)root_exact;}
 int policy_ptr(void){return (int)(unsigned long)policy_weights;}
-int policy_feature_count(void){return 16;}
+int policy_feature_count(void){return 17;}
 int public_keys_ptr(void){return (int)(unsigned long)search_public_keys_input;}
 int public_counts_ptr(void){return (int)(unsigned long)search_public_counts_input;}
 int search_nodes(void){return search_nodes_count;}
@@ -868,11 +868,17 @@ static double policy_context_logit(u32 m,int applied){
 }
 static double policy_evaluation_logit(SearchState *s,u32 m){
   double value=policy_context_logit(m,0);
-  if(search_policy_enabled!=3)return value;
+  if(search_policy_enabled<3)return value;
   int before=search_evaluate_state(s);
   SearchState child;SearchBoardUndo undo;
   search_apply_child(s,&child,m,&undo);
   int after=-search_evaluate_state(&child);
+  if(search_policy_enabled>=4){
+    int to=move_to(m);u64 occupied=search_white_occ|search_black_occ;
+    double exposure=search_attacked_occ(to,-s->side,occupied)&&!search_attacked_occ(to,s->side,occupied)?(double)config[move_piece(m)]/100.0:0.0;
+    if(exposure>4.0)exposure=4.0;
+    value+=exposure*policy_weights[16];
+  }
   search_undo_board(s->side,m,&undo);
   double delta=(double)(after-before)/25.0;
   if(delta>4.0)delta=4.0;if(delta<-4.0)delta=-4.0;

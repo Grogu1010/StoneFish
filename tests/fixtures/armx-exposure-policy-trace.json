@@ -1,0 +1,1931 @@
+[
+  {
+    "index": 9,
+    "finalFen": "8/Q7/8/k1K5/8/8/8/8 b - - 8 125",
+    "checkmate": true,
+    "winner": 1,
+    "changes": [
+      {
+        "ply": 41,
+        "fen": "r4rk1/p1p1npp1/2n1p1qp/2pp2P1/P1b2P2/1PRNPB2/2QP3P/2B2RK1 b - - 0 21",
+        "quality": {
+          "observations": 15,
+          "predictions": 14,
+          "fullMeanGain": 0.28078257866708645,
+          "fullStandardError": 0.09746239405462127,
+          "pairedMeanGain": 0.41142532044172736,
+          "pairedStandardError": 0.1310722381610337,
+          "fullLowerMargin": 0.0858577905578439,
+          "pairedLowerMargin": 0.14928084411965997,
+          "fullTotalGain": 3.93095610133921,
+          "previewTotalGain": -1.8289983848449747,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 8343,
+          "depth": 3,
+          "selected": "c4a6",
+          "roots": [
+            {
+              "uci": "c4a6",
+              "score": 47,
+              "exact": true
+            },
+            {
+              "uci": "c4d3",
+              "score": 23,
+              "exact": true
+            },
+            {
+              "uci": "h6g5",
+              "score": 21,
+              "exact": true
+            },
+            {
+              "uci": "a7a5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 8343,
+          "depth": 3,
+          "selected": "h6g5",
+          "roots": [
+            {
+              "uci": "c4a6",
+              "score": 26,
+              "exact": true
+            },
+            {
+              "uci": "c4d3",
+              "score": 23,
+              "exact": true
+            },
+            {
+              "uci": "h6g5",
+              "score": 21,
+              "exact": true
+            },
+            {
+              "uci": "a7a5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 8343,
+          "depth": 3,
+          "selected": "h6g5",
+          "roots": [
+            {
+              "uci": "c4a6",
+              "score": 26,
+              "exact": true
+            },
+            {
+              "uci": "c4d3",
+              "score": 23,
+              "exact": true
+            },
+            {
+              "uci": "h6g5",
+              "score": 21,
+              "exact": true
+            },
+            {
+              "uci": "a7a5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      },
+      {
+        "ply": 109,
+        "fen": "8/3k4/6p1/p2P1n2/1p2K3/1P2p3/4B3/8 b - - 2 55",
+        "quality": {
+          "observations": 39,
+          "predictions": 38,
+          "fullMeanGain": 0.27111683824286176,
+          "fullStandardError": 0.12788559190168108,
+          "pairedMeanGain": 0.43751318673166173,
+          "pairedStandardError": 0.10249935376924124,
+          "fullLowerMargin": 0.01534565443949959,
+          "pairedLowerMargin": 0.23251447919317925,
+          "fullTotalGain": 10.302439853228748,
+          "previewTotalGain": -6.3230612425743935,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 8338,
+          "depth": 5,
+          "selected": "d7e7",
+          "roots": [
+            {
+              "uci": "d7e7",
+              "score": 481,
+              "exact": true
+            },
+            {
+              "uci": "d7d6",
+              "score": 475,
+              "exact": true
+            },
+            {
+              "uci": "d7c7",
+              "score": 377,
+              "exact": true
+            },
+            {
+              "uci": "a5a4",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 8338,
+          "depth": 5,
+          "selected": "d7d6",
+          "roots": [
+            {
+              "uci": "d7d6",
+              "score": 475,
+              "exact": true
+            },
+            {
+              "uci": "d7e7",
+              "score": 465,
+              "exact": true
+            },
+            {
+              "uci": "d7c7",
+              "score": 377,
+              "exact": true
+            },
+            {
+              "uci": "a5a4",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 8338,
+          "depth": 5,
+          "selected": "d7e7",
+          "roots": [
+            {
+              "uci": "d7e7",
+              "score": 477,
+              "exact": true
+            },
+            {
+              "uci": "d7d6",
+              "score": 394,
+              "exact": true
+            },
+            {
+              "uci": "d7c7",
+              "score": 377,
+              "exact": true
+            },
+            {
+              "uci": "d7c8",
+              "score": 190,
+              "exact": true
+            }
+          ]
+        }
+      },
+      {
+        "ply": 113,
+        "fen": "8/3k4/6p1/p2P1n2/1p2K3/1P2p3/8/3B4 b - - 6 57",
+        "quality": {
+          "observations": 41,
+          "predictions": 40,
+          "fullMeanGain": 0.2544217864868123,
+          "fullStandardError": 0.12308171486747232,
+          "pairedMeanGain": 0.40407160918316254,
+          "pairedStandardError": 0.10019741721121153,
+          "fullLowerMargin": 0.008258356751867646,
+          "pairedLowerMargin": 0.20367677476073948,
+          "fullTotalGain": 10.176871459472492,
+          "previewTotalGain": -5.985992907854007,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 7423,
+          "depth": 5,
+          "selected": "d7d6",
+          "roots": [
+            {
+              "uci": "d7d6",
+              "score": 475,
+              "exact": true
+            },
+            {
+              "uci": "d7e7",
+              "score": 465,
+              "exact": true
+            },
+            {
+              "uci": "d7c7",
+              "score": 375,
+              "exact": true
+            },
+            {
+              "uci": "a5a4",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 7423,
+          "depth": 5,
+          "selected": "d7e7",
+          "roots": [
+            {
+              "uci": "d7e7",
+              "score": 477,
+              "exact": true
+            },
+            {
+              "uci": "d7c7",
+              "score": 476,
+              "exact": true
+            },
+            {
+              "uci": "d7d6",
+              "score": 475,
+              "exact": true
+            },
+            {
+              "uci": "a5a4",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 7423,
+          "depth": 5,
+          "selected": "d7d6",
+          "roots": [
+            {
+              "uci": "d7d6",
+              "score": 475,
+              "exact": true
+            },
+            {
+              "uci": "d7e7",
+              "score": 465,
+              "exact": true
+            },
+            {
+              "uci": "d7c7",
+              "score": 375,
+              "exact": true
+            },
+            {
+              "uci": "a5a4",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      },
+      {
+        "ply": 129,
+        "fen": "8/8/8/P3k3/3n4/1pK1p3/8/3B4 b - - 2 65",
+        "quality": {
+          "observations": 47,
+          "predictions": 46,
+          "fullMeanGain": 0.23911776922316047,
+          "fullStandardError": 0.10751318619578433,
+          "pairedMeanGain": 0.36603553538848865,
+          "pairedStandardError": 0.0967177113338356,
+          "fullLowerMargin": 0.02409139683159181,
+          "pairedLowerMargin": 0.17260011272081746,
+          "fullTotalGain": 10.999417384265382,
+          "previewTotalGain": -5.838217243605095,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6751,
+          "depth": 4,
+          "selected": "d4c6",
+          "roots": [
+            {
+              "uci": "d4c6",
+              "score": 320,
+              "exact": true
+            },
+            {
+              "uci": "e5e4",
+              "score": 280,
+              "exact": true
+            },
+            {
+              "uci": "e5f4",
+              "score": 204,
+              "exact": true
+            },
+            {
+              "uci": "b3b2",
+              "score": 177,
+              "exact": true
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6751,
+          "depth": 5,
+          "selected": "e5f5",
+          "roots": [
+            {
+              "uci": "e5f5",
+              "score": 179,
+              "exact": true
+            },
+            {
+              "uci": "b3b2",
+              "score": 177,
+              "exact": true
+            },
+            {
+              "uci": "e3e2",
+              "score": 177,
+              "exact": true
+            },
+            {
+              "uci": "d4b5",
+              "score": 128,
+              "exact": true
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6751,
+          "depth": 4,
+          "selected": "d4c6",
+          "roots": [
+            {
+              "uci": "d4c6",
+              "score": 320,
+              "exact": true
+            },
+            {
+              "uci": "e5e4",
+              "score": 280,
+              "exact": true
+            },
+            {
+              "uci": "e5f4",
+              "score": 204,
+              "exact": true
+            },
+            {
+              "uci": "b3b2",
+              "score": 177,
+              "exact": true
+            }
+          ]
+        }
+      },
+      {
+        "ply": 169,
+        "fen": "3k4/3n4/8/8/3KQ3/8/8/8 b - - 24 85",
+        "quality": {
+          "observations": 60,
+          "predictions": 59,
+          "fullMeanGain": 0.20404110919488216,
+          "fullStandardError": 0.09047697096459267,
+          "pairedMeanGain": 0.299249472332702,
+          "pairedStandardError": 0.09188415018380468,
+          "fullLowerMargin": 0.023087167265696817,
+          "pairedLowerMargin": 0.11548117196509264,
+          "fullTotalGain": 12.038425442498047,
+          "previewTotalGain": -5.617293425131372,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6186,
+          "depth": 4,
+          "selected": "d7b6",
+          "roots": [
+            {
+              "uci": "d7b6",
+              "score": -678,
+              "exact": true
+            },
+            {
+              "uci": "d8c7",
+              "score": -678,
+              "exact": true
+            },
+            {
+              "uci": "d8c8",
+              "score": -678,
+              "exact": true
+            },
+            {
+              "uci": "d7b8",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6186,
+          "depth": 4,
+          "selected": "d8c8",
+          "roots": [
+            {
+              "uci": "d8c8",
+              "score": -676,
+              "exact": true
+            },
+            {
+              "uci": "d7b6",
+              "score": -678,
+              "exact": true
+            },
+            {
+              "uci": "d8c7",
+              "score": -678,
+              "exact": true
+            },
+            {
+              "uci": "d7b8",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6186,
+          "depth": 4,
+          "selected": "d7b6",
+          "roots": [
+            {
+              "uci": "d7b6",
+              "score": -678,
+              "exact": true
+            },
+            {
+              "uci": "d7f6",
+              "score": -678,
+              "exact": true
+            },
+            {
+              "uci": "d8c7",
+              "score": -678,
+              "exact": true
+            },
+            {
+              "uci": "d7f8",
+              "score": -693,
+              "exact": true
+            }
+          ]
+        }
+      },
+      {
+        "ply": 179,
+        "fen": "8/2knQ3/8/8/3K4/8/8/8 b - - 34 90",
+        "quality": {
+          "observations": 65,
+          "predictions": 64,
+          "fullMeanGain": 0.2334910535329984,
+          "fullStandardError": 0.08451123528124294,
+          "pairedMeanGain": 0.2717286601763487,
+          "pairedStandardError": 0.08587381180328249,
+          "fullLowerMargin": 0.06446858297051253,
+          "pairedLowerMargin": 0.09998103656978374,
+          "fullTotalGain": 14.943427426111898,
+          "previewTotalGain": -2.4472068251744217,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "c7c6",
+          "roots": [
+            {
+              "uci": "c7c6",
+              "score": -681,
+              "exact": true
+            },
+            {
+              "uci": "c7c8",
+              "score": -684,
+              "exact": true
+            },
+            {
+              "uci": "c7b7",
+              "score": -1150,
+              "exact": true
+            },
+            {
+              "uci": "c7b6",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "c7c8",
+          "roots": [
+            {
+              "uci": "c7c8",
+              "score": -685,
+              "exact": true
+            },
+            {
+              "uci": "c7c6",
+              "score": -689,
+              "exact": true
+            },
+            {
+              "uci": "c7b7",
+              "score": -1150,
+              "exact": true
+            },
+            {
+              "uci": "c7b6",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "c7c8",
+          "roots": [
+            {
+              "uci": "c7c8",
+              "score": -685,
+              "exact": true
+            },
+            {
+              "uci": "c7c6",
+              "score": -689,
+              "exact": true
+            },
+            {
+              "uci": "c7b7",
+              "score": -1150,
+              "exact": true
+            },
+            {
+              "uci": "c7b6",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      },
+      {
+        "ply": 219,
+        "fen": "8/1knQ4/8/8/8/3K4/8/8 b - - 74 110",
+        "quality": {
+          "observations": 85,
+          "predictions": 84,
+          "fullMeanGain": 0.2918333852599983,
+          "fullStandardError": 0.07109114907818581,
+          "pairedMeanGain": 0.2443553417140446,
+          "pairedStandardError": 0.07084272611284859,
+          "fullLowerMargin": 0.14965108710362668,
+          "pairedLowerMargin": 0.10266988948834743,
+          "fullTotalGain": 24.51400436183986,
+          "previewTotalGain": 3.988155657860112,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "b7b8",
+          "roots": [
+            {
+              "uci": "b7b8",
+              "score": -694,
+              "exact": true
+            },
+            {
+              "uci": "b7b6",
+              "score": -696,
+              "exact": true
+            },
+            {
+              "uci": "b7a8",
+              "score": -1132,
+              "exact": true
+            },
+            {
+              "uci": "b7a6",
+              "score": -1140,
+              "exact": true
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6001,
+          "depth": 4,
+          "selected": "b7b6",
+          "roots": [
+            {
+              "uci": "b7b6",
+              "score": -691,
+              "exact": true
+            },
+            {
+              "uci": "b7b8",
+              "score": -697,
+              "exact": true
+            },
+            {
+              "uci": "b7a6",
+              "score": -1118,
+              "exact": true
+            },
+            {
+              "uci": "b7a7",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6002,
+          "depth": 5,
+          "selected": "b7b6",
+          "roots": [
+            {
+              "uci": "b7b6",
+              "score": -696,
+              "exact": true
+            },
+            {
+              "uci": "b7b8",
+              "score": -696,
+              "exact": true
+            },
+            {
+              "uci": "b7a8",
+              "score": -1132,
+              "exact": true
+            },
+            {
+              "uci": "b7a6",
+              "score": -1140,
+              "exact": true
+            }
+          ]
+        }
+      },
+      {
+        "ply": 225,
+        "fen": "8/2nQ4/1k6/8/2K5/8/8/8 b - - 80 113",
+        "quality": {
+          "observations": 88,
+          "predictions": 87,
+          "fullMeanGain": 0.3003672107543038,
+          "fullStandardError": 0.06937922407999378,
+          "pairedMeanGain": 0.2396435633824156,
+          "pairedStandardError": 0.06898985973524234,
+          "fullLowerMargin": 0.16160876259431622,
+          "pairedLowerMargin": 0.10166384391193092,
+          "fullTotalGain": 26.131947335624428,
+          "previewTotalGain": 5.282957321354267,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "c7a6",
+          "roots": [
+            {
+              "uci": "c7a6",
+              "score": -712,
+              "exact": true
+            },
+            {
+              "uci": "b6b7",
+              "score": -716,
+              "exact": true
+            },
+            {
+              "uci": "c7a8",
+              "score": -730,
+              "exact": true
+            },
+            {
+              "uci": "b6a5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "b6b7",
+          "roots": [
+            {
+              "uci": "b6b7",
+              "score": -716,
+              "exact": true
+            },
+            {
+              "uci": "c7a6",
+              "score": -727,
+              "exact": true
+            },
+            {
+              "uci": "c7a8",
+              "score": -730,
+              "exact": true
+            },
+            {
+              "uci": "b6a5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6001,
+          "depth": 4,
+          "selected": "b6b7",
+          "roots": [
+            {
+              "uci": "b6b7",
+              "score": -700,
+              "exact": true
+            },
+            {
+              "uci": "c7a6",
+              "score": -708,
+              "exact": true
+            },
+            {
+              "uci": "c7a8",
+              "score": -738,
+              "exact": true
+            },
+            {
+              "uci": "b6a5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": 16,
+    "finalFen": "8/8/1p1QB2k/p2P4/P2P4/1P2P1p1/8/5q1K w - - 3 40",
+    "checkmate": true,
+    "winner": -1,
+    "changes": [
+      {
+        "ply": 68,
+        "fen": "8/6k1/1p1pB3/p2P2p1/P2P4/1P1QPq2/8/6K1 w - - 1 35",
+        "quality": {
+          "observations": 21,
+          "predictions": 20,
+          "fullMeanGain": 0.2851296650765297,
+          "fullStandardError": 0.11130833403899344,
+          "pairedMeanGain": 0.4436469510085826,
+          "pairedStandardError": 0.1057527738024094,
+          "fullLowerMargin": 0.06251299699854282,
+          "pairedLowerMargin": 0.2321414034037638,
+          "fullTotalGain": 5.7025933015305945,
+          "previewTotalGain": -3.170345718641057,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 9489,
+          "depth": 4,
+          "selected": "d3d2",
+          "roots": [
+            {
+              "uci": "d3d2",
+              "score": 514,
+              "exact": true
+            },
+            {
+              "uci": "d3c3",
+              "score": 509,
+              "exact": true
+            },
+            {
+              "uci": "g1h2",
+              "score": 508,
+              "exact": true
+            },
+            {
+              "uci": "b3b4",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 9489,
+          "depth": 4,
+          "selected": "d3c3",
+          "roots": [
+            {
+              "uci": "d3c3",
+              "score": 506,
+              "exact": true
+            },
+            {
+              "uci": "d3d2",
+              "score": 470,
+              "exact": true
+            },
+            {
+              "uci": "g1h2",
+              "score": 470,
+              "exact": true
+            },
+            {
+              "uci": "b3b4",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 9489,
+          "depth": 4,
+          "selected": "d3d2",
+          "roots": [
+            {
+              "uci": "d3d2",
+              "score": 514,
+              "exact": true
+            },
+            {
+              "uci": "d3c3",
+              "score": 509,
+              "exact": true
+            },
+            {
+              "uci": "g1h2",
+              "score": 508,
+              "exact": true
+            },
+            {
+              "uci": "b3b4",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": 20,
+    "finalFen": "8/8/3B4/6p1/8/3k1K1p/4q3/6r1 w - - 2 72",
+    "checkmate": true,
+    "winner": -1,
+    "changes": [
+      {
+        "ply": 66,
+        "fen": "5B2/r2b2p1/P3pk2/4N2p/3P4/8/4pPPP/R5K1 w - - 0 34",
+        "quality": {
+          "observations": 19,
+          "predictions": 18,
+          "fullMeanGain": 0.26869697448732816,
+          "fullStandardError": 0.10900063642942288,
+          "pairedMeanGain": 0.3878979178922914,
+          "pairedStandardError": 0.1263072319551124,
+          "fullLowerMargin": 0.05069570162848239,
+          "pairedLowerMargin": 0.1352834539820666,
+          "fullTotalGain": 4.8365455407719065,
+          "previewTotalGain": -2.145616981289337,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6104,
+          "depth": 2,
+          "selected": "h2h4",
+          "roots": [
+            {
+              "uci": "h2h4",
+              "score": 370,
+              "exact": true
+            },
+            {
+              "uci": "f8c5",
+              "score": 366,
+              "exact": true
+            },
+            {
+              "uci": "f2f4",
+              "score": 365,
+              "exact": true
+            },
+            {
+              "uci": "a1c1",
+              "score": 348,
+              "exact": true
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6104,
+          "depth": 3,
+          "selected": "f8c5",
+          "roots": [
+            {
+              "uci": "f8c5",
+              "score": 401,
+              "exact": true
+            },
+            {
+              "uci": "h2h4",
+              "score": 373,
+              "exact": true
+            },
+            {
+              "uci": "f2f4",
+              "score": 367,
+              "exact": true
+            },
+            {
+              "uci": "a1a2",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6104,
+          "depth": 2,
+          "selected": "h2h4",
+          "roots": [
+            {
+              "uci": "h2h4",
+              "score": 370,
+              "exact": true
+            },
+            {
+              "uci": "f8c5",
+              "score": 366,
+              "exact": true
+            },
+            {
+              "uci": "f2f4",
+              "score": 365,
+              "exact": true
+            },
+            {
+              "uci": "a1c1",
+              "score": 348,
+              "exact": true
+            }
+          ]
+        }
+      },
+      {
+        "ply": 80,
+        "fen": "8/8/4p1p1/1bB1NkPp/3P3P/5P2/3rpK2/2R5 w - - 3 41",
+        "quality": {
+          "observations": 24,
+          "predictions": 23,
+          "fullMeanGain": 0.32684210125766766,
+          "fullStandardError": 0.09603523600255351,
+          "pairedMeanGain": 0.4118850310410637,
+          "pairedStandardError": 0.10773245467405827,
+          "fullLowerMargin": 0.13477162925256064,
+          "pairedLowerMargin": 0.19642012169294717,
+          "fullTotalGain": 7.517368328926356,
+          "previewTotalGain": -1.9559873850181078,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6001,
+          "depth": 3,
+          "selected": "c1c3",
+          "roots": [
+            {
+              "uci": "c1c3",
+              "score": 199,
+              "exact": true
+            },
+            {
+              "uci": "f2e1",
+              "score": 199,
+              "exact": true
+            },
+            {
+              "uci": "c1b1",
+              "score": 194,
+              "exact": true
+            },
+            {
+              "uci": "c1a1",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6001,
+          "depth": 3,
+          "selected": "f2e1",
+          "roots": [
+            {
+              "uci": "f2e1",
+              "score": 199,
+              "exact": true
+            },
+            {
+              "uci": "c1c3",
+              "score": 191,
+              "exact": true
+            },
+            {
+              "uci": "c1e1",
+              "score": 176,
+              "exact": true
+            },
+            {
+              "uci": "c1b1",
+              "score": -170,
+              "exact": true
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6001,
+          "depth": 3,
+          "selected": "f2e1",
+          "roots": [
+            {
+              "uci": "f2e1",
+              "score": 199,
+              "exact": true
+            },
+            {
+              "uci": "c1c3",
+              "score": 191,
+              "exact": true
+            },
+            {
+              "uci": "c1e1",
+              "score": 176,
+              "exact": true
+            },
+            {
+              "uci": "c1b1",
+              "score": -170,
+              "exact": true
+            }
+          ]
+        }
+      },
+      {
+        "ply": 92,
+        "fen": "8/B7/4p1p1/1b2NkPp/3P1r1P/6K1/8/8 w - - 0 47",
+        "quality": {
+          "observations": 27,
+          "predictions": 26,
+          "fullMeanGain": 0.3220751509724682,
+          "fullStandardError": 0.08547698558638064,
+          "pairedMeanGain": 0.3609405523154345,
+          "pairedStandardError": 0.10274918695612531,
+          "fullLowerMargin": 0.1511211797997069,
+          "pairedLowerMargin": 0.15544217840318386,
+          "fullTotalGain": 8.373953925284173,
+          "previewTotalGain": -1.0105004349171183,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "a7c5",
+          "roots": [
+            {
+              "uci": "a7c5",
+              "score": -120,
+              "exact": true
+            },
+            {
+              "uci": "a7b6",
+              "score": -124,
+              "exact": true
+            },
+            {
+              "uci": "g3h3",
+              "score": -125,
+              "exact": true
+            },
+            {
+              "uci": "a7b8",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6001,
+          "depth": 4,
+          "selected": "a7b6",
+          "roots": [
+            {
+              "uci": "a7b6",
+              "score": -109,
+              "exact": true
+            },
+            {
+              "uci": "a7c5",
+              "score": -120,
+              "exact": true
+            },
+            {
+              "uci": "g3h3",
+              "score": -126,
+              "exact": true
+            },
+            {
+              "uci": "a7b8",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6001,
+          "depth": 4,
+          "selected": "a7b6",
+          "roots": [
+            {
+              "uci": "a7b6",
+              "score": -109,
+              "exact": true
+            },
+            {
+              "uci": "a7c5",
+              "score": -120,
+              "exact": true
+            },
+            {
+              "uci": "g3h3",
+              "score": -126,
+              "exact": true
+            },
+            {
+              "uci": "a7b8",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": 72,
+    "finalFen": "8/8/8/8/8/1k6/1q6/K7 w - - 10 70",
+    "checkmate": true,
+    "winner": -1,
+    "changes": [
+      {
+        "ply": 98,
+        "fen": "8/4k3/p3P3/8/3PR1B1/1p3K2/1r3P2/8 w - - 2 50",
+        "quality": {
+          "observations": 29,
+          "predictions": 28,
+          "fullMeanGain": 0.1933009173272566,
+          "fullStandardError": 0.0913933938517456,
+          "pairedMeanGain": 0.3962941231842887,
+          "pairedStandardError": 0.08260845686107042,
+          "fullLowerMargin": 0.010514129623765411,
+          "pairedLowerMargin": 0.23107720946214785,
+          "fullTotalGain": 5.412425685163185,
+          "previewTotalGain": -5.683809763996897,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 8120,
+          "depth": 5,
+          "selected": "e4e3",
+          "roots": [
+            {
+              "uci": "e4e3",
+              "score": 510,
+              "exact": true
+            },
+            {
+              "uci": "e4f4",
+              "score": 491,
+              "exact": true
+            },
+            {
+              "uci": "f3e3",
+              "score": 473,
+              "exact": true
+            },
+            {
+              "uci": "d4d5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 8120,
+          "depth": 4,
+          "selected": "f3e3",
+          "roots": [
+            {
+              "uci": "f3e3",
+              "score": 514,
+              "exact": true
+            },
+            {
+              "uci": "d4d5",
+              "score": 490,
+              "exact": true
+            },
+            {
+              "uci": "g4f5",
+              "score": 467,
+              "exact": true
+            },
+            {
+              "uci": "e4f4",
+              "score": 460,
+              "exact": true
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 8120,
+          "depth": 5,
+          "selected": "e4e3",
+          "roots": [
+            {
+              "uci": "e4e3",
+              "score": 510,
+              "exact": true
+            },
+            {
+              "uci": "e4f4",
+              "score": 491,
+              "exact": true
+            },
+            {
+              "uci": "f3e3",
+              "score": 473,
+              "exact": true
+            },
+            {
+              "uci": "d4d5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      },
+      {
+        "ply": 116,
+        "fen": "8/4k3/4P3/3P4/3K1P2/1q6/8/8 w - - 0 59",
+        "quality": {
+          "observations": 35,
+          "predictions": 34,
+          "fullMeanGain": 0.3832640347561916,
+          "fullStandardError": 0.1336734829016818,
+          "pairedMeanGain": 0.3050190884546492,
+          "pairedStandardError": 0.07768284515085104,
+          "fullLowerMargin": 0.115917068952828,
+          "pairedLowerMargin": 0.14965339815294712,
+          "fullTotalGain": 13.030977181710513,
+          "previewTotalGain": 2.660328174252443,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "d4c5",
+          "roots": [
+            {
+              "uci": "d4c5",
+              "score": -544,
+              "exact": true
+            },
+            {
+              "uci": "d4e4",
+              "score": -561,
+              "exact": true
+            },
+            {
+              "uci": "f4f5",
+              "score": -561,
+              "exact": true
+            },
+            {
+              "uci": "d4e5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6001,
+          "depth": 4,
+          "selected": "f4f5",
+          "roots": [
+            {
+              "uci": "f4f5",
+              "score": -254,
+              "exact": true
+            },
+            {
+              "uci": "d4e4",
+              "score": -271,
+              "exact": true
+            },
+            {
+              "uci": "d4e5",
+              "score": -271,
+              "exact": true
+            },
+            {
+              "uci": "d4c5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6001,
+          "depth": 5,
+          "selected": "d4c5",
+          "roots": [
+            {
+              "uci": "d4c5",
+              "score": -544,
+              "exact": true
+            },
+            {
+              "uci": "d4e4",
+              "score": -561,
+              "exact": true
+            },
+            {
+              "uci": "f4f5",
+              "score": -561,
+              "exact": true
+            },
+            {
+              "uci": "d4e5",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      },
+      {
+        "ply": 120,
+        "fen": "8/4k3/4P3/3P4/2K2q2/8/8/8 w - - 0 61",
+        "quality": {
+          "observations": 36,
+          "predictions": 35,
+          "fullMeanGain": 0.39513280062547085,
+          "fullStandardError": 0.13033957486277112,
+          "pairedMeanGain": 0.3072171309076711,
+          "pairedStandardError": 0.07546270694588371,
+          "fullLowerMargin": 0.1344536508999286,
+          "pairedLowerMargin": 0.1562917170159037,
+          "fullTotalGain": 13.82964802189148,
+          "previewTotalGain": 3.0770484401229923,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6001,
+          "depth": 4,
+          "selected": "c4d3",
+          "roots": [
+            {
+              "uci": "c4d3",
+              "score": -577,
+              "exact": true
+            },
+            {
+              "uci": "c4c5",
+              "score": -773,
+              "exact": true
+            },
+            {
+              "uci": "c4c3",
+              "score": -802,
+              "exact": true
+            },
+            {
+              "uci": "c4b5",
+              "score": -807,
+              "exact": true
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6001,
+          "depth": 4,
+          "selected": "c4b5",
+          "roots": [
+            {
+              "uci": "c4b5",
+              "score": -566,
+              "exact": true
+            },
+            {
+              "uci": "c4d3",
+              "score": -577,
+              "exact": true
+            },
+            {
+              "uci": "c4c5",
+              "score": -773,
+              "exact": true
+            },
+            {
+              "uci": "c4b3",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6001,
+          "depth": 4,
+          "selected": "c4d3",
+          "roots": [
+            {
+              "uci": "c4d3",
+              "score": -577,
+              "exact": true
+            },
+            {
+              "uci": "c4c5",
+              "score": -773,
+              "exact": true
+            },
+            {
+              "uci": "c4c3",
+              "score": -802,
+              "exact": true
+            },
+            {
+              "uci": "c4b5",
+              "score": -807,
+              "exact": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": 23,
+    "finalFen": "6k1/5p2/2p5/p5p1/P3p1q1/1P6/5P1P/5r1K w - - 0 46",
+    "checkmate": true,
+    "winner": -1,
+    "changes": [
+      {
+        "ply": 51,
+        "fen": "r2q1rk1/2pp1pp1/3b4/p2Q4/P1B1p3/1PP1Bb1P/3R1P1P/4R1K1 b - - 3 26",
+        "quality": {
+          "observations": 16,
+          "predictions": 15,
+          "fullMeanGain": 0.6062035708240718,
+          "fullStandardError": 0.12810184363689803,
+          "pairedMeanGain": 0.6712150176942699,
+          "pairedStandardError": 0.1690737641726171,
+          "fullLowerMargin": 0.3499998835502758,
+          "pairedLowerMargin": 0.33306748934903574,
+          "fullTotalGain": 9.093053562361078,
+          "previewTotalGain": -0.9751717030529705,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6506,
+          "depth": 3,
+          "selected": "d8f6",
+          "roots": [
+            {
+              "uci": "d8f6",
+              "score": 59,
+              "exact": true
+            },
+            {
+              "uci": "d8e7",
+              "score": 54,
+              "exact": true
+            },
+            {
+              "uci": "d8h4",
+              "score": 54,
+              "exact": true
+            },
+            {
+              "uci": "g7g6",
+              "score": 47,
+              "exact": true
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6506,
+          "depth": 2,
+          "selected": "d8e7",
+          "roots": [
+            {
+              "uci": "d8e7",
+              "score": 56,
+              "exact": true
+            },
+            {
+              "uci": "d8f6",
+              "score": 56,
+              "exact": true
+            },
+            {
+              "uci": "d8e8",
+              "score": 51,
+              "exact": true
+            },
+            {
+              "uci": "a8a6",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6506,
+          "depth": 2,
+          "selected": "d8e7",
+          "roots": [
+            {
+              "uci": "d8e7",
+              "score": 56,
+              "exact": true
+            },
+            {
+              "uci": "d8f6",
+              "score": 56,
+              "exact": true
+            },
+            {
+              "uci": "d8e8",
+              "score": 51,
+              "exact": true
+            },
+            {
+              "uci": "a8a6",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      },
+      {
+        "ply": 69,
+        "fen": "3r1rk1/5pp1/2p5/p4q2/P1BPp3/1P2B3/5P1P/4R1K1 b - - 5 35",
+        "quality": {
+          "observations": 20,
+          "predictions": 19,
+          "fullMeanGain": 0.5983548376041116,
+          "fullStandardError": 0.1324506567416197,
+          "pairedMeanGain": 0.6161184932658672,
+          "pairedStandardError": 0.1429786921128994,
+          "fullLowerMargin": 0.33345352412087215,
+          "pairedLowerMargin": 0.3301611090400684,
+          "fullTotalGain": 11.36874191447812,
+          "previewTotalGain": -0.33750945757335515,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6001,
+          "depth": 3,
+          "selected": "f5g4",
+          "roots": [
+            {
+              "uci": "g7g5",
+              "score": 835,
+              "exact": true
+            },
+            {
+              "uci": "f5g4",
+              "score": 825,
+              "exact": true
+            },
+            {
+              "uci": "d8d6",
+              "score": 823,
+              "exact": true
+            },
+            {
+              "uci": "f8e8",
+              "score": 819,
+              "exact": true
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6001,
+          "depth": 3,
+          "selected": "f5g6",
+          "roots": [
+            {
+              "uci": "g7g5",
+              "score": 835,
+              "exact": true
+            },
+            {
+              "uci": "f5g4",
+              "score": 825,
+              "exact": true
+            },
+            {
+              "uci": "d8d6",
+              "score": 823,
+              "exact": true
+            },
+            {
+              "uci": "f5g6",
+              "score": 813,
+              "exact": true
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6001,
+          "depth": 3,
+          "selected": "f5g4",
+          "roots": [
+            {
+              "uci": "g7g5",
+              "score": 835,
+              "exact": true
+            },
+            {
+              "uci": "f5g4",
+              "score": 825,
+              "exact": true
+            },
+            {
+              "uci": "d8d6",
+              "score": 823,
+              "exact": true
+            },
+            {
+              "uci": "f8e8",
+              "score": 819,
+              "exact": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": 26,
+    "finalFen": "7R/8/5K1k/6p1/4P1P1/8/8/8 b - - 2 75",
+    "checkmate": true,
+    "winner": 1,
+    "changes": [
+      {
+        "ply": 86,
+        "fen": "4r3/P7/1K3k2/5Pp1/4p1P1/4P3/8/8 w - - 1 44",
+        "quality": {
+          "observations": 27,
+          "predictions": 26,
+          "fullMeanGain": 0.23230386321352212,
+          "fullStandardError": 0.08376938755290145,
+          "pairedMeanGain": 0.3237141509483242,
+          "pairedStandardError": 0.13325704406117322,
+          "fullLowerMargin": 0.06476508810771922,
+          "pairedLowerMargin": 0.05720006282597773,
+          "fullTotalGain": 6.039900443551575,
+          "previewTotalGain": -2.3766674811048523,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6800,
+          "depth": 5,
+          "selected": "b6a6",
+          "roots": [
+            {
+              "uci": "b6a6",
+              "score": 70,
+              "exact": true
+            },
+            {
+              "uci": "b6a5",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "b6b5",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "a7a8b",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6800,
+          "depth": 5,
+          "selected": "b6c6",
+          "roots": [
+            {
+              "uci": "b6c6",
+              "score": 84,
+              "exact": true
+            },
+            {
+              "uci": "b6c7",
+              "score": 84,
+              "exact": true
+            },
+            {
+              "uci": "b6a5",
+              "score": 70,
+              "exact": true
+            },
+            {
+              "uci": "b6a6",
+              "score": 70,
+              "exact": true
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6800,
+          "depth": 5,
+          "selected": "b6a6",
+          "roots": [
+            {
+              "uci": "b6a6",
+              "score": 70,
+              "exact": true
+            },
+            {
+              "uci": "b6a5",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "b6b5",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "a7a8b",
+              "score": null,
+              "exact": false
+            }
+          ]
+        }
+      },
+      {
+        "ply": 94,
+        "fen": "3r4/P7/1K6/4kPp1/4p1P1/4P3/8/8 w - - 9 48",
+        "quality": {
+          "observations": 31,
+          "predictions": 30,
+          "fullMeanGain": 0.24526155634981808,
+          "fullStandardError": 0.07524975917601641,
+          "pairedMeanGain": 0.3276850087077114,
+          "pairedStandardError": 0.11612885840261424,
+          "fullLowerMargin": 0.09476203799778526,
+          "pairedLowerMargin": 0.09542729190248292,
+          "fullTotalGain": 7.357846690494543,
+          "previewTotalGain": -2.472703570736799,
+          "trusted": true
+        },
+        "active": true,
+        "full": {
+          "nodes": 6528,
+          "depth": 5,
+          "selected": "b6b5",
+          "roots": [
+            {
+              "uci": "b6b5",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "b6c6",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "b6c7",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "a7a8b",
+              "score": null,
+              "exact": false
+            }
+          ]
+        },
+        "baseline": {
+          "nodes": 6528,
+          "depth": 4,
+          "selected": "b6c6",
+          "roots": [
+            {
+              "uci": "b6c6",
+              "score": 82,
+              "exact": true
+            },
+            {
+              "uci": "b6c7",
+              "score": 71,
+              "exact": true
+            },
+            {
+              "uci": "b6a5",
+              "score": 70,
+              "exact": true
+            },
+            {
+              "uci": "b6b5",
+              "score": 69,
+              "exact": true
+            }
+          ]
+        },
+        "ordering": {
+          "nodes": 6528,
+          "depth": 5,
+          "selected": "b6b5",
+          "roots": [
+            {
+              "uci": "b6b5",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "b6b7",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "b6c5",
+              "score": 66,
+              "exact": true
+            },
+            {
+              "uci": "b6a5",
+              "score": 62,
+              "exact": true
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

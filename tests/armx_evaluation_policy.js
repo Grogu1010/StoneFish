@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 require('./armx_confidence_policy.js');
 const snapshot=g=>JSON.stringify({fen:g.fen(),history:g.historyStack,counts:[...g.positionCounts],board:[...g.boardState]});
 const summarize=h=>({depth:h.depth,nodes:h.nodes,roots:h.finished.map(r=>({uci:r.uci,score:r.score,exact:r.exact}))});
-assert.equal(SF55C_KERNEL.policyWeights.length,16);
+assert.equal(SF55C_KERNEL.policyWeights.length,17);
 let rng=19907,checked=0;
 for(let line=0;line<5;line++){
  const g=new Chess();
@@ -16,7 +16,7 @@ for(let line=0;line<5;line++){
   if(ply>=12&&ply%8===4){
    const side=g.side,book=armxConfidenceSync(g,side);
    Object.assign(book.model,{count:13,predictions:12,fullGain:2.4,fullGainSq:.48,pairedGain:2.4,pairedGainSq:.48});
-   for(let i=0;i<16;i++)book.model.weights[i]=Math.sin(i+line)*.6;
+   for(let i=0;i<17;i++)book.model.weights[i]=Math.sin(i+line)*.6;
    const before=snapshot(g),policy=armxFullOpponentPolicy(g,side);assert.ok(policy.confidencePolicyActive);
    const compact={...policy,searchBudget:1200,maxDepth:4};
    process.env.ARMX_COMPILED_EXPERIMENT='1';const native=summarize(stonefishV55HostSearch(g,compact));

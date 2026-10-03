@@ -14,7 +14,7 @@ for(let line=0;line<4;line++){
   }
   assert.equal(snapshot(game),before);
   const policy=armxFullOpponentPolicy(game,game.side),preview=armxPreviewOpponentPolicy(game,game.side);
-  if(preview){assert.equal(policy.confidencePolicyActive,false);assert.deepEqual(policy.weights,preview.weights);assert.equal(policy.searchBudget,preview.searchBudget);assert.equal(policy.maxDepth,preview.maxDepth);}
+  if(preview){if(policy.confidencePolicyActive)assert.equal(policy.weights.length,17);else assert.deepEqual(policy.weights,preview.weights);assert.equal(policy.searchBudget,preview.searchBudget);assert.equal(policy.maxDepth,preview.maxDepth);}
   assert.equal(snapshot(game),before);positions++;
   seed=(Math.imul(seed,1664525)+1013904223)>>>0;game.fastApply(legal[seed%legal.length]);
  }

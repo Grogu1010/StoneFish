@@ -1,10 +1,10 @@
 const assert=require('node:assert/strict');
 require('./armx_deferred_causal.js');
-const game=new Chess(),fen=game.fen(),weights=new Float64Array(16);
+const game=new Chess(),fen=game.fen(),weights=new Float64Array(17);
 const legal=game.fastMoves();
 for(const move of legal){
  const row=armxConfidenceObservationFeatures(game,move,game.side);
- assert.equal(row.length,16);assert.ok(row.every(Number.isFinite));
+ assert.equal(row.length,17);assert.ok(row.every(Number.isFinite));
  assert.equal(armxPreviewQuietLogit(row,weights),0,'unseen evaluation feature cannot add a prior preference');
  assert.equal(game.fen(),fen);assert.equal(game.historyStack.length,0);
 }
