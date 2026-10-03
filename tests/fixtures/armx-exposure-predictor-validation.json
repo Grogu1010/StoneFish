@@ -1,0 +1,273 @@
+{
+  "status": "Predictor-only checkpoint; no exposure search influence",
+  "sourceHashes": {
+    "StonefishChess.js": "8034a453c728e2f88e68227df484cb8f4d385de7f8073d031b310b16f05bb6ae",
+    "models/v1.js": "88fa3d7ac6bceb0ef0fbeefed4baf63fbd1aa7666182a8e62ede5d45bcb20cc1",
+    "models/v2.js": "7e33ea86af85dbb807bb766bc0e1c02a8b519eb1940e92313caa1918c61c461c",
+    "models/v3.js": "a3516ed5e9310ac0351da034cfa9b46b6acc1e4bbd216833a7b91f55806fc327",
+    "models/v4.js": "7cdc6a9ad78288e1edd7de1741a1fc498b63032248a1fc74f8ebe8fc9083e103",
+    "models/v4_5.js": "bc8a13effc9ce2fd5f3c5780a716239212cabf0cd00c1eccf13d75d08ceb42dc",
+    "models/v5.js": "94a23aa10ba189f0c2806b4763dabb7c5c5dc00f3c53dfd58a1019f89818a8bf",
+    "models/v5_pro.js": "43c00ffe80d60cf84be1042de8ef54ffc5c883374814379123415faa4d23ffc9",
+    "models/v5_5.js": "135fd0f0fd19f0bfc0f3fc6b506a3a4a350c62aa57fc2d97d12010b968dea858",
+    "ARMX/ARMX-preview.js": "7ef46f986ff93cb93f11c97cb80fcaf7a265c27f6c4893f624b770ab8478a458",
+    "ARMX/ARMX.js": "297fee1dd4c951c24ce62ee53fe22e899e887ddf8d5220617b8763f1ee7f6f6a"
+  },
+  "games": 40,
+  "startIndex": 100,
+  "sameControlOutcomesAndLengths": true,
+  "win": 22,
+  "loss": 17,
+  "draw": 1,
+  "score": 0.5625,
+  "predictions": 1474,
+  "meanLogGain": 0.32934824898616877,
+  "previewMeanLogGain": 0.020497180160598195,
+  "overhead": {
+    "athena": 1.9034772272136622,
+    "ares": 1.8733794840513458,
+    "artemis": 1.7896938164329281
+  },
+  "records": [
+    {
+      "index": 100,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 129
+    },
+    {
+      "index": 101,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 145
+    },
+    {
+      "index": 102,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 156
+    },
+    {
+      "index": 103,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 150
+    },
+    {
+      "index": 104,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 122
+    },
+    {
+      "index": 105,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 80
+    },
+    {
+      "index": 106,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 106
+    },
+    {
+      "index": 107,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 104
+    },
+    {
+      "index": 108,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 118
+    },
+    {
+      "index": 109,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 124
+    },
+    {
+      "index": 110,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 105
+    },
+    {
+      "index": 111,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 107
+    },
+    {
+      "index": 112,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 100
+    },
+    {
+      "index": 113,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 120
+    },
+    {
+      "index": 114,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 70
+    },
+    {
+      "index": 115,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 170
+    },
+    {
+      "index": 116,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 134
+    },
+    {
+      "index": 117,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 134
+    },
+    {
+      "index": 118,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 133
+    },
+    {
+      "index": 119,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 130
+    },
+    {
+      "index": 120,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 83
+    },
+    {
+      "index": 121,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 115
+    },
+    {
+      "index": 122,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 126
+    },
+    {
+      "index": 123,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 60
+    },
+    {
+      "index": 124,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 81
+    },
+    {
+      "index": 125,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 135
+    },
+    {
+      "index": 126,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 97
+    },
+    {
+      "index": 127,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 98
+    },
+    {
+      "index": 128,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 55
+    },
+    {
+      "index": 129,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 73
+    },
+    {
+      "index": 130,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 26
+    },
+    {
+      "index": 131,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 26
+    },
+    {
+      "index": 132,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 159
+    },
+    {
+      "index": 133,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 159
+    },
+    {
+      "index": 134,
+      "result": "draw",
+      "reason": "draw-rule",
+      "playedPlies": 201
+    },
+    {
+      "index": 135,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 168
+    },
+    {
+      "index": 136,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 107
+    },
+    {
+      "index": 137,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 107
+    },
+    {
+      "index": 138,
+      "result": "loss",
+      "reason": "checkmate",
+      "playedPlies": 80
+    },
+    {
+      "index": 139,
+      "result": "win",
+      "reason": "checkmate",
+      "playedPlies": 88
+    }
+  ]
+}

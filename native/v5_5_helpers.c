@@ -302,7 +302,8 @@ static int move_piece(u32 m){return (m>>12)&7;}
 static int move_captured(u32 m){return (m>>15)&7;}
 static int move_promotion(u32 m){return (m>>18)&7;}
 static int move_flags(u32 m){return (int)(m>>21);}
-static double quiet_eval_deltas[512];
+static double quiet_eval_deltas[512],quiet_exposures[512];
+int quiet_exposures_ptr(void){return (int)(unsigned long)quiet_exposures;}
 int quiet_eval_deltas_ptr(void){return (int)(unsigned long)quiet_eval_deltas;}
 int quiet_eval_features(int side,int white_king,int black_king,int count){
   if(count<0||count>512)return 0;
@@ -316,6 +317,8 @@ int quiet_eval_features(int side,int white_king,int black_king,int count){
     int rf=side>0?(flags&4?7:0):(flags&4?63:56),rt=side>0?(flags&4?5:3):(flags&4?61:59);
     if(flags&12){board[rt]=board[rf];board[rf]=0;}
     int after=-evaluate(-side,wk,bk);
+    quiet_exposures[i]=attacked(to,-side)&&!attacked(to,side)?(double)config[piece]/100.0:0.0;
+    if(quiet_exposures[i]>4.0)quiet_exposures[i]=4.0;
     if(flags&12){board[rf]=board[rt];board[rt]=0;}
     board[from]=moving;board[to]=0;
     double delta=(double)(after-before)/25.0;

@@ -2103,13 +2103,15 @@ function armxConfidenceFeatures(game,move,side){
   return out;
 }
 function armxConfidenceObservationFeatures(game,move,side,baseline,undo={}){
-  const out=new Float64Array(16);out.set(armxConfidenceFeatures(game,move,side));
+  const out=new Float64Array(17);out.set(armxConfidenceFeatures(game,move,side));
   if(baseline===undefined)sf55cSyncKernelConfig();
   const before=baseline===undefined?sf55cEvaluate(game)*(game.side===side?1:-1):baseline;
   sf55cApply(game,undo,move,1);
   try{
     const after=sf55cEvaluate(game)*(game.side===side?1:-1);
     out[15]=armxFullClamp((after-before)/25,-4,4);
+    out[16]=game._isAttacked(move.to,-side)&&!game._isAttacked(move.to,side)
+      ?Math.min(4,SF55C.piece[move.piece]/100):0;
   }finally{
     sf55cUndo(game,undo,move,1);
   }
@@ -2118,15 +2120,15 @@ function armxConfidenceObservationFeatures(game,move,side,baseline,undo={}){
 function armxConfidenceObservationRows(game,quiet){
   sf55cSyncKernelConfig();
   const k=SF55C_KERNEL;
-  if(k&&k.api.quiet_eval_features&&k.quietEvalDeltas&&quiet.length<=512){
+  if(k&&k.api.quiet_eval_features&&k.quietEvalDeltas&&k.quietExposures&&quiet.length<=512){
     k.board.set(game.boardState);
     for(let i=0;i<quiet.length;i++){
       const m=quiet[i];k.moves[i]=m.from|(m.to<<6)|(m.piece<<12)|((m.flags||0)<<21);
     }
     const count=k.api.quiet_eval_features(game.side,game.kingSq[1],game.kingSq[-1],quiet.length);
     if(count===quiet.length)return quiet.map((move,i)=>{
-      const row=new Float64Array(16);row.set(armxConfidenceFeatures(game,move,game.side));
-      row[15]=k.quietEvalDeltas[i];return row;
+      const row=new Float64Array(17);row.set(armxConfidenceFeatures(game,move,game.side));
+      row[15]=k.quietEvalDeltas[i];row[16]=k.quietExposures[i];return row;
     });
   }
   const baseline=sf55cEvaluate(game),undo={};
@@ -2173,7 +2175,7 @@ function armxConfidenceSync(game,perspective,profile=armxPreviewSyncProfile(game
     const replay=armxFullReplayFromGameStart(game);
     book={start,processedPlies:0,lastHistoryState:null,initialPositionKey:replay.fastPositionKey(),replay,
       shadow:{quietPolicy:null},lastPolicyActive:false,
-      model:{weights:new Float64Array(16),count:0,predictions:0,observations:new Set(),
+      model:{weights:new Float64Array(17),count:0,predictions:0,observations:new Set(),
         fullGain:0,fullGainSq:0,previewGain:0,pairedGain:0,pairedGainSq:0}};
     models.set(perspective,book);
   }
@@ -2206,7 +2208,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const profile=armxPreviewSyncProfile(game,perspective);
   const preview=armxPreviewOpponentPolicy(game,perspective),book=armxConfidenceSync(game,perspective,profile);
   if(!preview){book.lastPolicyActive=false;return null;}
-  const quality=armxConfidenceQuality(book),trusted=quality.trusted;
+  const quality=armxConfidenceQuality(book),trusted=false; // Predictor-only screen; no exposure search guidance yet.
   book.lastPolicyActive=trusted;
   const weights=trusted?new Float64Array(book.model.weights):preview.weights;
   const featureUndo={};
@@ -2228,7 +2230,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     if(move.flags&12){b[rookFrom]=b[rookTo];b[rookTo]=0;}
     try{
       if(game.in_check())return null;
-      const row=new Float64Array(16);row.set(armxConfidenceFeatures(game,move,side));
+      const row=new Float64Array(17);row.set(armxConfidenceFeatures(game,move,side));
       if(game._sf55cKernelSearchActive)game._sf55cKernelDirty=true;
       row[15]=armxFullClamp((after-sf55cEvaluate(game))/25,-4,4);
       return armxPreviewQuietLogit(row,weights);

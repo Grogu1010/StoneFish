@@ -7,7 +7,7 @@ const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'stonefish-kernel-'));
 try {
  const output=path.join(temporary,'helpers.wasm');
  const exports=['board_ptr','config_ptr','moves_ptr','scores_ptr','exact_ptr','policy_ptr','policy_feature_count','public_keys_ptr','public_counts_ptr',
-  'quiet_eval_features','quiet_eval_deltas_ptr','evaluate','search_evaluate_fast','in_check','generate','search_all','search_all_width','search_nodes','search_depth'];
+  'quiet_eval_features','quiet_eval_deltas_ptr','quiet_exposures_ptr','evaluate','search_evaluate_fast','in_check','generate','search_all','search_all_width','search_nodes','search_depth'];
  const directCC=process.env.STONEFISH_CC;
  const compiler=directCC||(process.env.ZIG||'zig');
  const args=directCC
