@@ -2089,15 +2089,101 @@ function armxCausalDecisionAdjustment(causal){
   );
 }
 
-function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
-  const preview=armxPreviewOpponentPolicy(game,perspective);
-  if(!preview)return null;
-  return {
-    ...preview,
-    model:ARMX_FULL.name,
-    version:ARMX_FULL.version,
-    fullFoundation:'preview',
+const ARMX_CONFIDENCE_GAME_MODELS=new WeakMap();
+function armxConfidenceFeatures(game,move,side){
+  const out=new Float64Array(15);out.set(armxPreviewQuietFeatures(move,side));
+  const source=game.boardState[move.from],target=game.boardState[move.to];
+  const applied=source===0&&target===side*move.piece&&!move.captured&&!move.promotion;
+  if(applied){game.boardState[move.from]=target;game.boardState[move.to]=0;}
+  try{
+    out[13]=game._isAttacked(move.from,-side)?1:0;
+    game.boardState[move.from]=0;
+    out[14]=game._isAttacked(move.to,-side)?1:0;
+  }finally{game.boardState[move.from]=source;game.boardState[move.to]=target;}
+  return out;
+}
+function armxConfidenceSoftmax(logits){
+  const maximum=Math.max(...logits),values=logits.map(value=>Math.exp(value-maximum));
+  const sum=values.reduce((a,b)=>a+b,0);return values.map(value=>value/sum);
+}
+function armxConfidenceObserve(book,game,chosen,legal,index){
+  const model=book.model;
+  if(model.observations.has(index)||chosen.captured||chosen.promotion||game.in_check())return;
+  const quiet=legal.filter(move=>!move.captured&&!move.promotion);
+  const selected=quiet.findIndex(move=>armxCausalSameMove(move,chosen));
+  if(quiet.length<2||selected<0)return;
+  const rows=quiet.map(move=>armxConfidenceFeatures(game,move,game.side));
+  const probabilities=armxConfidenceSoftmax(rows.map(row=>armxPreviewQuietLogit(row,model.weights)));
+  const priorPreviewSum=book.shadow.quietPolicy?book.shadow.quietPolicy.qualitySum:0;
+  armxPreviewObserveQuietChoice(book.shadow,game,chosen,legal);
+  if(model.count){
+    const fullGain=Math.log(quiet.length*probabilities[selected]);
+    const previewGain=book.shadow.quietPolicy.qualitySum-priorPreviewSum*ARMX_PREVIEW.predictionQualityDecay;
+    const pairedGain=fullGain-previewGain;
+    model.predictions++;
+    model.fullGain+=fullGain;model.fullGainSq+=fullGain*fullGain;
+    model.previewGain+=previewGain;
+    model.pairedGain+=pairedGain;model.pairedGainSq+=pairedGain*pairedGain;
+  }
+  for(let i=0;i<15;i++){
+    let expected=0;for(let j=0;j<rows.length;j++)expected+=probabilities[j]*rows[j][i];
+    model.weights[i]=armxFullClamp(model.weights[i]*ARMX_PREVIEW.quietChoiceDecay
+      +0.20*(rows[selected][i]-expected),-2,2);
+  }
+  model.count++;model.observations.add(index);
+}
+function armxConfidenceSync(game,perspective,profile=armxPreviewSyncProfile(game,perspective)){
+  let models=ARMX_CONFIDENCE_GAME_MODELS.get(game);
+  if(!models){models=new Map();ARMX_CONFIDENCE_GAME_MODELS.set(game,models);}
+  const history=game.historyStack||[],start=Math.max(0,Math.trunc(Number(game.armxObservationStartPly)||0));
+  let book=models.get(perspective);
+  if(!book||history.length<book.processedPlies||book.start!==start
+    ||(book.processedPlies&&history[book.processedPlies-1]!==book.lastHistoryState)
+    ||(!history.length&&game.fastPositionKey()!==book.initialPositionKey)){
+    const replay=armxFullReplayFromGameStart(game);
+    book={start,processedPlies:0,lastHistoryState:null,initialPositionKey:replay.fastPositionKey(),replay,
+      shadow:{quietPolicy:null},lastPolicyActive:false,
+      model:{weights:new Float64Array(15),count:0,predictions:0,observations:new Set(),
+        fullGain:0,fullGainSq:0,previewGain:0,pairedGain:0,pairedGainSq:0}};
+    models.set(perspective,book);
+  }
+  while(book.processedPlies<history.length){
+    const index=book.processedPlies,state=history[index],move=state&&state.move;if(!move)break;
+    if(index>=start&&book.replay.side===-perspective){
+      const legal=profile.opponentLegalMovesByPly[index];
+      if(legal)armxConfidenceObserve(book,book.replay,move,legal,index);
+    }
+    book.replay.fastApply(move);book.processedPlies++;book.lastHistoryState=state;
+  }
+  return book;
+}
+function armxConfidenceQuality(book){
+  const model=book.model,n=model.predictions;
+  const stats=(sum,squares)=>{
+    const mean=n?sum/n:0;
+    const variance=n>1?Math.max(0,(squares-sum*sum/n)/(n-1)):0;
+    const error=n>1?Math.sqrt(variance/n):Infinity;
+    return {mean,error,lower:mean-2*error};
   };
+  const full=stats(model.fullGain,model.fullGainSq),paired=stats(model.pairedGain,model.pairedGainSq);
+  return {observations:model.count,predictions:n,fullMeanGain:full.mean,fullStandardError:full.error,
+    pairedMeanGain:paired.mean,pairedStandardError:paired.error,
+    fullLowerMargin:full.lower,pairedLowerMargin:paired.lower,
+    fullTotalGain:model.fullGain,previewTotalGain:model.previewGain,
+    trusted:n>=12&&full.lower>0&&paired.lower>0};
+}
+function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
+  const profile=armxPreviewSyncProfile(game,perspective);
+  const preview=armxPreviewOpponentPolicy(game,perspective),book=armxConfidenceSync(game,perspective,profile);
+  if(!preview){book.lastPolicyActive=false;return null;}
+  const quality=armxConfidenceQuality(book),trusted=quality.trusted;
+  book.lastPolicyActive=trusted;
+  const weights=trusted?new Float64Array(book.model.weights):preview.weights;
+  const logit=move=>armxPreviewQuietLogit(armxConfidenceFeatures(game,move,-perspective),weights);
+  return {...preview,weights,priority:trusted?move=>Math.round(300*logit(move)):preview.priority,
+    isLowPriority:trusted?move=>logit(move)<0:preview.isLowPriority,
+    confidencePolicy:quality,confidencePolicyActive:trusted,
+    model:ARMX_FULL.name,version:ARMX_FULL.version,fullFoundation:'preview'};
 }
 
 const ARMX_CAUSAL_EMPTY_SUMMARY_BOOK=Object.freeze({predictionCount:0,predictionQualityWeight:0,
@@ -2272,6 +2358,10 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     // top-effect expansion is diagnostic-only and can be requested explicitly.
     causal:causalBook?armxCausalSummary(causalBook,profile,false,causalEffectCache):{...armxCausalSummary(ARMX_CAUSAL_EMPTY_SUMMARY_BOOK,profile,false),deferred:true},
     causalDeferred:!needsCausal,
+    confidencePolicy:ARMX_CONFIDENCE_GAME_MODELS.get(game)&&ARMX_CONFIDENCE_GAME_MODELS.get(game).get(perspective)
+      ?armxConfidenceQuality(ARMX_CONFIDENCE_GAME_MODELS.get(game).get(perspective)):null,
+    confidencePolicyActive:Boolean(ARMX_CONFIDENCE_GAME_MODELS.get(game)&&ARMX_CONFIDENCE_GAME_MODELS.get(game).get(perspective)
+      &&ARMX_CONFIDENCE_GAME_MODELS.get(game).get(perspective).lastPolicyActive),
     reports,
     winner:winner.entry,
     winnerWithoutCausal:shadowWinner.entry,
