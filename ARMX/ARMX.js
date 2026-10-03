@@ -2239,7 +2239,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
     }
   };
   return {...preview,weights,priority:trusted?move=>Math.round(300*(logit(move)??0)):preview.priority,
-    isLowPriority:trusted?move=>{const value=logit(move);return value!==null&&value<0;}:preview.isLowPriority,
+    isLowPriority:trusted?()=>false:preview.isLowPriority,
     confidencePolicy:quality,confidencePolicyActive:trusted,
     model:ARMX_FULL.name,version:ARMX_FULL.version,fullFoundation:'preview'};
 }

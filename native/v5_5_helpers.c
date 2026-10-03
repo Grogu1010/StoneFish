@@ -955,7 +955,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
 
 static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 last_move){
   if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
-  if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
+  if(search_policy_enabled&&search_policy_enabled!=3&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
     &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6
     &&(search_policy_enabled==1||(ply<32&&!search_policy_parent_check[ply]))){
     int king=s->side>0?s->wk:s->bk;
@@ -984,7 +984,7 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   search_enter_position(pos);
   for(int i=0;i<n;i++){
     u32 m=search_pick_ordered(moves,priorities,n,i);SearchState child;SearchBoardUndo u;
-    if(search_policy_enabled>=2&&(ply&1)&&ply+1<32){
+    if(search_policy_enabled==2&&(ply&1)&&ply+1<32){
       search_policy_parent_check[ply+1]=check;
       search_policy_child_logit[ply+1]=!check&&!move_captured(m)&&!move_promotion(m)?policy_evaluation_logit(s,m):0.0;
     }
