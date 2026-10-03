@@ -302,6 +302,28 @@ static int move_piece(u32 m){return (m>>12)&7;}
 static int move_captured(u32 m){return (m>>15)&7;}
 static int move_promotion(u32 m){return (m>>18)&7;}
 static int move_flags(u32 m){return (int)(m>>21);}
+static double quiet_eval_deltas[512];
+int quiet_eval_deltas_ptr(void){return (int)(unsigned long)quiet_eval_deltas;}
+int quiet_eval_features(int side,int white_king,int black_king,int count){
+  if(count<0||count>512)return 0;
+  int before=evaluate(side,white_king,black_king);
+  for(int i=0;i<count;i++){
+    u32 m=output[i];int from=move_from(m),to=move_to(m),piece=move_piece(m),flags=move_flags(m);
+    if(move_captured(m)||move_promotion(m)||board[from]!=side*piece||board[to])return 0;
+    int moving=board[from],wk=white_king,bk=black_king;
+    board[from]=0;board[to]=moving;
+    if(piece==6){if(side>0)wk=to;else bk=to;}
+    int rf=side>0?(flags&4?7:0):(flags&4?63:56),rt=side>0?(flags&4?5:3):(flags&4?61:59);
+    if(flags&12){board[rt]=board[rf];board[rf]=0;}
+    int after=-evaluate(-side,wk,bk);
+    if(flags&12){board[rf]=board[rt];board[rt]=0;}
+    board[from]=moving;board[to]=0;
+    double delta=(double)(after-before)/25.0;
+    if(delta>4.0)delta=4.0;if(delta<-4.0)delta=-4.0;
+    quiet_eval_deltas[i]=delta;
+  }
+  return count;
+}
 static int move_id(u32 m){return move_from(m)|(move_to(m)<<6)|(move_promotion(m)<<12);}
 
 static u32 search_hash_mix(u32 x){

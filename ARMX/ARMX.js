@@ -2115,6 +2115,23 @@ function armxConfidenceObservationFeatures(game,move,side,baseline,undo={}){
   }
   return out;
 }
+function armxConfidenceObservationRows(game,quiet){
+  sf55cSyncKernelConfig();
+  const k=SF55C_KERNEL;
+  if(k&&k.api.quiet_eval_features&&k.quietEvalDeltas&&quiet.length<=512){
+    k.board.set(game.boardState);
+    for(let i=0;i<quiet.length;i++){
+      const m=quiet[i];k.moves[i]=m.from|(m.to<<6)|(m.piece<<12)|((m.flags||0)<<21);
+    }
+    const count=k.api.quiet_eval_features(game.side,game.kingSq[1],game.kingSq[-1],quiet.length);
+    if(count===quiet.length)return quiet.map((move,i)=>{
+      const row=new Float64Array(16);row.set(armxConfidenceFeatures(game,move,game.side));
+      row[15]=k.quietEvalDeltas[i];return row;
+    });
+  }
+  const baseline=sf55cEvaluate(game),undo={};
+  return quiet.map(move=>armxConfidenceObservationFeatures(game,move,game.side,baseline,undo));
+}
 function armxConfidenceSoftmax(logits){
   const maximum=Math.max(...logits),values=logits.map(value=>Math.exp(value-maximum));
   const sum=values.reduce((a,b)=>a+b,0);return values.map(value=>value/sum);
@@ -2125,9 +2142,7 @@ function armxConfidenceObserve(book,game,chosen,legal,index){
   const quiet=legal.filter(move=>!move.captured&&!move.promotion);
   const selected=quiet.findIndex(move=>armxCausalSameMove(move,chosen));
   if(quiet.length<2||selected<0)return;
-  sf55cSyncKernelConfig();
-  const baseline=sf55cEvaluate(game),undo={};
-  const rows=quiet.map(move=>armxConfidenceObservationFeatures(game,move,game.side,baseline,undo));
+  const rows=armxConfidenceObservationRows(game,quiet);
   const probabilities=armxConfidenceSoftmax(rows.map(row=>armxPreviewQuietLogit(row,model.weights)));
   const priorPreviewSum=book.shadow.quietPolicy?book.shadow.quietPolicy.qualitySum:0;
   armxPreviewObserveQuietChoice(book.shadow,game,chosen,legal);

@@ -8,6 +8,11 @@ for(let line=0;line<5;line++){
  const g=new Chess();
  for(let ply=0;ply<36;ply++){
   const legal=g.fastMoves();if(!legal.length)break;
+  const quiet=legal.filter(m=>!m.captured&&!m.promotion),prior=snapshot(g);
+  const batch=armxConfidenceObservationRows(g,quiet);
+  assert.deepEqual([...SF55C_KERNEL.board],[...g.boardState]);
+  for(let i=0;i<quiet.length;i++)assert.deepEqual(Array.from(batch[i],v=>v||0),Array.from(armxConfidenceObservationFeatures(g,quiet[i],g.side),v=>v||0),'batch must equal individual feature evaluation (zero signs are equivalent logits)');
+  assert.equal(snapshot(g),prior);
   if(ply>=12&&ply%8===4){
    const side=g.side,book=armxConfidenceSync(g,side);
    Object.assign(book.model,{count:13,predictions:12,fullGain:2.4,fullGainSq:.48,pairedGain:2.4,pairedGainSq:.48});
@@ -51,4 +56,4 @@ for(const move of forced.fastMoves()){
  assert.equal(forcedPolicy.priority(move),0);assert.equal(forcedPolicy.isLowPriority(move),false);
  assert.equal(snapshot(forced),applied);sf55cUndo(forced,ctx,move,1);assert.equal(snapshot(forced),before);
 }
-console.log(`ARMX_EVALUATION_POLICY passed: ${checked} exact native/fallback searches, frozen learned features, pre/post reply identity and history/board purity`);
+console.log(`ARMX_EVALUATION_POLICY passed: ${checked} exact native/fallback searches, exact batched features, forced-reply scope, frozen learned features, pre/post reply identity and history/board purity`);

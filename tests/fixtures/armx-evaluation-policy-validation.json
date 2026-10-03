@@ -1,0 +1,1296 @@
+{
+  "status": "Research checkpoint; strength >85%, sibling/personality and overhead gates remain unmet",
+  "samples": [
+    {
+      "sample": "evaluation-policy-100",
+      "startIndex": 0,
+      "games": 100,
+      "sourceHashes": {
+        "StonefishChess.js": "8034a453c728e2f88e68227df484cb8f4d385de7f8073d031b310b16f05bb6ae",
+        "models/v1.js": "88fa3d7ac6bceb0ef0fbeefed4baf63fbd1aa7666182a8e62ede5d45bcb20cc1",
+        "models/v2.js": "7e33ea86af85dbb807bb766bc0e1c02a8b519eb1940e92313caa1918c61c461c",
+        "models/v3.js": "a3516ed5e9310ac0351da034cfa9b46b6acc1e4bbd216833a7b91f55806fc327",
+        "models/v4.js": "7cdc6a9ad78288e1edd7de1741a1fc498b63032248a1fc74f8ebe8fc9083e103",
+        "models/v4_5.js": "bc8a13effc9ce2fd5f3c5780a716239212cabf0cd00c1eccf13d75d08ceb42dc",
+        "models/v5.js": "94a23aa10ba189f0c2806b4763dabb7c5c5dc00f3c53dfd58a1019f89818a8bf",
+        "models/v5_pro.js": "43c00ffe80d60cf84be1042de8ef54ffc5c883374814379123415faa4d23ffc9",
+        "models/v5_5.js": "3ccff2c22dd0858d58c7fa709e9de4830b6d53f847d602b9dc79871977d08fdc",
+        "ARMX/ARMX-preview.js": "7ef46f986ff93cb93f11c97cb80fcaf7a265c27f6c4893f624b770ab8478a458",
+        "ARMX/ARMX.js": "9746aeec5a7a5c594fc3879c4bd45a672500401a023142782d0be198a5cf25c4"
+      },
+      "win": 50,
+      "loss": 40,
+      "draw": 10,
+      "score": 0.55,
+      "policyMoves": 993,
+      "predictions": 3580,
+      "fullMeanLogGain": 0.21007739237737344,
+      "previewMeanLogGain": 0.005021290523752383,
+      "overhead": {
+        "athena": 2.0186322415331177,
+        "ares": 1.9573533197943431,
+        "artemis": 1.857429519346554
+      },
+      "records": [
+        {
+          "index": 0,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 1,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 2,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 54
+        },
+        {
+          "index": 3,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 44
+        },
+        {
+          "index": 4,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 69
+        },
+        {
+          "index": 5,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 6,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 201
+        },
+        {
+          "index": 7,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 154
+        },
+        {
+          "index": 8,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 159
+        },
+        {
+          "index": 9,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 164
+        },
+        {
+          "index": 10,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 101
+        },
+        {
+          "index": 11,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 138
+        },
+        {
+          "index": 12,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 82
+        },
+        {
+          "index": 13,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 82
+        },
+        {
+          "index": 14,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 15,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 16,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 17,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 72
+        },
+        {
+          "index": 18,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 19,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 131
+        },
+        {
+          "index": 20,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 21,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 85
+        },
+        {
+          "index": 22,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 23,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 80
+        },
+        {
+          "index": 24,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 239
+        },
+        {
+          "index": 25,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 246
+        },
+        {
+          "index": 26,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 128
+        },
+        {
+          "index": 27,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 28,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 141
+        },
+        {
+          "index": 29,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 106
+        },
+        {
+          "index": 30,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 149
+        },
+        {
+          "index": 31,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 101
+        },
+        {
+          "index": 32,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 80
+        },
+        {
+          "index": 33,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 34,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 75
+        },
+        {
+          "index": 35,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 75
+        },
+        {
+          "index": 36,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 65
+        },
+        {
+          "index": 37,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 38,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 39,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 40,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 120
+        },
+        {
+          "index": 41,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 42,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 99
+        },
+        {
+          "index": 43,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 99
+        },
+        {
+          "index": 44,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 140
+        },
+        {
+          "index": 45,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 46,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 73
+        },
+        {
+          "index": 47,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 79
+        },
+        {
+          "index": 48,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 176
+        },
+        {
+          "index": 49,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 124
+        },
+        {
+          "index": 50,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 156
+        },
+        {
+          "index": 51,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 116
+        },
+        {
+          "index": 52,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 114
+        },
+        {
+          "index": 53,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 114
+        },
+        {
+          "index": 54,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 109
+        },
+        {
+          "index": 55,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 109
+        },
+        {
+          "index": 56,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 58
+        },
+        {
+          "index": 57,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 206
+        },
+        {
+          "index": 58,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 59,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 74
+        },
+        {
+          "index": 60,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 61,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 123
+        },
+        {
+          "index": 62,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 8
+        },
+        {
+          "index": 63,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 8
+        },
+        {
+          "index": 64,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 139
+        },
+        {
+          "index": 65,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 179
+        },
+        {
+          "index": 66,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 66
+        },
+        {
+          "index": 67,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 66
+        },
+        {
+          "index": 68,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 112
+        },
+        {
+          "index": 69,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 94
+        },
+        {
+          "index": 70,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 158
+        },
+        {
+          "index": 71,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 70
+        },
+        {
+          "index": 72,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 117
+        },
+        {
+          "index": 73,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 133
+        },
+        {
+          "index": 74,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 75,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 76,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 123
+        },
+        {
+          "index": 77,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 123
+        },
+        {
+          "index": 78,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 205
+        },
+        {
+          "index": 79,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 190
+        },
+        {
+          "index": 80,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 81,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 82,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 83,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 84,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 121
+        },
+        {
+          "index": 85,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 135
+        },
+        {
+          "index": 86,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 76
+        },
+        {
+          "index": 87,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 57
+        },
+        {
+          "index": 88,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 136
+        },
+        {
+          "index": 89,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 120
+        },
+        {
+          "index": 90,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 129
+        },
+        {
+          "index": 91,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 111
+        },
+        {
+          "index": 92,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 112
+        },
+        {
+          "index": 93,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 94,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 95
+        },
+        {
+          "index": 95,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 69
+        },
+        {
+          "index": 96,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 79
+        },
+        {
+          "index": 97,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 79
+        },
+        {
+          "index": 98,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 55
+        },
+        {
+          "index": 99,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 55
+        }
+      ]
+    },
+    {
+      "sample": "evaluation-policy-holdout-100",
+      "startIndex": 100,
+      "games": 100,
+      "sourceHashes": {
+        "StonefishChess.js": "8034a453c728e2f88e68227df484cb8f4d385de7f8073d031b310b16f05bb6ae",
+        "models/v1.js": "88fa3d7ac6bceb0ef0fbeefed4baf63fbd1aa7666182a8e62ede5d45bcb20cc1",
+        "models/v2.js": "7e33ea86af85dbb807bb766bc0e1c02a8b519eb1940e92313caa1918c61c461c",
+        "models/v3.js": "a3516ed5e9310ac0351da034cfa9b46b6acc1e4bbd216833a7b91f55806fc327",
+        "models/v4.js": "7cdc6a9ad78288e1edd7de1741a1fc498b63032248a1fc74f8ebe8fc9083e103",
+        "models/v4_5.js": "bc8a13effc9ce2fd5f3c5780a716239212cabf0cd00c1eccf13d75d08ceb42dc",
+        "models/v5.js": "94a23aa10ba189f0c2806b4763dabb7c5c5dc00f3c53dfd58a1019f89818a8bf",
+        "models/v5_pro.js": "43c00ffe80d60cf84be1042de8ef54ffc5c883374814379123415faa4d23ffc9",
+        "models/v5_5.js": "3ccff2c22dd0858d58c7fa709e9de4830b6d53f847d602b9dc79871977d08fdc",
+        "ARMX/ARMX-preview.js": "7ef46f986ff93cb93f11c97cb80fcaf7a265c27f6c4893f624b770ab8478a458",
+        "ARMX/ARMX.js": "db271aedee16fbe98771f3e324cc290c178d4c393b3c2b4d6be1b51c7975ec99"
+      },
+      "win": 46,
+      "loss": 42,
+      "draw": 12,
+      "score": 0.52,
+      "policyMoves": 820,
+      "predictions": 3494,
+      "fullMeanLogGain": 0.21655646757914296,
+      "previewMeanLogGain": -0.0026854515273766815,
+      "overhead": {
+        "athena": 2.2354221201991655,
+        "ares": 1.8828199512490211,
+        "artemis": 1.7678265605730368
+      },
+      "records": [
+        {
+          "index": 100,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 129
+        },
+        {
+          "index": 101,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 145
+        },
+        {
+          "index": 102,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 146
+        },
+        {
+          "index": 103,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 150
+        },
+        {
+          "index": 104,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 122
+        },
+        {
+          "index": 105,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 80
+        },
+        {
+          "index": 106,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 106
+        },
+        {
+          "index": 107,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 104
+        },
+        {
+          "index": 108,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 118
+        },
+        {
+          "index": 109,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 124
+        },
+        {
+          "index": 110,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 105
+        },
+        {
+          "index": 111,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 112,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 100
+        },
+        {
+          "index": 113,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 120
+        },
+        {
+          "index": 114,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 70
+        },
+        {
+          "index": 115,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 170
+        },
+        {
+          "index": 116,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 134
+        },
+        {
+          "index": 117,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 126
+        },
+        {
+          "index": 118,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 133
+        },
+        {
+          "index": 119,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 130
+        },
+        {
+          "index": 120,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 121,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 122,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 122
+        },
+        {
+          "index": 123,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 60
+        },
+        {
+          "index": 124,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 69
+        },
+        {
+          "index": 125,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 135
+        },
+        {
+          "index": 126,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 97
+        },
+        {
+          "index": 127,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 98
+        },
+        {
+          "index": 128,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 55
+        },
+        {
+          "index": 129,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 73
+        },
+        {
+          "index": 130,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 26
+        },
+        {
+          "index": 131,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 26
+        },
+        {
+          "index": 132,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 159
+        },
+        {
+          "index": 133,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 159
+        },
+        {
+          "index": 134,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 201
+        },
+        {
+          "index": 135,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 154
+        },
+        {
+          "index": 136,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 89
+        },
+        {
+          "index": 137,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 107
+        },
+        {
+          "index": 138,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 80
+        },
+        {
+          "index": 139,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 140,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 117
+        },
+        {
+          "index": 141,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 155
+        },
+        {
+          "index": 142,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 72
+        },
+        {
+          "index": 143,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 113
+        },
+        {
+          "index": 144,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 101
+        },
+        {
+          "index": 145,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 153
+        },
+        {
+          "index": 146,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 67
+        },
+        {
+          "index": 147,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 67
+        },
+        {
+          "index": 148,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 144
+        },
+        {
+          "index": 149,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 130
+        },
+        {
+          "index": 150,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 151,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 92
+        },
+        {
+          "index": 152,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 153,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 48
+        },
+        {
+          "index": 154,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 87
+        },
+        {
+          "index": 155,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 156,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 71
+        },
+        {
+          "index": 157,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 83
+        },
+        {
+          "index": 158,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 93
+        },
+        {
+          "index": 159,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 137
+        },
+        {
+          "index": 160,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 141
+        },
+        {
+          "index": 161,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 162,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 33
+        },
+        {
+          "index": 163,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 33
+        },
+        {
+          "index": 164,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 96
+        },
+        {
+          "index": 165,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 171
+        },
+        {
+          "index": 166,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 76
+        },
+        {
+          "index": 167,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 102
+        },
+        {
+          "index": 168,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 71
+        },
+        {
+          "index": 169,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 170,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 89
+        },
+        {
+          "index": 171,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 118
+        },
+        {
+          "index": 172,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 115
+        },
+        {
+          "index": 173,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 166
+        },
+        {
+          "index": 174,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 125
+        },
+        {
+          "index": 175,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 75
+        },
+        {
+          "index": 176,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 60
+        },
+        {
+          "index": 177,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 88
+        },
+        {
+          "index": 178,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 105
+        },
+        {
+          "index": 179,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 105
+        },
+        {
+          "index": 180,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 172
+        },
+        {
+          "index": 181,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 57
+        },
+        {
+          "index": 182,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 67
+        },
+        {
+          "index": 183,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 173
+        },
+        {
+          "index": 184,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 130
+        },
+        {
+          "index": 185,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 151
+        },
+        {
+          "index": 186,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 116
+        },
+        {
+          "index": 187,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 74
+        },
+        {
+          "index": 188,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 77
+        },
+        {
+          "index": 189,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 99
+        },
+        {
+          "index": 190,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 91
+        },
+        {
+          "index": 191,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 91
+        },
+        {
+          "index": 192,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 132
+        },
+        {
+          "index": 193,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 106
+        },
+        {
+          "index": 194,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 106
+        },
+        {
+          "index": 195,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 129
+        },
+        {
+          "index": 196,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 86
+        },
+        {
+          "index": 197,
+          "result": "win",
+          "reason": "checkmate",
+          "playedPlies": 90
+        },
+        {
+          "index": 198,
+          "result": "loss",
+          "reason": "checkmate",
+          "playedPlies": 148
+        },
+        {
+          "index": 199,
+          "result": "draw",
+          "reason": "draw-rule",
+          "playedPlies": 125
+        }
+      ]
+    }
+  ],
+  "batchedRepeat": {
+    "sourceHashes": {
+      "StonefishChess.js": "8034a453c728e2f88e68227df484cb8f4d385de7f8073d031b310b16f05bb6ae",
+      "models/v1.js": "88fa3d7ac6bceb0ef0fbeefed4baf63fbd1aa7666182a8e62ede5d45bcb20cc1",
+      "models/v2.js": "7e33ea86af85dbb807bb766bc0e1c02a8b519eb1940e92313caa1918c61c461c",
+      "models/v3.js": "a3516ed5e9310ac0351da034cfa9b46b6acc1e4bbd216833a7b91f55806fc327",
+      "models/v4.js": "7cdc6a9ad78288e1edd7de1741a1fc498b63032248a1fc74f8ebe8fc9083e103",
+      "models/v4_5.js": "bc8a13effc9ce2fd5f3c5780a716239212cabf0cd00c1eccf13d75d08ceb42dc",
+      "models/v5.js": "94a23aa10ba189f0c2806b4763dabb7c5c5dc00f3c53dfd58a1019f89818a8bf",
+      "models/v5_pro.js": "43c00ffe80d60cf84be1042de8ef54ffc5c883374814379123415faa4d23ffc9",
+      "models/v5_5.js": "d5e70064027310ec8626bd223046f5c4c0b1a50578ea9f6d07b6055a722d29a6",
+      "ARMX/ARMX-preview.js": "7ef46f986ff93cb93f11c97cb80fcaf7a265c27f6c4893f624b770ab8478a458",
+      "ARMX/ARMX.js": "2adb2508d3941ad5237d436714956ad6b3ce2a9ad2d3e006ba793dcf851ea3f4"
+    },
+    "score": 0.55,
+    "win": 50,
+    "loss": 40,
+    "draw": 10,
+    "same100OutcomesAndLengths": true,
+    "overhead": {
+      "athena": 1.9071068086678282,
+      "ares": 1.9141892377921077,
+      "artemis": 1.8816537983388852
+    }
+  }
+}
