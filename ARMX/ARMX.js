@@ -2102,6 +2102,20 @@ function armxConfidenceFeatures(game,move,side){
   }finally{game.boardState[move.from]=source;game.boardState[move.to]=target;}
   return out;
 }
+function armxConfidenceObservationFeatures(game,move,side){
+  const out=new Float64Array(16);out.set(armxConfidenceFeatures(game,move,side));
+  sf55cSyncKernelConfig();
+  const before=sf55cEvaluate(game)*(game.side===side?1:-1),depth=game.historyStack.length;
+  game.fastApply(move);
+  try{
+    const after=sf55cEvaluate(game)*(game.side===side?1:-1);
+    out[15]=armxFullClamp((after-before)/25,-4,4);
+  }finally{
+    game.fastUndo();
+    if(game.historyStack.length!==depth)throw new Error('ARMX evaluation feature replay leak');
+  }
+  return out;
+}
 function armxConfidenceSoftmax(logits){
   const maximum=Math.max(...logits),values=logits.map(value=>Math.exp(value-maximum));
   const sum=values.reduce((a,b)=>a+b,0);return values.map(value=>value/sum);
@@ -2112,7 +2126,7 @@ function armxConfidenceObserve(book,game,chosen,legal,index){
   const quiet=legal.filter(move=>!move.captured&&!move.promotion);
   const selected=quiet.findIndex(move=>armxCausalSameMove(move,chosen));
   if(quiet.length<2||selected<0)return;
-  const rows=quiet.map(move=>armxConfidenceFeatures(game,move,game.side));
+  const rows=quiet.map(move=>armxConfidenceObservationFeatures(game,move,game.side));
   const probabilities=armxConfidenceSoftmax(rows.map(row=>armxPreviewQuietLogit(row,model.weights)));
   const priorPreviewSum=book.shadow.quietPolicy?book.shadow.quietPolicy.qualitySum:0;
   armxPreviewObserveQuietChoice(book.shadow,game,chosen,legal);
@@ -2125,7 +2139,7 @@ function armxConfidenceObserve(book,game,chosen,legal,index){
     model.previewGain+=previewGain;
     model.pairedGain+=pairedGain;model.pairedGainSq+=pairedGain*pairedGain;
   }
-  for(let i=0;i<15;i++){
+  for(let i=0;i<model.weights.length;i++){
     let expected=0;for(let j=0;j<rows.length;j++)expected+=probabilities[j]*rows[j][i];
     model.weights[i]=armxFullClamp(model.weights[i]*ARMX_PREVIEW.quietChoiceDecay
       +0.20*(rows[selected][i]-expected),-2,2);
@@ -2143,7 +2157,7 @@ function armxConfidenceSync(game,perspective,profile=armxPreviewSyncProfile(game
     const replay=armxFullReplayFromGameStart(game);
     book={start,processedPlies:0,lastHistoryState:null,initialPositionKey:replay.fastPositionKey(),replay,
       shadow:{quietPolicy:null},lastPolicyActive:false,
-      model:{weights:new Float64Array(15),count:0,predictions:0,observations:new Set(),
+      model:{weights:new Float64Array(16),count:0,predictions:0,observations:new Set(),
         fullGain:0,fullGainSq:0,previewGain:0,pairedGain:0,pairedGainSq:0}};
     models.set(perspective,book);
   }
@@ -2176,7 +2190,7 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const profile=armxPreviewSyncProfile(game,perspective);
   const preview=armxPreviewOpponentPolicy(game,perspective),book=armxConfidenceSync(game,perspective,profile);
   if(!preview){book.lastPolicyActive=false;return null;}
-  const quality=armxConfidenceQuality(book),trusted=quality.trusted;
+  const quality=armxConfidenceQuality(book),trusted=false; // Predictor-only screen: keep the Preview search policy.
   book.lastPolicyActive=trusted;
   const weights=trusted?new Float64Array(book.model.weights):preview.weights;
   const logit=move=>armxPreviewQuietLogit(armxConfidenceFeatures(game,move,-perspective),weights);
