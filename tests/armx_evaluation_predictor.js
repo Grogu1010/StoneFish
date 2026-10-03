@@ -16,4 +16,4 @@ const before=game.fen(),preview=armxPreviewOpponentPolicy(game,side),policy=armx
 assert.equal(policy.confidencePolicyActive,false);assert.deepEqual(policy.weights,preview.weights);
 assert.equal(policy.searchBudget,preview.searchBudget);assert.equal(policy.maxDepth,preview.maxDepth);
 assert.equal(game.fen(),before);
-console.log('ARMX_EVALUATION_PREDICTOR passed: zero learned prior, finite legal-alternative features, exact comparator, unchanged search policy/budget/depth and board purity');
+console.log('ARMX_EVALUATION_PREDICTOR passed: zero learned prior, finite legal-alternative features, exact comparator, cold policy fallback, unchanged budget/depth and board purity');

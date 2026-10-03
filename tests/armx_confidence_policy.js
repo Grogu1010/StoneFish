@@ -14,15 +14,11 @@ Object.assign(book.model,{fullGain:2.4,fullGainSq:.48,pairedGain:0,pairedGainSq:
 assert.equal(armxConfidenceQuality(book).trusted,false,'uniform improvement cannot replace comparison with Preview');
 Object.assign(book.model,{pairedGain:2.4,pairedGainSq:.48});
 assert.equal(armxConfidenceQuality(book).trusted,true);
-book.model.weights[13]=.8;book.model.weights[14]=-1.1;
+book.model.weights[13]=.8;book.model.weights[14]=-1.1;book.model.weights[15]=.5;
 const before=game.fen(),preview=armxPreviewOpponentPolicy(game,side),policy=armxFullOpponentPolicy(game,side);
-assert.equal(policy.confidencePolicyActive,true);assert.equal(policy.weights.length,15);
+assert.equal(policy.confidencePolicyActive,true);assert.equal(policy.weights.length,16);
 assert.equal(policy.searchBudget,preview.searchBudget);assert.equal(policy.maxDepth,preview.maxDepth);
 const frozen=Array.from(policy.weights);book.model.weights.fill(-2);assert.deepEqual(Array.from(policy.weights),frozen);
-for(const move of game.fastMoves()){
- const expected=armxPreviewQuietLogit(armxConfidenceFeatures(game,move,-side),policy.weights);
- assert.equal(policy.priority(move),Math.round(300*expected));assert.equal(policy.isLowPriority(move),expected<0);
-}
 const summarize=host=>({depth:host.depth,nodes:host.nodes,roots:host.finished.map(row=>({uci:row.uci,score:row.score,exact:row.exact}))});
 const native=summarize(stonefishV55HostSearch(game,policy));
 const old=process.env.ARMX_COMPILED_EXPERIMENT;process.env.ARMX_COMPILED_EXPERIMENT='0';

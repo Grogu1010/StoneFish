@@ -219,7 +219,7 @@ int generate(int side,int castling,int ep,int king,int mode){
    every node. No persistent opponent state is stored here; JS supplies only
    the frozen per-search quiet-choice weights. */
 static int root_scores[512],root_exact[512];
-static double policy_weights[15];
+static double policy_weights[16];
 #define SEARCH_PUBLIC_INPUT_CAP 512
 #define SEARCH_PUBLIC_CAP 1024
 static u16 search_public_keys_input[SEARCH_PUBLIC_INPUT_CAP*17];
@@ -232,6 +232,8 @@ static const int SEARCH_MATE=20000000;
 #define SEARCH_POLICY_DIRECT_CAP 65536
 typedef struct {u32 generation;short priority;signed char low;unsigned char pad;} SearchPolicyDirectEntry;
 static SearchPolicyDirectEntry search_policy_direct[SEARCH_POLICY_DIRECT_CAP];
+static double search_policy_child_logit[32];
+static int search_policy_parent_check[32];
 
 #define SEARCH_POS_CAP 16384
 #define SEARCH_PATH_CAP 32768
@@ -279,7 +281,7 @@ static int search_eval_masks_ready;
 int scores_ptr(void){return (int)(unsigned long)root_scores;}
 int exact_ptr(void){return (int)(unsigned long)root_exact;}
 int policy_ptr(void){return (int)(unsigned long)policy_weights;}
-int policy_feature_count(void){return 15;}
+int policy_feature_count(void){return 16;}
 int public_keys_ptr(void){return (int)(unsigned long)search_public_keys_input;}
 int public_counts_ptr(void){return (int)(unsigned long)search_public_counts_input;}
 int search_nodes(void){return search_nodes_count;}
@@ -839,6 +841,18 @@ static double policy_context_logit(u32 m,int applied){
   if(search_attacked_occ(to,-search_policy_side,occupied&~(1ULL<<from)))value+=policy_weights[14];
   return value;
 }
+static double policy_evaluation_logit(SearchState *s,u32 m){
+  double value=policy_context_logit(m,0);
+  if(search_policy_enabled!=3)return value;
+  int before=search_evaluate_state(s);
+  SearchState child;SearchBoardUndo undo;
+  search_apply_child(s,&child,m,&undo);
+  int after=-search_evaluate_state(&child);
+  search_undo_board(s->side,m,&undo);
+  double delta=(double)(after-before)/25.0;
+  if(delta>4.0)delta=4.0;if(delta<-4.0)delta=-4.0;
+  return value+delta*policy_weights[15];
+}
 static SearchPolicyDirectEntry *policy_direct_entry(u32 m){
   u32 key=(u32)move_from(m)|((u32)move_to(m)<<6)|((u32)(move_piece(m)-1)<<12)
     |((move_flags(m)&12)?32768u:0u);
@@ -851,20 +865,20 @@ static SearchPolicyDirectEntry *policy_direct_entry(u32 m){
   }
   return e;
 }
-static int search_order(u32 m,int ply,int tt_move){
+static int search_order(SearchState *s,u32 m,int ply,int tt_move,int check){
   int promotion=move_promotion(m),captured=move_captured(m),piece=move_piece(m),id=move_id(m);
   if(id==tt_move)return 10000000;
   if(promotion)return 200000+config[promotion];
   if(captured)return 100000+config[captured]*16-config[piece];
   if(ply<32&&search_killers[ply]==id)return 90000;
   int value=search_history_generation[id]==search_generation?search_history[id]:0;
-  if(search_policy_enabled&&(ply&1))value+=search_policy_enabled==2?js_round(300.0*policy_context_logit(m,0)):policy_direct_entry(m)->priority;
+  if(search_policy_enabled&&(ply&1)&&(search_policy_enabled==1||!check))value+=search_policy_enabled>=2?js_round(300.0*policy_evaluation_logit(s,m)):policy_direct_entry(m)->priority;
   return value;
 }
 static int search_order_priorities[32][512];
-static int *search_prepare_order(u32 *moves,int n,int ply,int tt_move){
+static int *search_prepare_order(SearchState *s,u32 *moves,int n,int ply,int tt_move,int check){
   int *priorities=search_order_priorities[ply<32?ply:31];
-  for(int i=0;i<n;i++)priorities[i]=search_order(moves[i],ply,tt_move);
+  for(int i=0;i<n;i++)priorities[i]=search_order(s,moves[i],ply,tt_move,check);
   return priorities;
 }
 static u32 search_pick_ordered(u32 *moves,int *priorities,int n,int index){
@@ -902,7 +916,7 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
     if(!n)return search_generate(s,2)?stand:0;
     for(int i=0;i<n;i++)moves[i]=output[i];
   }
-  int *priorities=search_prepare_order(moves,n,ply,0);
+  int *priorities=search_prepare_order(s,moves,n,ply,0,check);
   if(pos)search_enter_position(pos);
   for(int i=0;i<n;i++){
     u32 m=search_pick_ordered(moves,priorities,n,i);
@@ -920,9 +934,10 @@ static int search_q(SearchState *s,int alpha,int beta,int ply,int remaining){
 static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 last_move){
   if(depth<=0)return search_q(s,alpha,beta,ply,search_qdepth);
   if(search_policy_enabled&&depth==1&&ply>=2&&!(ply&1)&&beta-alpha<=1&&last_move
-    &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6){
+    &&!move_captured(last_move)&&!move_promotion(last_move)&&move_piece(last_move)!=6
+    &&(search_policy_enabled==1||(ply<32&&!search_policy_parent_check[ply]))){
     int king=s->side>0?s->wk:s->bk;
-    if(!search_attacked_occ(king,-s->side,search_white_occ|search_black_occ)&&(search_policy_enabled==2?policy_context_logit(last_move,1)<0.0:policy_direct_entry(last_move)->low)){
+    if(!search_attacked_occ(king,-s->side,search_white_occ|search_black_occ)&&(search_policy_enabled>=2?search_policy_child_logit[ply]<0.0:policy_direct_entry(last_move)->low)){
       int probe=search_q(s,alpha,beta,ply,search_qdepth);
       if(search_abort||probe>=beta)return probe;
     }
@@ -942,11 +957,15 @@ static int search_ab(SearchState *s,int depth,int alpha,int beta,int ply,u32 las
   if(search_draw(s,pos))return 0;
   if(!budget_live){search_abort=1;return search_evaluate_state(s);}
   u32 moves[512];for(int i=0;i<n;i++)moves[i]=output[i];
-  int *priorities=search_prepare_order(moves,n,ply,hit?hit->move:0);
+  int *priorities=search_prepare_order(s,moves,n,ply,hit?hit->move:0,check);
   int best=-SEARCH_MATE,best_move=0,index=0;
   search_enter_position(pos);
   for(int i=0;i<n;i++){
     u32 m=search_pick_ordered(moves,priorities,n,i);SearchState child;SearchBoardUndo u;
+    if(search_policy_enabled>=2&&(ply&1)&&ply+1<32){
+      search_policy_parent_check[ply+1]=check;
+      search_policy_child_logit[ply+1]=!check&&!move_captured(m)&&!move_promotion(m)?policy_evaluation_logit(s,m):0.0;
+    }
     search_apply_child(s,&child,m,&u);
     int quiet=!move_captured(m)&&!move_promotion(m),score;
     if(index==0)score=-search_ab(&child,depth-1,-beta,-alpha,ply+1,m);

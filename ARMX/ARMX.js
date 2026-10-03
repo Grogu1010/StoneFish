@@ -2102,17 +2102,16 @@ function armxConfidenceFeatures(game,move,side){
   }finally{game.boardState[move.from]=source;game.boardState[move.to]=target;}
   return out;
 }
-function armxConfidenceObservationFeatures(game,move,side){
+function armxConfidenceObservationFeatures(game,move,side,baseline,undo={}){
   const out=new Float64Array(16);out.set(armxConfidenceFeatures(game,move,side));
-  sf55cSyncKernelConfig();
-  const before=sf55cEvaluate(game)*(game.side===side?1:-1),depth=game.historyStack.length;
-  game.fastApply(move);
+  if(baseline===undefined)sf55cSyncKernelConfig();
+  const before=baseline===undefined?sf55cEvaluate(game)*(game.side===side?1:-1):baseline;
+  sf55cApply(game,undo,move,1);
   try{
     const after=sf55cEvaluate(game)*(game.side===side?1:-1);
     out[15]=armxFullClamp((after-before)/25,-4,4);
   }finally{
-    game.fastUndo();
-    if(game.historyStack.length!==depth)throw new Error('ARMX evaluation feature replay leak');
+    sf55cUndo(game,undo,move,1);
   }
   return out;
 }
@@ -2126,7 +2125,9 @@ function armxConfidenceObserve(book,game,chosen,legal,index){
   const quiet=legal.filter(move=>!move.captured&&!move.promotion);
   const selected=quiet.findIndex(move=>armxCausalSameMove(move,chosen));
   if(quiet.length<2||selected<0)return;
-  const rows=quiet.map(move=>armxConfidenceObservationFeatures(game,move,game.side));
+  sf55cSyncKernelConfig();
+  const baseline=sf55cEvaluate(game),undo={};
+  const rows=quiet.map(move=>armxConfidenceObservationFeatures(game,move,game.side,baseline,undo));
   const probabilities=armxConfidenceSoftmax(rows.map(row=>armxPreviewQuietLogit(row,model.weights)));
   const priorPreviewSum=book.shadow.quietPolicy?book.shadow.quietPolicy.qualitySum:0;
   armxPreviewObserveQuietChoice(book.shadow,game,chosen,legal);
@@ -2190,12 +2191,40 @@ function armxFullOpponentPolicy(game,perspective=game.side,_style='artemis'){
   const profile=armxPreviewSyncProfile(game,perspective);
   const preview=armxPreviewOpponentPolicy(game,perspective),book=armxConfidenceSync(game,perspective,profile);
   if(!preview){book.lastPolicyActive=false;return null;}
-  const quality=armxConfidenceQuality(book),trusted=false; // Predictor-only screen: keep the Preview search policy.
+  const quality=armxConfidenceQuality(book),trusted=quality.trusted;
   book.lastPolicyActive=trusted;
   const weights=trusted?new Float64Array(book.model.weights):preview.weights;
-  const logit=move=>armxPreviewQuietLogit(armxConfidenceFeatures(game,move,-perspective),weights);
-  return {...preview,weights,priority:trusted?move=>Math.round(300*logit(move)):preview.priority,
-    isLowPriority:trusted?move=>logit(move)<0:preview.isLowPriority,
+  const featureUndo={};
+  const logit=move=>{
+    const side=-perspective,b=game.boardState;
+    const applied=b[move.from]===0&&b[move.to]===side*move.piece;
+    if(!applied){
+      if(game.in_check())return null;
+      return armxPreviewQuietLogit(armxConfidenceObservationFeatures(game,move,side,undefined,featureUndo),weights);
+    }
+    // Search callbacks see an already applied reply. Restore just the board,
+    // king and actor frame used by features; preserve all actual game history.
+    const savedSide=game.side,savedKing=game.kingSq[side];
+    const after=sf55cEvaluate(game)*(game.side===side?1:-1);
+    const rookFrom=side>0?(move.flags&4?7:0):(move.flags&4?63:56);
+    const rookTo=side>0?(move.flags&4?5:3):(move.flags&4?61:59);
+    b[move.from]=b[move.to];b[move.to]=0;game.side=side;
+    if(move.piece===6)game.kingSq[side]=move.from;
+    if(move.flags&12){b[rookFrom]=b[rookTo];b[rookTo]=0;}
+    try{
+      if(game.in_check())return null;
+      const row=new Float64Array(16);row.set(armxConfidenceFeatures(game,move,side));
+      if(game._sf55cKernelSearchActive)game._sf55cKernelDirty=true;
+      row[15]=armxFullClamp((after-sf55cEvaluate(game))/25,-4,4);
+      return armxPreviewQuietLogit(row,weights);
+    }finally{
+      b[move.to]=b[move.from];b[move.from]=0;game.side=savedSide;game.kingSq[side]=savedKing;
+      if(move.flags&12){b[rookTo]=b[rookFrom];b[rookFrom]=0;}
+      if(game._sf55cKernelSearchActive)game._sf55cKernelDirty=true;
+    }
+  };
+  return {...preview,weights,priority:trusted?move=>Math.round(300*(logit(move)??0)):preview.priority,
+    isLowPriority:trusted?move=>{const value=logit(move);return value!==null&&value<0;}:preview.isLowPriority,
     confidencePolicy:quality,confidencePolicyActive:trusted,
     model:ARMX_FULL.name,version:ARMX_FULL.version,fullFoundation:'preview'};
 }

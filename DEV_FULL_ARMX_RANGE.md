@@ -8,6 +8,18 @@ Each of Athena, Ares, and Artemis must score **strictly above 85%** over at leas
 
 Artemis must match current v5.5 in every respect except Full ARMX. Athena and Ares share Artemis's Full ARMX machinery and differ only in numeric playstyle values. Experimental branches have been reverted unless explicitly recorded here.
 
+## Confidence-qualified evaluation policy research (2026-10-03)
+
+The deferred-replay performance candidate remains separate in PR #230. This branch is a research screen, not a release candidate: the >85% strength and personality targets remain unmet.
+
+A separate per-game Full predictor reuses Preview's cached legal alternatives and learns from unique voluntary quiet choices. It compares every pre-update probability against both uniform choice and the exact Preview learner on the same observation. A 15-feature version scored 53% on games 0–99 and 50.5% on games 100–199, below the saved foundation's 53.5%/51.5%. Positive prediction gain alone did not improve strength.
+
+The next feature is a clipped one-ply native evaluation change, with zero initial weight and no prior preference. A predictor-only screen preserved every result, termination reason and played length in the 40-game control while improving mean prequential log gain to +0.229 (Preview +0.0205). That measured prediction improvement motivates this experiment; it does not establish causal value.
+
+The native 16-feature policy activates only after at least 12 unique predictions and positive mean-minus-two-empirical-standard-error margins against uniform and Preview. This is a conservative engineering gate, not a formal confidence interval for correlated game observations. Search budget, depth, root width and evaluation remain unchanged. Full guidance is excluded from forced check evasions, matching its training scope. Native ordering and post-reply reduced probes consume the same frozen pre-reply features.
+
+The initial 100-game screen scored 50 wins, 40 losses and 10 draws (55%), with 993 qualified-policy turns. Mean prediction log gain was +0.210 versus Preview +0.005. Attributed Full/Preview overhead was Athena 2.019, Ares 1.957 and Artemis 1.857; Athena exceeded the 2x cap. An allocation and duplicate-evaluation optimization is being checked on a separate holdout before any promotion. Native/fallback exact roots, scores, depth and node counts match on 15 additional positions; kernel contracts passed 5,524 positions and 128 full-search fixtures. Tests also cover forced replies, frozen weights, cold start/reset, pre/post reply identity and history/board purity.
+
 ## Independent-evidence validation (2026-10-02)
 
 The `dev/armx-independent-evidence` candidate corrects causal finalist evidence accounting: correlated feature/context rows no longer sum their treatment/control support, and short/long outcomes of the same observations no longer sum their support. The saved confidence-weighted signal blend and all native search/evaluation settings remain unchanged. A synthetic contract duplicates one observation ledger across candidate labels and checks identical signal, confidence, evidence, delayed evidence and adjustment.
