@@ -211,7 +211,7 @@ function armxFullSquareCenterDistance(square) {
   return Math.abs(file-3.5)+Math.abs(rank-3.5);
 }
 function armxFullMoveFeatures(game, move) {
-  const features = new Set(armxPreviewFeatureSet(game, move));
+  const features = armxPreviewFeatureSet(game, move);
   if (!move) return features;
   const piece = move.piece || Math.abs(game.boardState[move.from] || 0);
   const pieceFeature = armxFullPieceFeature(piece);
@@ -253,6 +253,7 @@ const ARMX_CAUSAL_CORE_FEATURES=Object.freeze([
   'captureWithQueen','winningCapture','equalCapture','sacrificeCapture','checkCapture',
   'kingAttackCapture','centralPawnPush','wingPawnPush','rookToOpenSide','queenlessTransition'
 ]);
+const ARMX_CAUSAL_CORE_FEATURE_SET=new Set(ARMX_CAUSAL_CORE_FEATURES);
 function armxCausalMedian(values){
   if(!values.length)return 0;
   const sorted=values.slice().sort((a,b)=>a-b),mid=sorted.length>>1;
@@ -279,7 +280,7 @@ function armxCausalContexts(game,perspective,knownScore=NaN){
   return contexts;
 }
 function armxCausalBaseFeatures(game,move){
-  const features=new Set(armxFullMoveFeatures(game,move));
+  const features=armxFullMoveFeatures(game,move);
   if(!move)return features;
   const piece=move.piece||Math.abs(game.boardState[move.from]||0);
   const captured=move.captured||0;
@@ -308,8 +309,14 @@ function armxCausalBaseFeatures(game,move){
   }
   return features;
 }
+const ARMX_CAUSAL_INTERACTIONS=[
+    ['capture','check'],['capture','kingAttack'],['trade','queenlessTransition'],
+    ['quiet','weAhead'],['forcing','weBehind'],['pawnPush','phaseEnd'],
+    ['rookTrade','weAhead'],['rookTrade','weBehind'],['queenTrade','weAhead'],
+    ['queenTrade','weBehind']
+  ];
 function armxCausalKeys(game,move,perspective,knownContexts=null){
-  const base=[...armxCausalBaseFeatures(game,move)].filter(feature=>ARMX_CAUSAL_CORE_FEATURES.includes(feature));
+  const base=[...armxCausalBaseFeatures(game,move)].filter(feature=>ARMX_CAUSAL_CORE_FEATURE_SET.has(feature));
   const contexts=knownContexts||armxCausalContexts(game,perspective);
   const keys=new Set(base);
   for(const feature of base){
@@ -317,14 +324,8 @@ function armxCausalKeys(game,move,perspective,knownContexts=null){
   }
   // A small interaction layer captures common combinations without exploding
   // the notebook into every possible feature pair.
-  const interactions=[
-    ['capture','check'],['capture','kingAttack'],['trade','queenlessTransition'],
-    ['quiet','weAhead'],['forcing','weBehind'],['pawnPush','phaseEnd'],
-    ['rookTrade','weAhead'],['rookTrade','weBehind'],['queenTrade','weAhead'],
-    ['queenTrade','weBehind']
-  ];
   const contextSet=new Set(contexts),baseSet=new Set(base);
-  for(const [a,b] of interactions){
+  for(const [a,b] of ARMX_CAUSAL_INTERACTIONS){
     if(baseSet.has(a)&&(baseSet.has(b)||contextSet.has(b)))keys.add(a+'&'+b);
   }
   return keys;
@@ -521,6 +522,23 @@ function armxCausalAlternativeBaseline(game,legal,perspective,chosen=null){
   }
   return {baselineAfter:armxCausalMedian(after),actualAfter,sampleCount:sample.length};
 }
+// The union of legal-move keys can expand position-wide contexts once.
+// Interactions must remain move-local: unioning bases before pairing them
+// would invent combinations that no legal option actually offered.
+function armxCausalAvailableKeys(game,legal,contexts){
+  const baseUnion=new Set(),interactionUnion=new Set(),contextSet=new Set(contexts);
+  for(const move of legal){
+    const base=armxCausalBaseFeatures(game,move);
+    for(const feature of base)if(ARMX_CAUSAL_CORE_FEATURE_SET.has(feature))baseUnion.add(feature);
+    for(const [a,b] of ARMX_CAUSAL_INTERACTIONS){
+      if(base.has(a)&&(base.has(b)||contextSet.has(b)))interactionUnion.add(a+'&'+b);
+    }
+  }
+  const keys=new Set(baseUnion);
+  for(const feature of baseUnion)for(const context of contexts)keys.add(feature+'@'+context);
+  for(const key of interactionUnion)keys.add(key);
+  return keys;
+}
 function armxCausalUpdateRows(map,available,chosen,residual,observationId){
   for(const key of available){
     const row=armxCausalRow(map,key);
@@ -627,14 +645,9 @@ function armxCausalSync(game,perspective=game.side){
         // context/features for prediction, opportunity accounting and baseline
         // attribution instead of rescanning the board for every consumer.
         const contexts=armxCausalContexts(book.replay,perspective,trajectoryScore);
-        const legalKeys=legal.map(option=>armxCausalKeys(
-          book.replay,option,perspective,contexts
-        ));
-        const chosenIndex=legal.findIndex(option=>armxCausalSameMove(option,move));
-        const chosen=chosenIndex>=0
-          ?legalKeys[chosenIndex]:armxCausalKeys(book.replay,move,perspective,contexts);
-        const available=new Set();
-        for(const keys of legalKeys)for(const key of keys)available.add(key);
+        const chosenMove=legal.find(option=>armxCausalSameMove(option,move))||move;
+        const chosen=armxCausalKeys(book.replay,chosenMove,perspective,contexts);
+        const available=armxCausalAvailableKeys(book.replay,legal,contexts);
         const baseline=armxCausalAlternativeBaseline(book.replay,legal,perspective,move);
         const baselineAfter=baseline.baselineAfter;
         let actualAfter=baseline.actualAfter;
