@@ -15,6 +15,16 @@ try{
  assert.equal(keys.has('capture@phaseMiddle'),true);
  assert.equal(keys.has('check@phaseMiddle'),true);
 }finally{armxCausalBaseFeatures=baseFeatures;}
+const optimizedHorizon=armxCausalRecordHorizon;
+const referenceHorizon=(map,available,chosen,impact,weight,observationId,prefix)=>{
+ const normalized=armxFullClamp(impact/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
+ for(const key of available){
+  const row=armxCausalRow(map,key),side=chosen.has(key)?'Treated':'Control';
+  row[prefix+side+'Weight']+=weight;
+  row[prefix+side+'Impact']+=normalized*weight;
+  row[prefix+side+'ImpactSq']+=normalized*normalized*weight;
+ }
+};
 const cold=new Chess(),incremental=new Chess();
 let positions=0,options=0;
 const normalize=book=>({our:book.our,opponent:book.opponent,
@@ -30,9 +40,9 @@ for(let ply=0;ply<120&&!cold.game_over();ply++){
  const raw=legal[(ply*17+11)%legal.length];
  cold._applyRaw({...raw},true);incremental._applyRaw({...raw},true);
  for(const perspective of [1,-1]){
-  armxCausalAvailableKeys=reference;
+  armxCausalAvailableKeys=reference;armxCausalRecordHorizon=referenceHorizon;
   const a=armxCausalSync(cold,perspective);
-  armxCausalAvailableKeys=optimized;
+  armxCausalAvailableKeys=optimized;armxCausalRecordHorizon=optimizedHorizon;
   const b=armxCausalSync(incremental,perspective);
   assert.deepEqual(normalize(a),normalize(b));
  }

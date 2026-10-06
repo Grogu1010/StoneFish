@@ -562,16 +562,37 @@ const ARMX_CAUSAL_SHORT_PLIES=2;
 const ARMX_CAUSAL_LONG_PLIES=4;
 function armxCausalRecordHorizon(map,available,chosen,impact,weight,observationId,prefix){
   const normalized=armxFullClamp(impact/(Number(ARMX_PREVIEW.effectScale)||360),-1,1);
+  const weightedImpact=normalized*weight,weightedImpactSq=normalized*normalized*weight;
   for(const key of available){
-    const row=armxCausalRow(map,key);
-    const selected=chosen.has(key);
-    const side=selected?'Treated':'Control';
-    const wKey=prefix+side+'Weight';
-    const iKey=prefix+side+'Impact';
-    const qKey=prefix+side+'ImpactSq';
-    row[wKey]+=weight;
-    row[iKey]+=normalized*weight;
-    row[qKey]+=normalized*normalized*weight;
+    const row=armxCausalRow(map,key),selected=chosen.has(key);
+    // These two horizons own fixed row fields. Direct access avoids repeated
+    // string construction and dynamic property lookup during cold replay.
+    if(prefix==='short'){
+      if(selected){
+        row.shortTreatedWeight+=weight;
+        row.shortTreatedImpact+=weightedImpact;
+        row.shortTreatedImpactSq+=weightedImpactSq;
+      }else{
+        row.shortControlWeight+=weight;
+        row.shortControlImpact+=weightedImpact;
+        row.shortControlImpactSq+=weightedImpactSq;
+      }
+    }else if(prefix==='long'){
+      if(selected){
+        row.longTreatedWeight+=weight;
+        row.longTreatedImpact+=weightedImpact;
+        row.longTreatedImpactSq+=weightedImpactSq;
+      }else{
+        row.longControlWeight+=weight;
+        row.longControlImpact+=weightedImpact;
+        row.longControlImpactSq+=weightedImpactSq;
+      }
+    }else{
+      const side=selected?'Treated':'Control';
+      row[prefix+side+'Weight']+=weight;
+      row[prefix+side+'Impact']+=weightedImpact;
+      row[prefix+side+'ImpactSq']+=weightedImpactSq;
+    }
   }
 }
 function armxCausalTrajectoryWeight(maxStep){
