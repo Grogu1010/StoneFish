@@ -47,6 +47,8 @@ jobs:
           node tests/armx_contract.js
           node tests/armx_finalists.js
           node tests/armx_deferred_causal.js
+          node tests/armx_causal_key_union.js
+          node tests/armx_timing_contract.js
           node tests/armx_reply_policy.js
           node tests/native_contract.js
       - name: Run saved-best range screen

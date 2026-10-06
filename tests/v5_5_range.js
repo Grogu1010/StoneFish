@@ -12,7 +12,7 @@ const {performance}=require('perf_hooks');
 const engineFiles=['StonefishChess.js',...['v1.js','v2.js','v3.js','v4.js','v4_5.js','v5.js','v5_pro.js','v5_5.js'].map(file=>`models/${file}`),'ARMX/ARMX-preview.js','ARMX/ARMX.js'];
 const loadedSources=engineFiles.map(file=>({file,source:fs.readFileSync(file,'utf8')}));
 const sourceHashes=Object.fromEntries(
-  loadedSources.map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])
+  [...loadedSources,{file:'tests/v5_5_range.js',source:fs.readFileSync(__filename,'utf8')}].map(({file,source})=>[file,crypto.createHash('sha256').update(source).digest('hex')])
 );
 function bundledSource(bundle,file){
   const escaped=file.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -102,11 +102,29 @@ function cloneGame(source,observationStartPly=source.armxObservationStartPly||0)
   if(game.fastPositionKey()!==source.fastPositionKey())throw new Error('Range latency replay failed');
   return game;
 }
+function generateTimingHistory(pairIndex,plies){
+  if(plies<=20)return generateOpening(pairIndex,plies);
+  const moves=generateOpening(pairIndex,10),game=positionAfter(moves);
+  game.armxObservationStartPly=0;
+  clearSharedEngineCaches();
+  return withSeed((0xD880000+pairIndex*977)>>>0,()=>{
+    while(moves.length<plies&&!game.game_over()){
+      const move=getStonefishV55Move(game);if(!move||!play(game,move))break;
+      moves.push({from:move.from,to:move.to,promotion:move.promotion||undefined});
+    }
+    return moves;
+  });
+}
 function buildOverheadPositions(count){
   const rows=[];
+  const historyLengths=(process.env.ARMX_TIMING_HISTORY_PLIES||'12,20,36,52,68,84,100,116')
+    .split(',').map(x=>Number(x));
+  if(!historyLengths.length||historyLengths.some(n=>!Number.isInteger(n)||n<4||n>200))throw Error('Invalid ARMX timing history lengths');
   for(let i=0;i<count;i++){
-    const opening=generateOpening(5000+i,12+(i%8));
+    const opening=generateTimingHistory(5000+i,historyLengths[i%historyLengths.length]);
     const game=positionAfter(opening);
+    while(game.game_over()&&game.historyStack.length)game.fastUndo();
+    // Include mature histories so measured Full policies can actually activate.
     // Treat the replayed history as real opponent evidence for component timing.
     game.armxObservationStartPly=0;
     rows.push(game);
@@ -162,8 +180,26 @@ function median(values){
   const mid=sorted.length>>1;
   return sorted.length&1?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;
 }
-function armxAttributedOverheadBenchmark(sampleCount){
-  const positions=buildOverheadPositions(sampleCount);
+function prepareTimingGame(source,style,incremental){
+  const game=cloneGame(source,0);
+  if(!incremental)return game;
+  const tail=[];
+  for(let i=0;i<2&&game.historyStack.length;i++){
+    const state=game.historyStack[game.historyStack.length-1];
+    tail.unshift({move:{...state.move},trackRepetition:state.trackRepetition});
+    game.fastUndo();
+  }
+  const policy=style==='preview'?armxPreviewOpponentPolicy(game,game.side)
+    :armxFullOpponentPolicy(game,game.side,style);
+  const host=stonefishV55HostSearch(game,policy);
+  if(style==='preview')armxPreviewReview(game,host.finished.slice(0,Math.max(1,ARMX_PREVIEW.candidateLimit)),game.side);
+  else armxFullReview(game,host.finished,style,game.side);
+  for(const state of tail)game._applyRaw(state.move,state.trackRepetition);
+  if(game.fastPositionKey()!==source.fastPositionKey())throw new Error('Incremental timing replay failed');
+  return game;
+}
+function armxAttributedOverheadBenchmark(sampleCount,incremental=false,preparedPositions=null){
+  const positions=preparedPositions||buildOverheadPositions(sampleCount);
   const styles=['athena','ares','artemis'];
   const rows={preview:[],athena:[],ares:[],artemis:[]};
 
@@ -202,7 +238,7 @@ function armxAttributedOverheadBenchmark(sampleCount){
     const baseHostMs=performance.now()-baseStart;
 
     {
-      const game=cloneGame(source,0);
+      const game=prepareTimingGame(source,'preview',incremental);
       clearSharedEngineCaches();
       const policyTimed=timeComponent(()=>armxPreviewOpponentPolicy(game,game.side));
       const hostStart=performance.now();
@@ -213,11 +249,11 @@ function armxAttributedOverheadBenchmark(sampleCount){
       ));
       const directMs=policyTimed.ms+reviewTimed.ms;
       const extraHostMs=hostMs-baseHostMs;
-      rows.preview.push({directMs,extraHostMs,attributedMs:directMs+extraHostMs});
+      rows.preview.push({historyPlies:source.historyStack.length,policyMs:policyTimed.ms,reviewMs:reviewTimed.ms,hostMs,baseHostMs,directMs,extraHostMs,attributedMs:directMs+extraHostMs});
     }
 
     for(const style of styles){
-      const game=cloneGame(source,0);
+      const game=prepareTimingGame(source,style,incremental);
       clearSharedEngineCaches();
       const policyTimed=timeComponent(()=>armxFullOpponentPolicy(game,game.side,style));
       const hostStart=performance.now();
@@ -226,7 +262,11 @@ function armxAttributedOverheadBenchmark(sampleCount){
       const reviewTimed=timeComponent(()=>armxFullReview(game,host.finished,style,game.side));
       const directMs=policyTimed.ms+reviewTimed.ms;
       const extraHostMs=hostMs-baseHostMs;
-      rows[style].push({directMs,extraHostMs,attributedMs:directMs+extraHostMs});
+      rows[style].push({historyPlies:source.historyStack.length,policyMs:policyTimed.ms,reviewMs:reviewTimed.ms,hostMs,baseHostMs,directMs,extraHostMs,attributedMs:directMs+extraHostMs,
+        policyAvailable:!!policyTimed.value,
+        policyActive:!!(policyTimed.value&&policyTimed.value.confidencePolicyActive),
+        earnedExtraNodes:Number(policyTimed.value&&policyTimed.value.earnedExtraNodes)||0,
+        predictions:Number(policyTimed.value&&policyTimed.value.confidencePolicy&&policyTimed.value.confidencePolicy.predictions)||0});
     }
   }
 
@@ -238,13 +278,22 @@ function armxAttributedOverheadBenchmark(sampleCount){
   });
   const preview=summarize(rows.preview);
   const full=Object.fromEntries(styles.map(style=>[style,summarize(rows[style])]));
+  for(const style of styles){
+    full[style].policyAvailableSamples=rows[style].filter(r=>r.policyAvailable).length;
+    full[style].policyActiveSamples=rows[style].filter(r=>r.policyActive).length;
+    full[style].earnedExtraNodeSamples=rows[style].filter(r=>r.earnedExtraNodes>0).length;
+    full[style].maxPredictions=Math.max(0,...rows[style].map(r=>r.predictions));
+  }
+  if(process.env.REQUIRE_ACTIVE_POLICY_TIMING==='1'&&styles.some(style=>!full[style].policyActiveSamples))throw Error('Mature policy timing failed to activate Full guidance');
   const ratio=Object.fromEntries(styles.map(style=>[
     style,
     preview.attributedAverageMs>0
       ?full[style].attributedAverageMs/preview.attributedAverageMs
       :Infinity,
   ]));
-  return {samples:sampleCount,preview,full,ratio};
+  return {samples:sampleCount,timingVersion:'mature-policy-coverage-2',replayMode:incremental?'incremental-two-plies':'cold-full-history',matureHistoryOpponent:'frozen-current-v5.5',
+    historyPlies:{min:Math.min(...positions.map(g=>g.historyStack.length)),max:Math.max(...positions.map(g=>g.historyStack.length)),mean:average(positions.map(g=>g.historyStack.length))},
+    preview,full,ratio,sampleRows:rows,...(!incremental?{incremental:armxAttributedOverheadBenchmark(sampleCount,true,positions)}:{})};
 }
 const STYLE_FEATURES=['capture','trade','simplify','check','kingAttack','pawnPush','castle','quiet','advance','retreat'];
 function emptyStyleCounts(){return Object.fromEntries(STYLE_FEATURES.map(feature=>[feature,0]));}
@@ -867,16 +916,18 @@ if(process.env.RELEASE_GATE==='1'){
       <=targets.relationships.maxArtemisCurrentLead,
     'Artemis current-v5.5 lead must stay modest');
 
-  requireGate(armxAttributedOverhead.preview.attributedAverageMs>0,
-    'ARMX Preview attributed overhead timing must be positive');
-  for(const [style,overheadRatio] of Object.entries(armxAttributedOverhead.ratio)){
-    requireGate(Number.isFinite(overheadRatio)
-        &&overheadRatio<=targets.relationships.maxFullArmxAttributedOverheadToPreviewOverheadRatio,
-      style+' Full ARMX overhead is too slow: '+overheadRatio
-        +'x ARMX Preview overhead; need <='
-        +targets.relationships.maxFullArmxAttributedOverheadToPreviewOverheadRatio+'x. '
-        +'Preview attributed '+armxAttributedOverhead.preview.attributedAverageMs+' ms, Full '
-        +armxAttributedOverhead.full[style].attributedAverageMs+' ms');
+  for(const timing of [armxAttributedOverhead,armxAttributedOverhead.incremental]){
+    requireGate(timing.preview.attributedAverageMs>0,
+      timing.replayMode+' ARMX Preview attributed overhead timing must be positive');
+    for(const [style,overheadRatio] of Object.entries(timing.ratio)){
+      requireGate(Number.isFinite(overheadRatio)
+          &&overheadRatio<=targets.relationships.maxFullArmxAttributedOverheadToPreviewOverheadRatio,
+        style+' '+timing.replayMode+' Full ARMX overhead is too slow: '+overheadRatio
+          +'x ARMX Preview overhead; need <='
+          +targets.relationships.maxFullArmxAttributedOverheadToPreviewOverheadRatio+'x. '
+          +'Preview attributed '+timing.preview.attributedAverageMs+' ms, Full '
+          +timing.full[style].attributedAverageMs+' ms');
+    }
   }
 
   const tol=targets.moveRatioTolerance;
