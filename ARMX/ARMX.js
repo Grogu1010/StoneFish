@@ -2141,6 +2141,51 @@ function armxCausalDeferredReport(){
     ownConfidence:0,replyConfidence:0,replyTrustedConfidence:0,evidence:0,delayedEvidence:0,
     ownEffects:[],predictedReplies:[],predictionCount:0,predictionMeanGain:0,deferred:true};
 }
+function armxForecastSoftmax(logits){
+  const max=Math.max(...logits),values=logits.map(x=>Math.exp(x-max));
+  const total=values.reduce((a,b)=>a+b,0);
+  return values.map(x=>x/total);
+}
+function armxLearnedReplyResidual(game,entry,weights,perspective,probeBudget=null){
+  if(!entry||!entry.raw||entry.raw.captured||entry.raw.promotion)return null;
+  const before=game.historyStack.length;
+  game.fastApply(entry.raw);
+  try{
+    if(game.in_check())return null;
+    const replies=game.fastMoves();
+    // The trained likelihood is conditional on a quiet reply. It cannot
+    // assign a probability to unmodelled captures, promotions or forced moves.
+    if(replies.length<2||replies.some(move=>move.captured||move.promotion))return null;
+    const probabilities=armxForecastSoftmax(replies.map(move=>
+      armxPreviewQuietLogit(armxPreviewQuietFeatures(move,game.side),weights)));
+    let learned=0,uniform=0;
+    for(let i=0;i<replies.length;i++){
+      game.fastApply(replies[i]);
+      let value;
+      try{
+        if(probeBudget){
+          const remaining=probeBudget.limit-probeBudget.nodes;
+          if(remaining<=1)return null;
+          const ctx={nodes:0,limit:remaining-1,depth:3,abort:false,tt:new Map(),pathCounts:[],
+            pathSignature:0,pathSignatureStack:[],pathSignatureIds:new Map(),positionIds:new Map(),
+            killers:[],history:new Int32Array(32768),orderPriorities:[],moveBuffers:[],replyPolicy:null};
+          ctx.material=0;for(const piece of game.boardState){const type=Math.abs(piece);if(type===1||type===4||type===5)ctx.material++;}
+          value=sf55cQ(game,ctx,-SF55C.mate,SF55C.mate,0,2);
+          probeBudget.nodes+=ctx.nodes;
+          if(ctx.abort)return null;
+          value*=game.side===perspective?1:-1;
+        }else value=sf55cEvaluate(game)*(game.side===perspective?1:-1);
+      }
+      finally{game.fastUndo();}
+      learned+=probabilities[i]*value;uniform+=value/replies.length;
+    }
+    return {residual:learned-uniform,replies:replies.length};
+  }finally{
+    game.fastUndo();
+    if(game.historyStack.length!==before)throw new Error('ARMX reply forecast replay leak');
+  }
+}
+
 function armxFullReview(game,finished,style='artemis',perspective=game.side){
   const profile=armxPreviewSyncProfile(game,perspective);
   const candidates=(finished||[]).filter(entry=>entry&&Number.isFinite(entry.score))
@@ -2217,11 +2262,34 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     };
   });
 
+  // Preserve Preview's full host budget. Spend a bounded additional tactical
+  // budget only on an eligible forecast supported by this game's predictions.
+  const quietModel=profile.quietPolicy;
+  const forecastGain=quietModel&&quietModel.qualityWeight
+    ?quietModel.qualitySum/quietModel.qualityWeight:0;
+  const forecastTrusted=quietModel&&quietModel.count>=8&&forecastGain>0.05;
+  const forecastTrust=forecastTrusted?forecastGain/(forecastGain+0.10):0;
+  const forecastDisabled=typeof process!=='undefined'&&process.env&&process.env.ARMX_REPLY_FORECAST_OFF==='1';
+  const forecastAvailable=!forecastDisabled&&forecastTrusted
+    &&!reports[0].entry.raw.captured&&!reports[0].entry.raw.promotion
+    &&reports.slice(1).some(report=>
+    report.objectiveEligible&&!report.entry.raw.captured&&!report.entry.raw.promotion);
+  const forecastProbeBudget={limit:forecastAvailable?512:0,nodes:0};
+  if(forecastAvailable){
+    const weights=new Float64Array(quietModel.weights);
+    reports[0].replyForecast=armxLearnedReplyResidual(game,reports[0].entry,weights,perspective,forecastProbeBudget);
+    if(reports[0].replyForecast){
+      for(const report of reports.slice(1))if(report.objectiveEligible){
+        report.replyForecast=armxLearnedReplyResidual(game,report.entry,weights,perspective,forecastProbeBudget);
+      }
+    }
+  }
   const provisional=reports[0];
   provisional.fullScore=provisional.hostScore;
   provisional.shadowFullScore=provisional.hostScore;
   let winner=provisional;
   let shadowWinner=provisional;
+  let forecastShadowWinner=provisional;
   for(let i=1;i<reports.length;i++){
     const report=reports[i];
     if(!report.objectiveEligible)continue;
@@ -2280,13 +2348,22 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
 
     const nonCausalLead=(gate.allowed?previewLead:report.hostScore-provisional.hostScore)
       +(styleAllowed?styleLead:0);
-    const effectiveLead=nonCausalLead+causalLead;
+    const rawForecastLead=report.replyForecast&&provisional.replyForecast
+      ?armxFullClamp((report.replyForecast.residual-provisional.replyForecast.residual)*forecastTrust,-24,24):0;
+    const forecastLead=Math.abs(rawForecastLead)>=2?rawForecastLead:0;
+    report.forecastLead=forecastLead;
+    const forecastAllowed=forecastLead>0;
+    const effectiveLead=nonCausalLead+causalLead+forecastLead;
     report.decisionLead=effectiveLead;
-    report.fullScore=report.objectiveEligible&&(gate.allowed||causalAllowed||styleAllowed)&&effectiveLead>0
+    report.fullScore=report.objectiveEligible&&(gate.allowed||causalAllowed||styleAllowed||forecastAllowed)&&effectiveLead>0
       ?provisional.hostScore+effectiveLead:-Infinity;
-    report.shadowDecisionLead=nonCausalLead;
-    report.shadowFullScore=report.objectiveEligible&&(gate.allowed||styleAllowed)&&nonCausalLead>0
-      ?provisional.hostScore+nonCausalLead:-Infinity;
+    const withoutForecastLead=nonCausalLead+causalLead;
+    report.withoutForecastScore=report.objectiveEligible&&(gate.allowed||causalAllowed||styleAllowed)&&withoutForecastLead>0
+      ?provisional.hostScore+withoutForecastLead:-Infinity;
+    if(report.withoutForecastScore>forecastShadowWinner.fullScore)forecastShadowWinner={...report,fullScore:report.withoutForecastScore};
+    report.shadowDecisionLead=nonCausalLead+forecastLead;
+    report.shadowFullScore=report.objectiveEligible&&(gate.allowed||styleAllowed||forecastAllowed)&&nonCausalLead+forecastLead>0
+      ?provisional.hostScore+nonCausalLead+forecastLead:-Infinity;
     if(report.fullScore>winner.fullScore)winner=report;
     if(report.shadowFullScore>shadowWinner.shadowFullScore)shadowWinner=report;
   }
@@ -2305,6 +2382,11 @@ function armxFullReview(game,finished,style='artemis',perspective=game.side){
     // The live decision path only needs compact causal telemetry. Detailed
     // top-effect expansion is diagnostic-only and can be requested explicitly.
     causal:causalBook?armxCausalSummary(causalBook,profile,false,causalEffectCache):{...armxCausalSummary(ARMX_CAUSAL_EMPTY_SUMMARY_BOOK,profile,false),deferred:true},
+    replyForecastActive:!!forecastAvailable,
+    replyForecastNodes:forecastProbeBudget.nodes,
+    replyForecastChangedWinner:!stonefishV5SameMove(winner.entry.raw,forecastShadowWinner.entry.raw),
+    replyForecastBudget:forecastProbeBudget.limit,
+    replyForecastGain:forecastGain,
     causalDeferred:!needsCausal,
     reports,
     winner:winner.entry,
