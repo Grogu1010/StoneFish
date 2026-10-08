@@ -36,10 +36,12 @@ jobs:
         run: |
           node --check ARMX/ARMX-preview.js
           node --check ARMX/ARMX.js
+          node --check ARMX/ARMX-causal-horizon-experiment.js
           for f in models/*.js; do node --check "$f"; done
           node --check app.js
           node --check test-worker.js
           for f in tests/*.js; do node --check "$f"; done
+          node --check tests/v5_5_range_horizon_experiment.cjs
       - name: Verify v5.5 kernel contract
         run: node tests/kernel_contract.js
       - name: Verify Full ARMX contracts
@@ -51,9 +53,9 @@ jobs:
         env:
           GAMES: '20'
         run: node tests/v5_5_range.js
-      - name: Run aligned 100-game Artemis benchmark
+      - name: Run aligned 100-game Artemis horizon experiment
         env:
           GAMES: '100'
           MATCHUP: 'artemisVsCurrent'
           ARMX_TIMING_SAMPLES: '120'
-        run: node tests/v5_5_range.js
+        run: node tests/v5_5_range_horizon_experiment.cjs
