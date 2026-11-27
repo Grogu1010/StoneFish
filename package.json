@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node server.js",
     "build": "node -c server.js",
-    "lint": "node -c server.js && node -c app.js && node -c StonefishChess.js && node -c stonefish-api.js && node -c stonefish-node.cjs && node -c test-worker.js && node -c chessbot-arena.cjs && node -c chessbot-arena-worker.cjs && node -c chessbot-arena-all.cjs && node -c models/v6.js && node -c ARMX/ARMX_1_1.js && node -c models/v6_argon.js",
+    "lint": "node -c server.js && node -c app.js && node -c StonefishChess.js && node -c stonefish-api.js && node -c stonefish-node.cjs && node -c test-worker.js && node -c chessbot-arena.cjs && node -c chessbot-arena-worker.cjs && node -c chessbot-arena-all.cjs && node -c models/v6.js && node -c ARMX/ARMX_1_1.js",
     "start": "node server.js",
     "lichess": "node lichess-bot.cjs",
     "arena": "node chessbot-arena-all.cjs",

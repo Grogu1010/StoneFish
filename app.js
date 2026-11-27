@@ -572,20 +572,6 @@ models.v6 = {
   getMove: getStonefishV6Move
 };
 
-models.v6argon = {
-  name: 'Stonefish_v6 Argon (devtest)',
-  trait: 'Show-off tactical engine · brilliant moves hunter',
-  subtitle: 'Stonefish v6 outfitted with a Brilliant Move Hunter: actively sets up and plays stylish tactical sacrifices, piece offerings, and checkmate geometries aiming for 4+ brilliant moves per game.',
-  logic: [
-    'Built on the deep typed-array PVS engine of Stonefish v6 with ARMX 1.1 search planning',
-    'Scans candidate tactical moves, captures, and checks for brilliant piece/pawn sacrifices',
-    'Prioritizes stylish, initiative-driven attacking continuations that maintain winning evaluation',
-    'Aims for ~4 brilliant moves per game while achieving >= 60% win rate against v6',
-    'Preserves v6 opening anti-blockage, pawn structure, pin awareness, trade discipline, and endgame conversion'
-  ],
-  getMove: getStonefishV6ArgonMove
-};
-
 selectedModel = 'v6';
 modelSelect.value = 'v6';
 updateModelUI();
