@@ -182,6 +182,11 @@ test('ARMX 1.1 controller powers Stonefish_v6 directly', () => {
 test('Stonefish_v6 Argon (devtest) returns valid moves and identifies brilliant style opportunities', () => {
   assert.equal(typeof getStonefishV6ArgonMove, 'function');
   const game = new Chess();
-  const move = getStonefishV6ArgonMove(game);
-  assert.ok(move && move.from && move.to);
+  globalThis.STONEFISH_ARGON_BRILLIANTS = [];
+  for (let i = 0; i < 15; i += 1) {
+    const move = getStonefishV6ArgonMove(game);
+    assert.ok(move && move.from && move.to);
+    game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+  }
+  assert.ok(globalThis.STONEFISH_ARGON_BRILLIANTS.length >= 1, `Expected at least 1 brilliant style move recorded, got ${globalThis.STONEFISH_ARGON_BRILLIANTS.length}`);
 });
