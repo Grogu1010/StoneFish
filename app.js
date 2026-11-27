@@ -572,6 +572,20 @@ models.v6 = {
   getMove: getStonefishV6Move
 };
 
+models.v61 = {
+  name: 'Stonefish_v6.1 (experimental)',
+  trait: 'Optimized deep search · ARMX 1.1',
+  subtitle: 'Experimental Stonefish 6.1: preserves the v6 search and evaluation while adding exact static-evaluation reuse and constant-time root-history lookup. Performance and strength are under benchmark.',
+  logic: [
+    'Retain v6 evaluation, PVS, aspiration windows, null-move pruning, ProbCut, LMR, and ARMX 1.1',
+    'Reuse exact evaluations for repeated positions using collision-checked Zobrist keys',
+    'Use indexed root-game history to avoid scanning every historic position at each search node',
+    'Expose cache telemetry so performance gains can be measured rather than assumed',
+    'Keep the original Stonefish_v6 as the unchanged comparison engine'
+  ],
+  getMove: getStonefishV61Move
+};
+
 selectedModel = 'v6';
 modelSelect.value = 'v6';
 updateModelUI();

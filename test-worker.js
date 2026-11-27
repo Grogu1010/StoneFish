@@ -12,6 +12,7 @@ importScripts(
   './models/v5_pro.js',
   './models/v5_5.js',
   './models/v6.js',
+  './models/v6_1.js',
   './ARMX/ARMX-preview.js',
   './ARMX/ARMX.js',
   './ARMX/ARMX_1_1.js'
@@ -27,7 +28,8 @@ const workerModels = {
   v5pro: getStonefishV5ProMove,
   v55: getStonefishV55Move,
   v55artemis: getStonefishV55ArtemisMove,
-  v6: getStonefishV6Move
+  v6: getStonefishV6Move,
+  v61: getStonefishV61Move
 };
 
 function seededRandom(seed) {

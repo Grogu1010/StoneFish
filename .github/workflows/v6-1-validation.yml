@@ -1,0 +1,30 @@
+name: StoneFish v6.1 validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'models/v6.js'
+      - 'models/v6_1.js'
+      - 'app.js'
+      - 'index.html'
+      - 'test-worker.js'
+      - 'tests/v6_1_engine.test.js'
+      - 'benchmarks/v6_1_benchmark.cjs'
+      - 'package.json'
+      - '.github/workflows/v6-1-validation.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax checks
+        run: npm run lint
+      - name: v6 and v6.1 regression tests
+        run: node --test tests/v6_engine.test.js tests/v6_1_engine.test.js
+      - name: Matched-depth performance benchmark
+        run: node benchmarks/v6_1_benchmark.cjs
