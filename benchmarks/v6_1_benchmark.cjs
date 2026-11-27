@@ -9,7 +9,7 @@ const files = [
 vm.runInThisContext(files.map(file => fs.readFileSync(file, 'utf8')).join('\n\n'), {
   filename: 'stonefish-v6_1-benchmark-bundle.js'
 });
-const options = { maxDepth: 5, maxTimeMs: 15000, softNodes: 2500000, hardNodes: 4000000 };
+const options = { maxDepth: 7, maxTimeMs: 20000, softNodes: 5000000, hardNodes: 8000000 };
 function historicalMiddlegame() {
   const game = new Chess();
   for (let ply=0; ply<32; ply++) {
@@ -43,11 +43,16 @@ for(const [name,makeGame] of positions){
     play(getStonefishV61Move,'SF61_LAST_SEARCH',makeGame);
   }
   const a=[],b=[];
-  for(let i=0;i<5;i++){
-    a.push(play(getStonefishV6Move,'SF6_LAST_SEARCH',makeGame));
-    // Clear 6.1's evaluation cache before each timed sample. This measures
-    // transposition reuse within a single search, not a warmed repeated position.
-    b.push(play(getStonefishV61Move,'SF61_LAST_SEARCH',makeGame,true));
+  for(let i=0;i<7;i++){
+    if(i&1){
+      b.push(play(getStonefishV61Move,'SF61_LAST_SEARCH',makeGame,true));
+      a.push(play(getStonefishV6Move,'SF6_LAST_SEARCH',makeGame));
+    } else {
+      a.push(play(getStonefishV6Move,'SF6_LAST_SEARCH',makeGame));
+      // Clear 6.1's evaluation cache before each timed sample. This measures
+      // transposition reuse within a single search, not a warmed repeated position.
+      b.push(play(getStonefishV61Move,'SF61_LAST_SEARCH',makeGame,true));
+    }
   }
   const v6Ms=median(a.map(x=>x.ms)),v61Ms=median(b.map(x=>x.ms));
   results.push({position:name,depthV6:median(a.map(x=>x.depth)),depthV61:median(b.map(x=>x.depth)),
@@ -57,5 +62,5 @@ for(const [name,makeGame] of positions){
     v61MedianEvalCacheHits:median(b.map(x=>x.cacheHits)),v61MedianEvalCacheMisses:median(b.map(x=>x.cacheMisses)),
     sameMoveRate:b.filter((x,i)=>x.move===a[i].move).length/5});
 }
-console.log(JSON.stringify({suite:'StoneFish v6.1 cold-evaluation-cache fixed-depth benchmark',options,results},null,2));
+console.log(JSON.stringify({suite:'StoneFish v6.1 cold-evaluation-cache matched-7-ply benchmark',options,results},null,2));
 if(results.some(r=>r.depthV6!==r.depthV61))process.exitCode=1;
