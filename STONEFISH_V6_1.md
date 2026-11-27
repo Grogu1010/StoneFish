@@ -10,7 +10,8 @@
 The first v6.1 fork keeps the v6 evaluator, search algorithm, ARMX 1.1 planning, and bounded finalist verification. It adds two semantics-preserving hot-path optimizations:
 
 1. **Exact static-evaluation cache.** Entries are indexed by the 64-bit Zobrist key and validate both 32-bit halves before reuse. A collision can only evict an entry; it cannot return a wrong score.
-2. **Indexed root-game repetition history.** v6 scans the full root history at every search node. v6.1 keeps the search-path check unchanged but indexes root history with open addressing and exact key comparisons.
+2. **Adaptive repetition-history lookup.** v6 scans the full root history at every search node. v6.1 keeps the original short linear scan for histories under eight entries, then switches to open-addressed lookup with exact key comparisons.
+3. **Selective evaluation caching.** Dense positions with more than 30 pieces bypass the cache because benchmarks showed lookup overhead could exceed the saved evaluation work there. Cache lookups are retained for quieter middlegame/endgame positions.
 
 Evaluation values and search pruning are unchanged. Cache hit/miss counts are recorded in `SF61_LAST_SEARCH`.
 

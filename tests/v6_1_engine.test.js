@@ -30,7 +30,7 @@ test('v6.1 static evaluation is exactly equal to v6 on representative positions'
 
 test('v6.1 evaluation cache returns exact scores and records cache hits', () => {
   stonefishV61ClearEvalCache();
-  const game = new Chess('r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3');
+  const game = new Chess('r2q1rk1/pp2bppp/2n1pn2/2bp4/3P4/2NBPN2/PPP2PPP/R1BQ1RK1 w - - 0 9');
   const first = stonefishV61EvaluateRaw(game);
   const second = stonefishV61EvaluateRaw(game);
   const stats = stonefishV61EvalCacheStats();
@@ -39,12 +39,25 @@ test('v6.1 evaluation cache returns exact scores and records cache hits', () => 
   assert.ok(stats.size >= 32768);
 });
 
+test('v6.1 skips evaluation-cache lookups in dense opening positions', () => {
+  stonefishV61ClearEvalCache();
+  const game = new Chess();
+  const first = stonefishV61EvaluateRaw(game);
+  const second = stonefishV61EvaluateRaw(game);
+  assert.equal(first, second);
+  const stats = stonefishV61EvalCacheStats();
+  assert.equal(stats.hits, 0);
+  assert.equal(stats.misses, 0);
+});
+
 test('v6.1 indexed repetition history preserves legal move generation', () => {
   const game = new Chess();
-  for (const [from,to] of [['g1','f3'],['g8','f6'],['f3','g1'],['f6','g8']]) {
-    assert.ok(game.move({ from, to }), `Failed setup move ${from}${to}`);
+  for (let ply=0; ply<32; ply++) {
+    const moves = game.fastMoves();
+    assert.ok(moves.length, `No legal moves while constructing history at ply ${ply}`);
+    game._applyRaw(moves[(ply * 29 + 5) % moves.length], true);
   }
-  assert.ok(game.positionCounts.size > 1);
+  assert.ok(game.positionCounts.size > 8, `Expected substantial root history, got ${game.positionCounts.size} entries`);
   const move = getStonefishV61Move(game, FIXED_SEARCH);
   assert.ok(move && game.fastMoves().some(raw =>
     game._alg(raw.from) === move.from && game._alg(raw.to) === move.to

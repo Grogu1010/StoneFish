@@ -993,14 +993,20 @@
   const evalPinned = new Int8Array(64); // 1 = absolute pin, 2 = relative pin
 
   function evaluate() {
+    // Only cache when the position is complex enough for repeated full evaluation
+    // to outweigh the lookup cost. Dense opening/tactical boards stay on v6's path.
+    const cacheable = (pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
+      + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13]) <= 30;
     const cacheIndex = (hashHi ^ hashLo) & EVAL_CACHE_MASK;
-    if (evalCacheValid[cacheIndex]
-      && evalCacheKeyHi[cacheIndex] === hashHi
-      && evalCacheKeyLo[cacheIndex] === hashLo) {
-      evalCacheHits += 1;
-      return evalCacheScore[cacheIndex];
+    if (cacheable) {
+      if (evalCacheValid[cacheIndex]
+        && evalCacheKeyHi[cacheIndex] === hashHi
+        && evalCacheKeyLo[cacheIndex] === hashLo) {
+        evalCacheHits += 1;
+        return evalCacheScore[cacheIndex];
+      }
+      evalCacheMisses += 1;
     }
-    evalCacheMisses += 1;
     let mg = 0;
     let eg = 0;
     let phase = 0;
@@ -1182,10 +1188,12 @@
 
       const totalScore = winner * (Math.abs(wRawMat - bRawMat) + 500 + mop);
       const value = totalScore * side + 8;
-      evalCacheKeyHi[cacheIndex] = hashHi;
-      evalCacheKeyLo[cacheIndex] = hashLo;
-      evalCacheScore[cacheIndex] = value;
-      evalCacheValid[cacheIndex] = 1;
+      if (cacheable) {
+        evalCacheKeyHi[cacheIndex] = hashHi;
+        evalCacheKeyLo[cacheIndex] = hashLo;
+        evalCacheScore[cacheIndex] = value;
+        evalCacheValid[cacheIndex] = 1;
+      }
       return value;
     }
 
@@ -1771,7 +1779,14 @@
         return true;
       }
     }
-    // Same draw rule as v6, using exact open-addressed lookup.
+    // For short games, the original tiny linear scan is cheaper. Switch to
+    // indexed lookup once the game history is large enough to justify hashing.
+    if (rootHistLen < 8) {
+      for (let i = 0; i < rootHistLen; i += 1) {
+        if (rootHistHi[i] === hashHi && rootHistLo[i] === hashLo) return true;
+      }
+      return false;
+    }
     return hasRootHistoryHash(hashHi, hashLo);
   }
 
