@@ -51,20 +51,21 @@ function send(frame) {
 }
 function ensureWorker() {
   if (worker) return worker;
-  worker = new Worker(path.join(__dirname, 'chessbot-arena-worker.cjs'));
-  worker.on('message', onWorkerResult);
-  worker.on('error', error => {
+  const current = new Worker(path.join(__dirname, 'chessbot-arena-worker.cjs'));
+  worker = current;
+  current.on('message', onWorkerResult);
+  current.on('error', error => {
     log('worker_error', { message: error.message });
-    worker = null;
+    if (worker === current) worker = null;
     if (job) { clearTimeout(job.timer); job = null; }
-    if (!stopping) ensureWorker();
+    if (!stopping && !worker) ensureWorker();
   });
-  worker.on('exit', code => {
+  current.on('exit', code => {
     if (code !== 0) log('worker_exit', { code });
-    worker = null;
-    if (!stopping && !job) ensureWorker();
+    if (worker === current) worker = null;
+    if (!stopping && !job && !worker) ensureWorker();
   });
-  return worker;
+  return current;
 }
 function discardWorker() {
   const old = worker;
@@ -229,6 +230,9 @@ function connect() {
   ws.on('close', (code, reasonBuffer) => {
     log('socket_closed', { code, reason: reasonBuffer.toString() });
     if (socket === ws) socket = null;
+    // Never let a search started on a disconnected session emit on a later socket.
+    if (job) { clearTimeout(job.timer); job = null; }
+    discardWorker();
     if (code === 4001) {
       log('auth_rejected_check_token');
       stopping = true;
