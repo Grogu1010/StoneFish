@@ -235,13 +235,13 @@ function connect() {
     discardWorker();
     if (code === 4001) {
       log('auth_rejected_check_token');
-      stopping = true;
       process.exitCode = 1;
+      shutdown('authentication rejected');
       return;
     }
     if (code === 4002) {
       log('duplicate_identity_socket_stopped');
-      stopping = true;
+      shutdown('identity already connected elsewhere');
       return;
     }
     scheduleReconnect();
