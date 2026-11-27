@@ -244,6 +244,7 @@
   const evalCacheValid = new Uint8Array(EVAL_CACHE_SIZE);
   let evalCacheHits = 0;
   let evalCacheMisses = 0;
+  let evalCacheEnabled = false;
   const killer1 = new Int32Array(MAX_PLY);
   const killer2 = new Int32Array(MAX_PLY);
   const counterMoves = new Int32Array(4096);
@@ -390,9 +391,15 @@
     bk = game.kingSq[-1];
     computeFullHash();
 
+    // Decide cache policy once per loaded root position, not on every eval call.
+    const rootPieceTotal = pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
+      + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13];
+    evalCacheEnabled = rootPieceTotal >= 12 && rootPieceTotal <= 30;
+
     rootHistLen = 0;
-    rootHistHashValid.fill(0);
     if (game.positionCounts && game.positionCounts.size > 0) {
+      if (game.positionCounts.size >= 8) rootHistHashValid.fill(0);
+      const indexRootHistory = game.positionCounts.size >= 8;
       const tmp = new Int8Array(64);
       for (const [key, cnt] of game.positionCounts.entries()) {
         if (!cnt || rootHistLen >= ROOT_HIST_MAX) continue;
@@ -409,7 +416,7 @@
         rootHistHi[rootHistLen] = h;
         rootHistLo[rootHistLen] = l;
         rootHistCount[rootHistLen] = cnt;
-        addRootHistoryHash(h, l);
+        if (indexRootHistory) addRootHistoryHash(h, l);
         rootHistLen += 1;
       }
     }
@@ -993,14 +1000,8 @@
   const evalPinned = new Int8Array(64); // 1 = absolute pin, 2 = relative pin
 
   function evaluate() {
-    // Only cache when the position is complex enough for repeated full evaluation
-    // to outweigh the lookup cost. Dense opening/tactical boards stay on v6's path.
-    const cacheable = (pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
-      + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13]) >= 12
-      && (pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
-        + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13]) <= 30;
     const cacheIndex = (hashHi ^ hashLo) & EVAL_CACHE_MASK;
-    if (cacheable) {
+    if (evalCacheEnabled) {
       if (evalCacheValid[cacheIndex]
         && evalCacheKeyHi[cacheIndex] === hashHi
         && evalCacheKeyLo[cacheIndex] === hashLo) {
@@ -1190,7 +1191,7 @@
 
       const totalScore = winner * (Math.abs(wRawMat - bRawMat) + 500 + mop);
       const value = totalScore * side + 8;
-      if (cacheable) {
+      if (evalCacheEnabled) {
         evalCacheKeyHi[cacheIndex] = hashHi;
         evalCacheKeyLo[cacheIndex] = hashLo;
         evalCacheScore[cacheIndex] = value;
