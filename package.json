@@ -2,18 +2,21 @@
   "name": "stonefish-chess",
   "private": true,
   "version": "1.0.0",
-  "description": "StoneFish chess models and Lichess Bot API bridge",
+  "description": "StoneFish chess models with Lichess and Chessbot Arena bridges",
   "scripts": {
     "dev": "node server.js",
     "build": "node -c server.js",
-    "lint": "node -c server.js && node -c app.js && node -c StonefishChess.js && node -c stonefish-api.js && node -c stonefish-node.cjs && node -c test-worker.js && node -c models/v6.js && node -c ARMX/ARMX_1_1.js && node -c models/v6_argon.js",
+    "lint": "node -c server.js && node -c app.js && node -c StonefishChess.js && node -c stonefish-api.js && node -c stonefish-node.cjs && node -c test-worker.js && node -c chessbot-arena.cjs && node -c chessbot-arena-worker.cjs && node -c chessbot-arena-all.cjs && node -c models/v6.js && node -c ARMX/ARMX_1_1.js && node -c models/v6_argon.js",
     "start": "node server.js",
-    "lichess": "node lichess-bot.cjs"
+    "lichess": "node lichess-bot.cjs",
+    "arena": "node chessbot-arena-all.cjs",
+    "arena:single": "node chessbot-arena.cjs"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "express": "^5.3.0"
+    "express": "^5.3.0",
+    "ws": "^8.18.3"
   }
 }
