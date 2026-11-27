@@ -11,7 +11,7 @@ The first v6.1 fork keeps the v6 evaluator, search algorithm, ARMX 1.1 planning,
 
 1. **Exact static-evaluation cache.** Entries are indexed by the 64-bit Zobrist key and validate both 32-bit halves before reuse. A collision can only evict an entry; it cannot return a wrong score.
 2. **Adaptive repetition-history lookup.** v6 scans the full root history at every search node. v6.1 keeps the original short linear scan for histories under eight entries, then switches to open-addressed lookup with exact key comparisons.
-3. **Selective evaluation caching.** Dense positions with more than 30 pieces bypass the cache because benchmarks showed lookup overhead could exceed the saved evaluation work there. Cache lookups are retained for quieter middlegame/endgame positions.
+3. **Selective evaluation caching.** Positions with more than 30 pieces or fewer than 12 pieces bypass the cache. Benchmarks showed that very dense opening/tactical boards and sparse endgames can cost more to cache than to evaluate; the cache is reserved for the middlegame band where repeated full evaluations are more expensive.
 
 Evaluation values and search pruning are unchanged. Cache hit/miss counts are recorded in `SF61_LAST_SEARCH`.
 

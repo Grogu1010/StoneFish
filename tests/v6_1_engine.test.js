@@ -30,7 +30,7 @@ test('v6.1 static evaluation is exactly equal to v6 on representative positions'
 
 test('v6.1 evaluation cache returns exact scores and records cache hits', () => {
   stonefishV61ClearEvalCache();
-  const game = new Chess('8/5pk1/6p1/3R4/8/4K3/5PP1/8 w - - 0 1');
+  const game = new Chess('r3k2r/ppp2ppp/2n1pn2/3p4/3P4/2NBPN2/PPP2PPP/R2Q1RK1 w kq - 0 1');
   const first = stonefishV61EvaluateRaw(game);
   const second = stonefishV61EvaluateRaw(game);
   const stats = stonefishV61EvalCacheStats();

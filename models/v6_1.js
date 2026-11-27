@@ -996,7 +996,9 @@
     // Only cache when the position is complex enough for repeated full evaluation
     // to outweigh the lookup cost. Dense opening/tactical boards stay on v6's path.
     const cacheable = (pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
-      + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13]) <= 30;
+      + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13]) >= 12
+      && (pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
+        + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13]) <= 30;
     const cacheIndex = (hashHi ^ hashLo) & EVAL_CACHE_MASK;
     if (cacheable) {
       if (evalCacheValid[cacheIndex]

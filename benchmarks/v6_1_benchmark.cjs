@@ -43,7 +43,7 @@ for(const [name,makeGame] of positions){
     play(getStonefishV61Move,'SF61_LAST_SEARCH',makeGame);
   }
   const a=[],b=[];
-  for(let i=0;i<7;i++){
+  for(let i=0;i<15;i++){
     if(i&1){
       b.push(play(getStonefishV61Move,'SF61_LAST_SEARCH',makeGame,true));
       a.push(play(getStonefishV6Move,'SF6_LAST_SEARCH',makeGame));
@@ -60,7 +60,7 @@ for(const [name,makeGame] of positions){
     speedRatio:Number((v6Ms/Math.max(.001,v61Ms)).toFixed(3)),
     v6MedianNodes:median(a.map(x=>x.nodes)),v61MedianNodes:median(b.map(x=>x.nodes)),
     v61MedianEvalCacheHits:median(b.map(x=>x.cacheHits)),v61MedianEvalCacheMisses:median(b.map(x=>x.cacheMisses)),
-    sameMoveRate:b.filter((x,i)=>x.move===a[i].move).length/5});
+    sameMoveRate:b.filter((x,i)=>x.move===a[i].move).length/b.length});
 }
 console.log(JSON.stringify({suite:'StoneFish v6.1 cold-evaluation-cache matched-7-ply benchmark',options,results},null,2));
 if(results.some(r=>r.depthV6!==r.depthV61))process.exitCode=1;
