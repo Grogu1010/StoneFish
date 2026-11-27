@@ -4,9 +4,16 @@
   "version": "1.0.0",
   "description": "StoneFish chess models and Lichess Bot API bridge",
   "scripts": {
+    "dev": "node server.js",
+    "build": "node -c server.js",
+    "lint": "node -c server.js && node -c app.js && node -c StonefishChess.js && node -c stonefish-api.js && node -c stonefish-node.cjs && node -c test-worker.js && node -c models/v6.js && node -c ARMX/ARMX_1_1.js && node -c models/v6_argon.js",
+    "start": "node server.js",
     "lichess": "node lichess-bot.cjs"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.3.0"
   }
 }

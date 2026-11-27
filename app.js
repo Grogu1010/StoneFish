@@ -9,6 +9,8 @@ const heroModel = document.getElementById('hero-model');
 const heroSubtitle = document.getElementById('hero-subtitle');
 const botTrait = document.getElementById('bot-trait');
 const logicLines = document.getElementById('logic-lines');
+const watchWhiteSelect = document.getElementById('watch-white');
+const watchBlackSelect = document.getElementById('watch-black');
 const watchButton = document.getElementById('watch-game');
 const testCountInput = document.getElementById('test-count');
 const runTestButton = document.getElementById('run-test');
@@ -147,7 +149,36 @@ function updateModelUI() {
   logicLines.innerHTML = model.logic.map((line, index) => `<div class="logic-line"><span>${index + 1}</span><p>${line}</p></div>`).join('');
 }
 
-function stopWatching() { watchMode = false; if (watchTimer) window.clearTimeout(watchTimer); watchTimer = null; watchButton.textContent = 'Watch v4 vs v4.5'; }
+function getWatchMatchup() {
+  const whiteKey = watchWhiteSelect && models[watchWhiteSelect.value] ? watchWhiteSelect.value : 'v6';
+  const blackKey = watchBlackSelect && models[watchBlackSelect.value] ? watchBlackSelect.value : 'v55artemis';
+  return { whiteKey, blackKey };
+}
+
+function updateWatchButtonLabel() {
+  if (watchMode) {
+    watchButton.textContent = 'Stop watching';
+    return;
+  }
+  const { whiteKey, blackKey } = getWatchMatchup();
+  const whiteModel = models[whiteKey];
+  const blackModel = models[blackKey];
+  if (!whiteModel || !blackModel) return;
+  watchButton.textContent = `Watch ${whiteModel.name} vs ${blackModel.name}`;
+}
+
+function setWatchSelectsDisabled(disabled) {
+  if (watchWhiteSelect) watchWhiteSelect.disabled = disabled;
+  if (watchBlackSelect) watchBlackSelect.disabled = disabled;
+}
+
+function stopWatching() {
+  watchMode = false;
+  if (watchTimer) window.clearTimeout(watchTimer);
+  watchTimer = null;
+  setWatchSelectsDisabled(testing);
+  updateWatchButtonLabel();
+}
 
 function resetGame() {
   stopWatching();
@@ -164,24 +195,70 @@ function resetGame() {
 function startWatching() {
   if (testing) return;
   if (watchMode) { stopWatching(); statusElement.textContent = 'Spectator game paused.'; return; }
-  game.reset(); clearV45BookState(); clearSelection(); lastMoveSquares = []; watchMode = true;
-  watchButton.textContent = 'Stop watching';
-  lastMoveElement.textContent = 'Stonefish_v4 is White. Stonefish_v4.5 is Black.';
-  renderBoard(); updateWatchStatus(); watchTimer = window.setTimeout(playWatchMove, 3000);
+  if (typeof sfBotTimer !== 'undefined' && sfBotTimer) { window.clearTimeout(sfBotTimer); sfBotTimer = null; }
+  botThinking = false;
+  game.reset();
+  clearV45BookState();
+  clearSelection();
+  lastMoveSquares = [];
+  if (typeof sfMoveLog !== 'undefined') sfMoveLog = [];
+  if (typeof sfResigned !== 'undefined') sfResigned = false;
+  if (typeof sfPendingPromotion !== 'undefined') sfPendingPromotion = null;
+  if (typeof stonefishUiGameEnded !== 'undefined') stonefishUiGameEnded = false;
+
+  const { whiteKey, blackKey } = getWatchMatchup();
+  watchMode = true;
+  setWatchSelectsDisabled(true);
+  updateWatchButtonLabel();
+  lastMoveElement.textContent = `${models[whiteKey].name} is White. ${models[blackKey].name} is Black.`;
+  renderBoard();
+  updateWatchStatus();
+  if (typeof sfRefreshPositionUi === 'function') sfRefreshPositionUi();
+  watchTimer = window.setTimeout(playWatchMove, 3000);
 }
 
 function updateWatchStatus() {
-  if (game.in_checkmate()) { statusElement.textContent = `Checkmate. ${game.turn() === 'w' ? 'Stonefish_v4.5' : 'Stonefish_v4'} won the spectator game.`; stopWatching(); return; }
-  if (game.in_draw()) { statusElement.textContent = 'Spectator game ended in a draw.'; stopWatching(); return; }
-  statusElement.textContent = `${game.turn() === 'w' ? 'Stonefish_v4' : 'Stonefish_v4.5'} to move.${game.in_check() ? ' Check!' : ''}`;
+  const { whiteKey, blackKey } = getWatchMatchup();
+  const sameModel = whiteKey === blackKey;
+  if (game.in_checkmate()) {
+    const winnerColor = game.turn() === 'w' ? 'Black' : 'White';
+    const winnerName = models[game.turn() === 'w' ? blackKey : whiteKey].name;
+    statusElement.textContent = sameModel
+      ? `Checkmate. ${winnerColor} (${winnerName}) won the spectator game.`
+      : `Checkmate. ${winnerName} won the spectator game.`;
+    stopWatching();
+    if (typeof sfRefreshPositionUi === 'function') sfRefreshPositionUi();
+    return;
+  }
+  if (game.in_draw()) {
+    statusElement.textContent = 'Spectator game ended in a draw.';
+    stopWatching();
+    if (typeof sfRefreshPositionUi === 'function') sfRefreshPositionUi();
+    return;
+  }
+  const sideColor = game.turn() === 'w' ? 'White' : 'Black';
+  const sideName = models[game.turn() === 'w' ? whiteKey : blackKey].name;
+  const label = sameModel ? `${sideName} (${sideColor})` : sideName;
+  statusElement.textContent = `${label} to move.${game.in_check() ? ' Check!' : ''}`;
 }
 
 function playWatchMove() {
   if (!watchMode || game.game_over()) return updateWatchStatus();
-  const model = models[game.turn() === 'w' ? 'v4' : 'v45'];
+  const { whiteKey, blackKey } = getWatchMatchup();
+  const sameModel = whiteKey === blackKey;
+  const color = game.turn();
+  const moveNumber = game.fullmove;
+  const model = models[color === 'w' ? whiteKey : blackKey];
   const playedMove = playMoveOnGame(game, model.getMove(game));
-  if (playedMove) { lastMoveSquares = [playedMove.from, playedMove.to]; lastMoveElement.textContent = `${model.name} played ${playedMove.san}.`; }
-  renderBoard(); updateWatchStatus();
+  if (playedMove) {
+    lastMoveSquares = [playedMove.from, playedMove.to];
+    if (typeof sfRecordMove === 'function') sfRecordMove(playedMove, color, moveNumber);
+    const moverLabel = sameModel ? `${model.name} (${color === 'w' ? 'White' : 'Black'})` : model.name;
+    lastMoveElement.textContent = `${moverLabel} played ${playedMove.san}.`;
+  }
+  renderBoard();
+  updateWatchStatus();
+  if (typeof sfRefreshPositionUi === 'function') sfRefreshPositionUi();
   if (watchMode && !game.game_over()) watchTimer = window.setTimeout(playWatchMove, 3000);
 }
 
@@ -232,6 +309,7 @@ function renderRoundRobin(stats, selectedKeys, completed, total, done = false) {
 
 function setTestControlsDisabled(disabled) {
   runTestButton.disabled = disabled; modelSelect.disabled = disabled; testCountInput.disabled = disabled; watchButton.disabled = disabled; newGameButton.disabled = disabled;
+  setWatchSelectsDisabled(disabled || watchMode);
   testModelCheckboxes.forEach(box => { box.disabled = disabled; });
 }
 function getTestWorker() { if (!testWorker) testWorker = new Worker(`test-worker.js?v=${Date.now()}`); return testWorker; }
@@ -272,6 +350,8 @@ async function runRoundRobinTest() {
 }
 
 modelSelect.addEventListener('change', () => { selectedModel = modelSelect.value; updateModelUI(); resetGame(); });
+if (watchWhiteSelect) watchWhiteSelect.addEventListener('change', updateWatchButtonLabel);
+if (watchBlackSelect) watchBlackSelect.addEventListener('change', updateWatchButtonLabel);
 newGameButton.addEventListener('click', () => resetGame());
 watchButton.addEventListener('click', startWatching);
 runTestButton.addEventListener('click', runRoundRobinTest);
@@ -423,11 +503,6 @@ models.v5 = {
   getMove: getStonefishV5Move
 };
 
-selectedModel = 'v5';
-modelSelect.value = 'v5';
-updateModelUI();
-resetGame();
-
 // --- Stonefish_v5_pro_ui.js ---
 // UI registration for Stonefish_v5 Pro.
 const v5ProLogic = [
@@ -447,11 +522,6 @@ models.v5pro = {
   getMove: getStonefishV5ProMove
 };
 
-selectedModel = 'v5pro';
-modelSelect.value = 'v5pro';
-updateModelUI();
-resetGame();
-
 // --- Stonefish_v5_5_ui.js ---
 // Public registration for the final Stonefish v5.5 release.
 
@@ -469,74 +539,58 @@ models.v55 = {
   getMove: getStonefishV55Move
 };
 
-selectedModel = 'v55';
-modelSelect.value = 'v55';
-updateModelUI();
-resetGame();
+// --- Stonefish_v5_5_artemis_ui.js ---
+// Public registration for Stonefish v5.5 Artemis release.
 
-// --- Stonefish_v5_5_dev_ui.js ---
-// Developer-only registration for the Stonefish v5.5 No-ARMX control.
-// This control intentionally stays out of the normal opponent selector.
-
-models.v55noarmx = {
-  name: 'Stonefish_v5.5 (No ARMX)',
-  trait: 'Developer-only v5.5 control build',
-  subtitle: 'The final native v5.5 host with ARMX disabled, retained only for controlled development comparisons.',
+models.v55artemis = {
+  name: 'Stonefish_v5.5 Artemis',
+  trait: 'Full ARMX · adaptive finalist engine',
+  subtitle: 'The newest Stonefish 5.5 model: native PVS search with Full ARMX opponent adaptation, causal treatment tracking, and tactical finalist steering.',
   logic: [
-    'Use the same native v5.5 host as the released model',
-    'Consider every legal root move with native PVS',
-    'Resolve captures before evaluating a position and keep exact finalist scores',
-    'Do not call ARMX at any point'
-  ],
-  getMove: null
-};
-
-// --- Stonefish_v5_5_range_ui.js ---
-// Only the saved best-known profile for each model appears in Dev Test.
-models.v55athenatestunit = {
-  name: 'v5.5 Athena (testunit)',
-  trait: 'Full ARMX · extreme defense',
-  subtitle: 'A defensive Full-ARMX v5.5 that preserves tension, protects its king and learns which defensive answers frustrate this opponent.',
-  logic: [
-    'Use the same native PVS engine and evaluation as the v5.5 range',
+    'Evaluate material, piece placement, pawn structure and king safety',
+    'Consider every legal root move with native PVS and quiescence',
     'Run Full ARMX with per-game causal treatment/control evidence',
-    'Trust Full-only causal votes only when Preview predicts this opponent reliably',
-    'Prefer defensive, tension-preserving finalists when native scores permit',
+    'Adapt to opponent tactical reply preferences and pressure patterns',
     'Never override mate-scale truth or large native score gaps',
-    'Reset all opponent notes every game'
-  ],
-  getMove: getStonefishV55AthenaMove
-};
-
-models.v55arestestunit = {
-  name: 'v5.5 Ares (testunit)',
-  trait: 'Full ARMX · extreme aggression',
-  subtitle: 'An aggressive Full-ARMX v5.5 that seeks forcing contact and learns which forms of pressure this opponent handles poorly.',
-  logic: [
-    'Use the same native PVS engine and evaluation as the v5.5 range',
-    'Run Full ARMX with per-game causal treatment/control evidence',
-    'Trust Full-only causal votes only when Preview predicts this opponent reliably',
-    'Prefer checks, king pressure, captures and forward forcing play when native scores permit',
-    'Never override mate-scale truth or large native score gaps',
-    'Reset all opponent notes every game'
-  ],
-  getMove: getStonefishV55AresMove
-};
-
-models.v55artemistestunit = {
-  name: 'v5.5 Artemis (testunit)',
-  trait: 'Full ARMX · balanced',
-  subtitle: 'The neutral Full-ARMX reference: no style prior, only stronger opponent adaptation and evidence-driven search effort.',
-  logic: [
-    'Use the same native PVS engine and evaluation as Athena and Ares',
-    'Run Full ARMX with per-game causal treatment/control evidence',
-    'Trust Full-only causal votes only when Preview predicts this opponent reliably',
-    'Apply no defensive or aggressive style prior',
-    'Use learned opponent evidence only within protected native-search bounds',
     'Reset all opponent notes every game'
   ],
   getMove: getStonefishV55ArtemisMove
 };
+
+models.v6 = {
+  name: 'Stonefish_v6',
+  trait: 'Deep search · ARMX 1.1 adaptive engine',
+  subtitle: 'The newest Stonefish 6 model: 8–11 ply typed-array search with ARMX 1.1 opponent adaptation, anti-blockage opening development, pin awareness, trade discipline, preserved pawn structure, and bare-king checkmate mastery.',
+  logic: [
+    'Plan search depth, time budget, and dynamic contempt per move using ARMX 1.1 opponent adaptation',
+    'Search 8–11+ plies with typed-array PVS, ProbCut, Improving-gated pruning, and passed-pawn extensions',
+    'Develop minor pieces and push central pawns without blocking home bishops (no opening book)',
+    'Preserve Stonefish pawn structure while detecting absolute and relative pins',
+    'Avoid equal piece trades when down in material and verify close finalists with bounded deep re-search',
+    'Convert won endgames (K+Q, K+R, K+B+N) with box restriction, opposition, and stalemate avoidance'
+  ],
+  getMove: getStonefishV6Move
+};
+
+models.v6argon = {
+  name: 'Stonefish_v6 Argon (devtest)',
+  trait: 'Show-off tactical engine · brilliant moves hunter',
+  subtitle: 'Stonefish v6 outfitted with a Brilliant Move Hunter: actively sets up and plays stylish tactical sacrifices, piece offerings, and checkmate geometries aiming for 4+ brilliant moves per game.',
+  logic: [
+    'Built on the deep typed-array PVS engine of Stonefish v6 with ARMX 1.1 search planning',
+    'Scans candidate tactical moves, captures, and checks for brilliant piece/pawn sacrifices',
+    'Prioritizes stylish, initiative-driven attacking continuations that maintain winning evaluation',
+    'Aims for ~4 brilliant moves per game while achieving >= 60% win rate against v6',
+    'Preserves v6 opening anti-blockage, pawn structure, pin awareness, trade discipline, and endgame conversion'
+  ],
+  getMove: getStonefishV6ArgonMove
+};
+
+selectedModel = 'v6';
+modelSelect.value = 'v6';
+updateModelUI();
+updateWatchButtonLabel();
+resetGame();
 
 // --- Stonefish_parallel_tests.js ---
 // Parallel browser test runner.
@@ -619,7 +673,7 @@ function stonefishTimedRenderRoundRobin(stats, selectedKeys, completed, total, d
   const overallRows = selectedKeys.map(key => {
     const s = stats.overall[key];
     const performance = stonefishPerformanceSummary(s, s.games);
-    const backend = key === 'v55'
+    const backend = (key === 'v55' || key === 'v55artemis')
       ? `<span>ARMX backend: ${s.nativeKernelNo ? 'JS fallback detected' : 'compiled WASM available'} · compiled-search moves ${s.compiledMoves} · fallback/base moves ${s.fallbackMoves}</span>`
       : '';
     return `<div class="result-row"><strong>${models[key].name}</strong><span>${s.wins}W · ${s.losses}L · ${s.draws}D · ${s.games} played</span><span>W ${percent(s.wins, s.games)} · L ${percent(s.losses, s.games)} · D ${percent(s.draws, s.games)}</span><span>${performance.text}</span>${backend}</div>`;

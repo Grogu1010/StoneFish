@@ -3275,20 +3275,13 @@ function stonefishV55RangeScoreAllMoves(game, style = 'artemis') {
   return armxFullRankHost(game, host, style);
 }
 
-function getStonefishV55AthenaMove(game) {
+function getStonefishV55ArtemisMove(game) {
   const scored = stonefishV55RangeScoreAllMoves(game, 'athena');
   return scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
 }
 
-function getStonefishV55AresMove(game) {
-  const scored = stonefishV55RangeScoreAllMoves(game, 'ares');
-  return scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
-}
-
-function getStonefishV55ArtemisMove(game) {
-  const scored = stonefishV55RangeScoreAllMoves(game, 'artemis');
-  return scored.length ? stonefishV3PublicMove(game, scored[0].raw) : null;
-}
+const getStonefishV55AthenaMove = getStonefishV55ArtemisMove;
+const getStonefishV55AresMove = getStonefishV55ArtemisMove;
 
 function stonefishV55PreviewRankHost(game, host) {
   const finished=host&&Array.isArray(host.finished)?host.finished:[];

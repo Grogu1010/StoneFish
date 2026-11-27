@@ -2,11 +2,20 @@ const stonefishWorkerAssetSuffix = self.location && self.location.search ? self.
 const stonefishWorkerAsset = path => `${path}${stonefishWorkerAssetSuffix}`;
 
 importScripts(
-  stonefishWorkerAsset('./StonefishChess.js'),
-  ...['v1.js','v2.js','v3.js','v4.js','v4_5.js','v5.js','v5_pro.js','v5_5.js']
-    .map(file=>stonefishWorkerAsset(`./models/${file}`)),
-  stonefishWorkerAsset('./ARMX/ARMX-preview.js'),
-  stonefishWorkerAsset('./ARMX/ARMX.js')
+  './StonefishChess.js',
+  './models/v1.js',
+  './models/v2.js',
+  './models/v3.js',
+  './models/v4.js',
+  './models/v4_5.js',
+  './models/v5.js',
+  './models/v5_pro.js',
+  './models/v5_5.js',
+  './models/v6.js',
+  './models/v6_argon.js',
+  './ARMX/ARMX-preview.js',
+  './ARMX/ARMX.js',
+  './ARMX/ARMX_1_1.js'
 );
 
 const workerModels = {
@@ -16,12 +25,11 @@ const workerModels = {
   v4: getStonefishV4Move,
   v45: getStonefishV45Move,
   v5: getStonefishV5Move,
-  v55noarmx: getStonefishV55NoARMXMove,
+  v5pro: getStonefishV5ProMove,
   v55: getStonefishV55Move,
-  v55athenatestunit: getStonefishV55AthenaMove,
-  v55arestestunit: getStonefishV55AresMove,
-  v55artemistestunit: getStonefishV55ArtemisMove,
-  v5pro: getStonefishV5ProMove
+  v55artemis: getStonefishV55ArtemisMove,
+  v6: getStonefishV6Move,
+  v6argon: getStonefishV6ArgonMove
 };
 
 function seededRandom(seed) {
@@ -118,7 +126,7 @@ function playTestGame(whiteModelKey, blackModelKey, maxPlies = 360, openingIndex
 
     metrics[modelKey].moves += 1;
     metrics[modelKey].thinkMs += elapsed;
-    if (modelKey === 'v55') {
+    if (modelKey === 'v55' || modelKey === 'v55artemis') {
       const compiled = !!(globalThis.SF55C_LAST && globalThis.SF55C_LAST.refutationGuard
         && globalThis.SF55C_LAST.refutationGuard.compiledSearch);
       if (compiled) metrics[modelKey].compiledMoves += 1;

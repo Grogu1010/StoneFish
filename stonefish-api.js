@@ -22,8 +22,10 @@
     'models/v5.js',
     'models/v5_pro.js',
     'models/v5_5.js',
+    'models/v6.js',
     'ARMX/ARMX-preview.js',
-    'ARMX/ARMX.js'
+    'ARMX/ARMX.js',
+    'ARMX/ARMX_1_1.js'
   ];
 
   const releasedModels = Object.freeze({
@@ -34,7 +36,9 @@
     v45: Object.freeze({ id: 'v45', name: 'Stonefish_v4.5', functionName: 'getStonefishV45Move' }),
     v5: Object.freeze({ id: 'v5', name: 'Stonefish_v5', functionName: 'getStonefishV5Move' }),
     v5pro: Object.freeze({ id: 'v5pro', name: 'Stonefish_v5 Pro', functionName: 'getStonefishV5ProMove' }),
-    v55: Object.freeze({ id: 'v55', name: 'Stonefish_v5.5', functionName: 'getStonefishV55Move' })
+    v55: Object.freeze({ id: 'v55', name: 'Stonefish_v5.5', functionName: 'getStonefishV55Move' }),
+    v55artemis: Object.freeze({ id: 'v55artemis', name: 'Stonefish_v5.5 Artemis', functionName: 'getStonefishV55ArtemisMove' }),
+    v6: Object.freeze({ id: 'v6', name: 'Stonefish_v6', functionName: 'getStonefishV6Move' })
   });
 
   function absolute(path) {

@@ -14,8 +14,10 @@ The API intentionally exposes released models only:
 - `v5` — Stonefish_v5
 - `v5pro` — Stonefish_v5 Pro
 - `v55` — Stonefish_v5.5
+- `v55artemis` — Stonefish_v5.5 Artemis
+- `v6` — Stonefish_v6
 
-Developer controls, No-ARMX builds, Athena/Ares/Artemis testunits, and future unreleased test models are not part of the public registry and cannot be selected through the API.
+Developer controls and experimental testunits are not part of the public registry and cannot be selected through the API.
 
 ## Quick start
 

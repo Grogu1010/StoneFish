@@ -20,8 +20,8 @@
 
     <section class="hero">
       <p class="eyebrow">STONEFISH CHESS LAB</p>
-      <h1>Play <span id="hero-model">Stonefish_v5 Pro</span></h1>
-      <p id="hero-subtitle" class="subtitle">Adaptive points, threat geometry, conversion intelligence, and a selective five-ply search.</p>
+      <h1>Play <span id="hero-model">Stonefish_v6</span></h1>
+      <p id="hero-subtitle" class="subtitle">Deep typed-array search with ARMX 1.1 opponent adaptation, anti-blockage opening development, pin awareness, trade discipline, and endgame mate mastery.</p>
     </section>
 
     <section class="game-layout" aria-label="StoneFish chess lab">
@@ -72,7 +72,9 @@
             <p class="bot-label">YOUR OPPONENT</p>
             <div class="model-row">
               <select id="model-select" class="model-select" aria-label="Choose Stonefish model">
-                <option value="v55" selected>Stonefish_v5.5</option>
+                <option value="v6" selected>Stonefish_v6</option>
+                <option value="v55artemis">Stonefish_v5.5 Artemis</option>
+                <option value="v55">Stonefish_v5.5</option>
                 <option value="v5pro">Stonefish_v5 Pro</option>
                 <option value="v5">Stonefish_v5</option>
                 <option value="v45">Stonefish_v4.5</option>
@@ -82,14 +84,14 @@
                 <option value="v1">Stonefish_v1</option>
               </select>
             </div>
-            <p id="bot-trait" class="bot-trait"><span class="status-dot"></span> Adaptive five-ply points engine</p>
+            <p id="bot-trait" class="bot-trait"><span class="status-dot"></span> Deep search · ARMX 1.1 adaptive engine</p>
           </div>
         </div>
 
         <div class="status-card">
           <p class="section-label">GAME STATUS</p>
           <p id="status" class="status-text">Your move. You are White.</p>
-          <p id="last-move" class="last-move">Stonefish_v5 Pro is waiting.</p>
+          <p id="last-move" class="last-move">Stonefish_v6 is waiting.</p>
         </div>
 
         <div class="history-card">
@@ -109,8 +111,40 @@
 
         <div class="lab-card">
           <p class="section-label">BOT LAB</p>
-          <button id="watch-game" class="secondary-button" type="button">Watch v4 vs v4.5</button>
-          <p class="helper-text">Spectator games make one move every 3 seconds.</p>
+          <div class="bot-lab-matchup">
+            <label class="bot-lab-field" for="watch-white">
+              <span>White</span>
+              <select id="watch-white" class="model-select bot-lab-select" aria-label="Choose White model for Bot Lab">
+                <option value="v6" selected>Stonefish_v6</option>
+                <option value="v55artemis">Stonefish_v5.5 Artemis</option>
+                <option value="v55">Stonefish_v5.5</option>
+                <option value="v5pro">Stonefish_v5 Pro</option>
+                <option value="v5">Stonefish_v5</option>
+                <option value="v45">Stonefish_v4.5</option>
+                <option value="v4">Stonefish_v4</option>
+                <option value="v3">Stonefish_v3</option>
+                <option value="v2">Stonefish_v2</option>
+                <option value="v1">Stonefish_v1</option>
+              </select>
+            </label>
+            <label class="bot-lab-field" for="watch-black">
+              <span>Black</span>
+              <select id="watch-black" class="model-select bot-lab-select" aria-label="Choose Black model for Bot Lab">
+                <option value="v6">Stonefish_v6</option>
+                <option value="v55artemis" selected>Stonefish_v5.5 Artemis</option>
+                <option value="v55">Stonefish_v5.5</option>
+                <option value="v5pro">Stonefish_v5 Pro</option>
+                <option value="v5">Stonefish_v5</option>
+                <option value="v45">Stonefish_v4.5</option>
+                <option value="v4">Stonefish_v4</option>
+                <option value="v3">Stonefish_v3</option>
+                <option value="v2">Stonefish_v2</option>
+                <option value="v1">Stonefish_v1</option>
+              </select>
+            </label>
+          </div>
+          <button id="watch-game" class="secondary-button" type="button">Watch Stonefish_v6 vs Stonefish_v5.5 Artemis</button>
+          <p class="helper-text">Pick any two models (they can be the same). Spectator games make one move every 3 seconds.</p>
 
           <details class="developer-menu">
             <summary>Developer menu</summary>
@@ -123,13 +157,12 @@
                 <label><input type="checkbox" name="test-model" value="v3" /> Stonefish_v3</label>
                 <label><input type="checkbox" name="test-model" value="v4" /> Stonefish_v4</label>
                 <label><input type="checkbox" name="test-model" value="v45" /> Stonefish_v4.5</label>
-                <label><input type="checkbox" name="test-model" value="v5" checked /> Stonefish_v5</label>
-                <label><input type="checkbox" name="test-model" value="v55noarmx" /> Stonefish_v5.5 (No ARMX — dev control)</label>
-                <label><input type="checkbox" name="test-model" value="v55" /> Stonefish_v5.5</label>
-                <label><input type="checkbox" name="test-model" value="v55athenatestunit" /> v5.5 Athena (testunit)</label>
-                <label><input type="checkbox" name="test-model" value="v55arestestunit" /> v5.5 Ares (testunit)</label>
-                <label><input type="checkbox" name="test-model" value="v55artemistestunit" /> v5.5 Artemis (testunit)</label>
-                <label><input type="checkbox" name="test-model" value="v5pro" checked /> Stonefish_v5 Pro</label>
+                <label><input type="checkbox" name="test-model" value="v5" /> Stonefish_v5</label>
+                <label><input type="checkbox" name="test-model" value="v5pro" /> Stonefish_v5 Pro</label>
+                <label><input type="checkbox" name="test-model" value="v55" checked /> Stonefish_v5.5</label>
+                <label><input type="checkbox" name="test-model" value="v55artemis" checked /> Stonefish_v5.5 Artemis</label>
+                <label><input type="checkbox" name="test-model" value="v6" checked /> Stonefish_v6</label>
+                <label><input type="checkbox" name="test-model" value="v6argon" checked /> Stonefish_v6 Argon (devtest)</label>
               </div>
 
               <div class="test-controls">
@@ -164,7 +197,7 @@
 
               <div class="api-callout">
                 <strong>Released models only</strong>
-                <p>The public API includes v1, v2, v3, v4, v4.5, v5, v5 Pro, and v5.5. Developer controls, No-ARMX builds, and Athena/Ares/Artemis testunits are deliberately unavailable through the API.</p>
+                <p>The public API includes v1, v2, v3, v4, v4.5, v5, v5 Pro, v5.5, v5.5 Artemis, and v6. Developer controls are deliberately unavailable through the API.</p>
               </div>
 
               <div>
@@ -221,6 +254,8 @@ console.log(reply.move.uci);</code></pre>
                   <span><code>v5</code> Stonefish_v5</span>
                   <span><code>v5pro</code> Stonefish_v5 Pro</span>
                   <span><code>v55</code> Stonefish_v5.5</span>
+                  <span><code>v55artemis</code> Stonefish_v5.5 Artemis</span>
+                  <span><code>v6</code> Stonefish_v6</span>
                 </div>
               </div>
 
@@ -290,8 +325,11 @@ console.log(reply.move.uci);</code></pre>
   <script src="models/v5.js"></script>
   <script src="models/v5_pro.js"></script>
   <script src="models/v5_5.js"></script>
+  <script src="models/v6.js"></script>
+  <script src="models/v6_argon.js"></script>
   <script src="ARMX/ARMX-preview.js"></script>
   <script src="ARMX/ARMX.js"></script>
+  <script src="ARMX/ARMX_1_1.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
