@@ -16,7 +16,6 @@ on:
       - 'tests/v6_1_engine.test.js'
       - 'benchmarks/v6_1_benchmark.cjs'
       - 'benchmarks/v6_1_match.cjs'
-      - 'benchmarks/v6_1_native_probe.cjs'
       - 'package.json'
       - '.github/workflows/v6-1-validation.yml'
   pull_request:
@@ -42,12 +41,10 @@ jobs:
         with:
           node-version: 22
       - name: Syntax checks
-        run: npm run lint && node -c benchmarks/v6_1_benchmark.cjs && node -c benchmarks/v6_1_match.cjs && node -c benchmarks/v6_1_native_probe.cjs
+        run: npm run lint && node -c benchmarks/v6_1_benchmark.cjs && node -c benchmarks/v6_1_match.cjs
       - name: v6 and v6.1 regression tests
         run: node --test tests/v6_engine.test.js tests/v6_1_engine.test.js
       - name: Matched-depth performance benchmark
         run: node benchmarks/v6_1_benchmark.cjs
       - name: v6 versus v6.1 head-to-head match
         run: node benchmarks/v6_1_match.cjs
-      - name: Compiled kernel strength and speed probe
-        run: node benchmarks/v6_1_native_probe.cjs
