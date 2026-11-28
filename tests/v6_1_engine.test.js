@@ -39,15 +39,16 @@ test('v6.1 evaluation cache returns exact scores and records cache hits', () => 
   assert.ok(stats.size >= 32768);
 });
 
-test('v6.1 skips evaluation-cache lookups in dense opening positions', () => {
+test('v6.1 reuses exact evaluation-cache entries in dense opening positions', () => {
   stonefishV61ClearEvalCache();
   const game = new Chess();
   const first = stonefishV61EvaluateRaw(game);
   const second = stonefishV61EvaluateRaw(game);
   assert.equal(first, second);
   const stats = stonefishV61EvalCacheStats();
-  assert.equal(stats.hits, 0);
-  assert.equal(stats.misses, 0);
+  assert.equal(stats.hits, 1);
+  assert.equal(stats.misses, 1);
+  assert.equal(stats.size, 1 << 18);
 });
 
 test('v6.1 indexed repetition history preserves legal move generation', () => {
