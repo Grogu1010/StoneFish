@@ -67,7 +67,7 @@ function mirrorFenByRank(fen) {
 }
 
 
-test('v6.1 static evaluation is exactly equal to v6 on representative positions', () => {
+test('v6.1 preserves v6 static evaluation within 1 centipawn after the symmetric trade fix', () => {
   const positions = [
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
@@ -76,9 +76,17 @@ test('v6.1 static evaluation is exactly equal to v6 on representative positions'
     '8/8/8/4k3/8/8/3Q4/4K3 w - - 0 1',
     '4k3/5pp1/8/3R4/8/4K3/5PP1/3r4 w - - 0 1'
   ];
+  const symmetryTradeFixFen = 'r1b1k2r/ppppqppp/2n2n2/8/8/5N2/PPPPQPPP/R1B1K2R w KQkq - 0 1';
   for (const fen of positions) {
     const game = new Chess(fen);
-    assert.equal(stonefishV61EvaluateRaw(game), stonefishV6EvaluateRaw(game), `Evaluation mismatch: ${fen}`);
+    const v61 = stonefishV61EvaluateRaw(game);
+    const v6 = stonefishV6EvaluateRaw(game);
+    assert.ok(Math.abs(v61 - v6) <= 1, `Evaluation drift exceeded 1 cp: ${fen}; v6=${v6}, v6.1=${v61}`);
+    if (fen === symmetryTradeFixFen) {
+      assert.equal(v61 - v6, 1, 'Expected the 1 cp correction from symmetric trade scoring');
+    } else {
+      assert.equal(v61, v6, `Unexpected evaluation drift: ${fen}`);
+    }
   }
 });
 
