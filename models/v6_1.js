@@ -256,8 +256,6 @@
   const scoreBuf = new Int32Array(MAX_PLY * 256);
   // Per-ply list of quiet moves actually searched before a beta cutoff.
   const quietTriedBuf = new Int32Array(MAX_PLY * 256);
-  // Side/moving-piece/target/victim keyed capture ordering history.
-  const captureHistory = new Int32Array(2 * 6 * 64 * 7);
   const staticEvalStack = new Int32Array(MAX_PLY);
   const armx11Mode = true;
   let armx11Contempt = 0;
@@ -1843,13 +1841,8 @@
       const piece = (m >>> 12) & 7;
       if (cap || promo) {
         const see = seeCapture(m);
-        const to = (m >>> 6) & 63;
-        const captureHistoryIndex = cap
-          ? ((((side === 1 ? 0 : 1) * 6 + piece - 1) * 64 + to) * 7 + cap)
-          : -1;
-        const captureOrderBonus = captureHistoryIndex >= 0 ? (captureHistory[captureHistoryIndex] >> 10) : 0;
         if (see >= 0) {
-          scoreBuf[base + i] = 50000000 + see * 16 + (promo ? MG_VAL[promo] * 4 : 0) + cap * 128 - piece + captureOrderBonus;
+          scoreBuf[base + i] = 50000000 + see * 16 + (promo ? MG_VAL[promo] * 4 : 0) + cap * 128 - piece;
         } else if (inQ) {
           scoreBuf[base + i] = -1000000 + see;
         } else {
@@ -2189,38 +2182,31 @@
         if (score > alpha) {
           alpha = score;
           if (alpha >= beta) {
+            const sIdx = side === 1 ? 0 : 4096;
+            const bonus = depth * depth;
+            // Penalize every quiet move that was tried before the cutoff
+            // move, whether the cutoff came from a quiet move or a capture.
+            const failedQuietCount = quietTriedCount - (isQuiet ? 1 : 0);
+            for (let qi = 0; qi < failedQuietCount; qi += 1) {
+              const tried = quietTriedBuf[base + qi];
+              const triedIdx = ((tried & 63) << 6) | ((tried >>> 6) & 63);
+              let triedHistory = historyTable[sIdx + triedIdx] - bonus;
+              if (triedHistory < -2000000) triedHistory = -2000000;
+              historyTable[sIdx + triedIdx] = triedHistory;
+            }
+
             if (isQuiet) {
               if (killer1[ply] !== m) {
                 killer2[ply] = killer1[ply];
                 killer1[ply] = m;
               }
-              const sIdx = side === 1 ? 0 : 4096;
               const sqIdx = ((m & 63) << 6) | ((m >>> 6) & 63);
-              const bonus = depth * depth;
-              // Reward the cutoff move and penalize quiet moves that were
-              // searched first but failed to produce a cutoff.
-              for (let qi = 0; qi < quietTriedCount - 1; qi += 1) {
-                const tried = quietTriedBuf[base + qi];
-                const triedIdx = ((tried & 63) << 6) | ((tried >>> 6) & 63);
-                let triedHistory = historyTable[sIdx + triedIdx] - bonus;
-                if (triedHistory < -2000000) triedHistory = -2000000;
-                historyTable[sIdx + triedIdx] = triedHistory;
-              }
               let hVal = historyTable[sIdx + sqIdx] + bonus;
               if (hVal > 2000000) hVal >>= 1;
               historyTable[sIdx + sqIdx] = hVal;
               if (prevMove) {
                 counterMoves[((prevMove & 63) << 6) | ((prevMove >>> 6) & 63)] = m;
               }
-            } else if (isCapture) {
-              const cap = (m >>> 15) & 7;
-              const piece = (m >>> 12) & 7;
-              const to = (m >>> 6) & 63;
-              const captureHistoryIndex = (((side === 1 ? 0 : 1) * 6 + piece - 1) * 64 + to) * 7 + cap;
-              const bonus = depth * depth;
-              let hVal = captureHistory[captureHistoryIndex] + bonus;
-              if (hVal > 2000000) hVal >>= 1;
-              captureHistory[captureHistoryIndex] = hVal;
             }
             break;
           }
@@ -2324,7 +2310,6 @@
     killer1.fill(0);
     killer2.fill(0);
     for (let i = 0; i < historyTable.length; i += 1) historyTable[i] >>= 2;
-    for (let i = 0; i < captureHistory.length; i += 1) captureHistory[i] >>= 2;
 
     const phaseInfo = estimateRemainingPhase();
     const { phase, pieces } = phaseInfo;
