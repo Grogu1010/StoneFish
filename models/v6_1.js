@@ -2077,19 +2077,7 @@
         const nullScore = -alphaBeta(depth - 1 - R, -beta, -beta + 1, ply + 1, false, 0);
         unmakeNullMove(ply);
         if (abortSearch) return alpha;
-        if (nullScore >= beta) {
-          // Null-move pruning can be unsafe in sparse endings where zugzwang
-          // is more likely. Verify low-material fail-highs with null disabled.
-          const lowMaterial = (pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5]
-            + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12]) <= 3;
-          if (lowMaterial && depth >= 6) {
-            const verifyScore = alphaBeta(depth - R, beta - 1, beta, ply, false, prevMove);
-            if (abortSearch) return alpha;
-            if (verifyScore >= beta) return beta;
-          } else {
-            return beta;
-          }
-        }
+        if (nullScore >= beta) return beta;
       }
 
       // ARMX 1.1 ProbCut: verify strong captures at depth >= 5 to prune huge fail-high subtrees
