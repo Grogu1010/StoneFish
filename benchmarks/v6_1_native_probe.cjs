@@ -57,8 +57,8 @@ function runNativeV61(game) {
   if (typeof sf55cNativeAcceleratedHost !== 'function') throw new Error('Compiled native kernel unavailable');
   const started = performance.now();
   const result = sf55cNativeAcceleratedHost(game, {
-    searchBudget: 8000, maxDepth: 7, maxExtraNodes: 0, maxExtraDepth: 3,
-    weights: new Float64Array(13)
+    searchBudget: 48000, maxDepth: 7, maxExtraNodes: 40000, maxExtraDepth: 3,
+    rootWidth: 12, weights: new Float64Array(13)
   });
   globalThis.SF61_LAST_SEARCH = { depth: result.depth, nodes: result.nodes, ms: performance.now() - started, evalCacheHits: 0, evalCacheMisses: 0 };
   if (!result.finished || !result.finished.length || !result.finished[0].raw) throw new Error('Native kernel returned no move');
@@ -69,6 +69,8 @@ function runGame(name, line, v61Side) {
   const startFen = game.fen();
   const counts = { v6: 0, v61: 0 };
   const depthCounts = { v6: {}, v61: {} };
+  const nodeTotals = { v6: 0, v61: 0 };
+  const searchMsTotals = { v6: 0, v61: 0 };
   let result = '1/2-1/2';
   let termination = 'move limit';
   const started = performance.now();
@@ -86,6 +88,8 @@ function runGame(name, line, v61Side) {
     counts[model] += 1;
     const depth = info && Number.isInteger(info.depth) ? info.depth : -1;
     depthCounts[model][depth] = (depthCounts[model][depth] || 0) + 1;
+    if (info && Number.isFinite(info.nodes)) nodeTotals[model] += info.nodes;
+    if (info && Number.isFinite(info.ms)) searchMsTotals[model] += info.ms;
 
     const played = game.move(move);
     if (!played) {
@@ -113,6 +117,8 @@ function runGame(name, line, v61Side) {
     termination,
     movesByEngine: counts,
     completedDepths: depthCounts,
+    nodesByEngine: nodeTotals,
+    searchMsByEngine: Object.fromEntries(Object.entries(searchMsTotals).map(([key, value]) => [key, Number(value.toFixed(1))])),
     elapsedMs: Number((performance.now() - started).toFixed(1)),
     finalFen: game.fen(),
     startFen
@@ -143,6 +149,8 @@ const summary = {
     return all;
   }, { v6: {}, v61: {} }),
   elapsedMs: Number(games.reduce((sum, game) => sum + game.elapsedMs, 0).toFixed(1)),
+  nodesByEngine: games.reduce((a,g) => ({v6:a.v6+g.nodesByEngine.v6,v61:a.v61+g.nodesByEngine.v61}), {v6:0,v61:0}),
+  searchMsByEngine: games.reduce((a,g) => ({v6:a.v6+g.searchMsByEngine.v6,v61:a.v61+g.searchMsByEngine.v61}), {v6:0,v61:0}),
   results: games
 };
 console.log(JSON.stringify(summary, null, 2));
