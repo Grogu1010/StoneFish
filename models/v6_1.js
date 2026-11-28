@@ -1847,7 +1847,7 @@
         const captureHistoryIndex = cap
           ? ((((side === 1 ? 0 : 1) * 6 + piece - 1) * 64 + to) * 7 + cap)
           : -1;
-        const captureOrderBonus = captureHistoryIndex >= 0 ? captureHistory[captureHistoryIndex] : 0;
+        const captureOrderBonus = captureHistoryIndex >= 0 ? (captureHistory[captureHistoryIndex] >> 10) : 0;
         if (see >= 0) {
           scoreBuf[base + i] = 50000000 + see * 16 + (promo ? MG_VAL[promo] * 4 : 0) + cap * 128 - piece + captureOrderBonus;
         } else if (inQ) {
