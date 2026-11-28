@@ -1825,7 +1825,7 @@
     return true;
   }
 
-  function scoreMoves(ply, count, ttBestMove, prevMove, inQ) {
+  function scoreMoves(ply, count, ttBestMove, prevMove, inQ, useSee = true) {
     const base = ply << 8;
     const sideIdx = side === 1 ? 0 : 4096;
     const k1 = killer1[ply];
@@ -1842,6 +1842,12 @@
       const cap = (m >>> 15) & 7;
       const piece = (m >>> 12) & 7;
       if (cap || promo) {
+        if (!useSee) {
+          // At depth >= 3 this score is ordering-only; defer the exchange
+          // simulation until the leaf search, where SEE is used for pruning.
+          scoreBuf[base + i] = 50000000 + cap * 128 - piece + (promo ? MG_VAL[promo] * 4 : 0);
+          continue;
+        }
         const see = seeCapture(m);
         if (see >= 0) {
           scoreBuf[base + i] = 50000000 + see * 16 + (promo ? MG_VAL[promo] * 4 : 0) + cap * 128 - piece;
@@ -2085,7 +2091,7 @@
       if (armx11Mode && depth >= 5 && Math.abs(beta) < MATE_BOUND && staticEval + 900 >= beta + 155) {
         const probBeta = beta + 155;
         const pcCount = generatePseudoMoves(ply, true);
-        scoreMoves(ply, pcCount, ttBest, prevMove, true);
+        scoreMoves(ply, pcCount, ttBest, prevMove, true, true);
         const pcBase = ply << 8;
         repPathHi[ply] = hashHi;
         repPathLo[ply] = hashLo;
@@ -2105,7 +2111,7 @@
     }
 
     const count = generatePseudoMoves(ply, false);
-    scoreMoves(ply, count, ttBest, prevMove, false);
+    scoreMoves(ply, count, ttBest, prevMove, false, depth <= 2);
     const base = ply << 8;
 
     let legalMoves = 0;
@@ -2360,8 +2366,9 @@
     // Keep the best root candidates by their previous completed iteration.
     // The first two iterations establish a full-width shortlist before the
     // selective root window is used. This keeps the reported depth unchanged.
-    const requestedRootWidth = options && Number.isInteger(options.rootWidth) ? options.rootWidth : 8;
-    const rootSearchWidth = Math.min(rootMoves.length, Math.max(4, Math.min(32, requestedRootWidth)));
+    const requestedRootWidth = options && Number.isInteger(options.rootWidth)
+      ? Math.max(4, options.rootWidth) : rootMoves.length;
+    const rootSearchWidth = Math.min(rootMoves.length, requestedRootWidth);
     const iterRootScores = new Int32Array(rootMoves.length);
 
     let bestMove = rootMoves[0];
