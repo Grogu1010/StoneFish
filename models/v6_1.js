@@ -2077,7 +2077,19 @@
         const nullScore = -alphaBeta(depth - 1 - R, -beta, -beta + 1, ply + 1, false, 0);
         unmakeNullMove(ply);
         if (abortSearch) return alpha;
-        if (nullScore >= beta) return beta;
+        if (nullScore >= beta) {
+          // Null-move pruning can be unsafe in sparse endings where zugzwang
+          // is more likely. Verify low-material fail-highs with null disabled.
+          const lowMaterial = (pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5]
+            + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12]) <= 3;
+          if (lowMaterial && depth >= 6) {
+            const verifyScore = alphaBeta(depth - R, beta - 1, beta, ply, false, prevMove);
+            if (abortSearch) return alpha;
+            if (verifyScore >= beta) return beta;
+          } else {
+            return beta;
+          }
+        }
       }
 
       // ARMX 1.1 ProbCut: verify strong captures at depth >= 5 to prune huge fail-high subtrees
@@ -2160,17 +2172,7 @@
         if (depth >= 3 && legalMoves >= 3 && isQuiet && !inCheck && !givesCheck && ext === 0) {
           reduction = LMR_TABLE[((depth < 31 ? depth : 31) << 6) | (legalMoves < 63 ? legalMoves : 63)];
           if (armx11Mode && !improving && legalMoves >= 6) reduction += 1;
-          if (m === killer1[ply] || m === killer2[ply]) {
-            reduction = Math.max(0, reduction - 1);
-          } else {
-            const from = m & 63;
-            const to = (m >>> 6) & 63;
-            const historyScore = historyTable[(side === 1 ? 0 : 4096) + (from << 6) + to];
-            // Search historically successful quiet moves deeper and reduce
-            // repeatedly unsuccessful quiet moves more aggressively.
-            if (historyScore > 8000) reduction = Math.max(0, reduction - 1);
-            else if (historyScore < -8000) reduction += 1;
-          }
+          if (m === killer1[ply] || m === killer2[ply]) reduction = Math.max(0, reduction - 1);
           if (reduction >= depth - 1) reduction = depth - 2;
         }
 
