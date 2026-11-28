@@ -2340,6 +2340,9 @@
       if (cap || promo) s += seeCapture(m) * 4 + 2000;
       if (flags & 12) s += 300;
       makeMove(m, 0, rootInCheck);
+      // A quiet checking move is a tactical root candidate even when its
+      // static evaluation is not among the very highest.
+      if (!cap && !promo && isSquareAttacked(side === 1 ? wk : bk, -side)) s += 900;
       s += -evaluate();
       unmakeMove(m, 0);
       rootScores[i] = s;
@@ -2356,6 +2359,13 @@
       rootMoves[j + 1] = m;
       rootScores[j + 1] = sc;
     }
+
+    // Keep the best root candidates by their previous completed iteration.
+    // The first two iterations establish a full-width shortlist before the
+    // selective root window is used. This keeps the reported depth unchanged.
+    const requestedRootWidth = options && Number.isInteger(options.rootWidth) ? options.rootWidth : 8;
+    const rootSearchWidth = Math.max(4, Math.min(rootMoves.length, requestedRootWidth));
+    const iterRootScores = new Int32Array(rootMoves.length);
 
     let bestMove = rootMoves[0];
     let prevScore = 0;
@@ -2399,7 +2409,8 @@
         iterSecondScore = -INF;
         iterBestMove = rootMoves[0];
 
-        for (let i = 0; i < rootMoves.length; i += 1) {
+        const searchCount = depth <= 2 ? rootMoves.length : rootSearchWidth;
+        for (let i = 0; i < searchCount; i += 1) {
           const m = rootMoves[i];
           makeMove(m, 0, rootInCheck);
           let sc;
@@ -2413,6 +2424,7 @@
           }
           unmakeMove(m, 0);
           if (abortSearch) break;
+          iterRootScores[i] = sc;
 
           if (sc > iterBestScore) {
             iterSecondScore = iterBestScore;
@@ -2449,11 +2461,20 @@
       completedDepth = depth;
       secondBestGap = iterSecondScore > -INF ? (iterBestScore - iterSecondScore) : 200;
 
-      // Put bestMove at index 0 for next iteration
-      const bIdx = rootMoves.indexOf(bestMove);
-      if (bIdx > 0) {
-        rootMoves.splice(bIdx, 1);
-        rootMoves.unshift(bestMove);
+      // Reorder every searched root candidate by the completed iteration's
+      // score, rather than promoting only the winner. At depths 1-2 this is
+      // full-width; later iterations reorder the retained root shortlist.
+      for (let i = 1; i < searchCount; i += 1) {
+        const move = rootMoves[i];
+        const score = iterRootScores[i];
+        let j = i - 1;
+        while (j >= 0 && iterRootScores[j] < score) {
+          rootMoves[j + 1] = rootMoves[j];
+          iterRootScores[j + 1] = iterRootScores[j];
+          j -= 1;
+        }
+        rootMoves[j + 1] = move;
+        iterRootScores[j + 1] = score;
       }
 
       if (Math.abs(prevScore) > MATE_BOUND) break;
@@ -2501,6 +2522,7 @@
     lastEvalTemp = completedDepth;
     globalScope.SF61_LAST_SEARCH = {
       depth: completedDepth,
+      rootWidth: rootSearchWidth,
       nodes: nodeCount,
       score: prevScore,
       ms: performance.now() - startTime,
