@@ -2184,7 +2184,7 @@
           if (alpha >= beta) {
             const sIdx = side === 1 ? 0 : 4096;
             const bonus = depth * depth;
-            const malus = bonus + (bonus >> 2);
+            const malus = bonus + (bonus >> 3);
             // Penalize every quiet move that was tried before the cutoff
             // move, whether the cutoff came from a quiet move or a capture.
             // A 1.25x malus tests stronger negative feedback than the reward.
