@@ -257,29 +257,6 @@
   // Per-ply list of quiet moves actually searched before a beta cutoff.
   const quietTriedBuf = new Int32Array(MAX_PLY * 256);
 
-  // Compact hashed continuation history: previous move + candidate reply.
-  const CONTINUATION_HISTORY_SIZE = 1 << 16;
-  const CONTINUATION_HISTORY_MASK = CONTINUATION_HISTORY_SIZE - 1;
-  const continuationHistoryKeys = new Uint32Array(CONTINUATION_HISTORY_SIZE);
-  const continuationHistoryValues = new Int32Array(CONTINUATION_HISTORY_SIZE);
-
-  function updateContinuationHistory(prevMove, move, delta) {
-    if (!prevMove) return;
-    const key = (
-      Math.imul(prevMove >>> 0, 0x9E3779B1)
-      ^ Math.imul(move >>> 0, 0x85EBCA6B)
-    ) >>> 0;
-    const index = key & CONTINUATION_HISTORY_MASK;
-    if (continuationHistoryKeys[index] !== key) {
-      continuationHistoryKeys[index] = key;
-      continuationHistoryValues[index] = 0;
-    }
-    let value = continuationHistoryValues[index] + delta;
-    if (value > 2000000) value = 2000000;
-    else if (value < -2000000) value = -2000000;
-    continuationHistoryValues[index] = value;
-  }
-
   const staticEvalStack = new Int32Array(MAX_PLY);
   const armx11Mode = true;
   let armx11Contempt = 0;
@@ -1850,7 +1827,6 @@
   function scoreMoves(ply, count, ttBestMove, prevMove, inQ) {
     const base = ply << 8;
     const sideIdx = side === 1 ? 0 : 4096;
-    const continuationBase = prevMove ? Math.imul(prevMove >>> 0, 0x9E3779B1) >>> 0 : 0;
     const k1 = killer1[ply];
     const k2 = killer2[ply];
     const cm = prevMove ? counterMoves[((prevMove & 63) << 6) | ((prevMove >>> 6) & 63)] : 0;
@@ -1882,13 +1858,6 @@
         const from = m & 63;
         const to = (m >>> 6) & 63;
         let h = historyTable[sideIdx + (from << 6) + to];
-        if (prevMove) {
-          const continuationKey = (continuationBase ^ Math.imul(m >>> 0, 0x85EBCA6B)) >>> 0;
-          const continuationIndex = continuationKey & CONTINUATION_HISTORY_MASK;
-          if (continuationHistoryKeys[continuationIndex] === continuationKey) {
-            h += continuationHistoryValues[continuationIndex] >> 1;
-          }
-        }
         const flags = (m >>> 21) & 15;
         if (flags & 12) h += 6000; // Prefer castling early in move ordering
         scoreBuf[base + i] = h;
@@ -2191,7 +2160,17 @@
         if (depth >= 3 && legalMoves >= 3 && isQuiet && !inCheck && !givesCheck && ext === 0) {
           reduction = LMR_TABLE[((depth < 31 ? depth : 31) << 6) | (legalMoves < 63 ? legalMoves : 63)];
           if (armx11Mode && !improving && legalMoves >= 6) reduction += 1;
-          if (m === killer1[ply] || m === killer2[ply]) reduction = Math.max(0, reduction - 1);
+          if (m === killer1[ply] || m === killer2[ply]) {
+            reduction = Math.max(0, reduction - 1);
+          } else {
+            const from = m & 63;
+            const to = (m >>> 6) & 63;
+            const historyScore = historyTable[(side === 1 ? 0 : 4096) + (from << 6) + to];
+            // Search historically successful quiet moves deeper and reduce
+            // repeatedly unsuccessful quiet moves more aggressively.
+            if (historyScore > 8000) reduction = Math.max(0, reduction - 1);
+            else if (historyScore < -8000) reduction += 1;
+          }
           if (reduction >= depth - 1) reduction = depth - 2;
         }
 
@@ -2227,7 +2206,6 @@
               let triedHistory = historyTable[sIdx + triedIdx] - malus;
               if (triedHistory < -2000000) triedHistory = -2000000;
               historyTable[sIdx + triedIdx] = triedHistory;
-              updateContinuationHistory(prevMove, tried, -malus);
             }
 
             if (isQuiet) {
@@ -2239,7 +2217,6 @@
               let hVal = historyTable[sIdx + sqIdx] + bonus;
               if (hVal > 2000000) hVal >>= 1;
               historyTable[sIdx + sqIdx] = hVal;
-              updateContinuationHistory(prevMove, m, bonus);
               if (prevMove) {
                 counterMoves[((prevMove & 63) << 6) | ((prevMove >>> 6) & 63)] = m;
               }
@@ -2346,7 +2323,6 @@
     killer1.fill(0);
     killer2.fill(0);
     for (let i = 0; i < historyTable.length; i += 1) historyTable[i] >>= 2;
-    for (let i = 0; i < continuationHistoryValues.length; i += 1) continuationHistoryValues[i] >>= 2;
 
     const phaseInfo = estimateRemainingPhase();
     const { phase, pieces } = phaseInfo;
