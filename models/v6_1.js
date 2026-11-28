@@ -2144,11 +2144,13 @@
         continue;
       }
 
-      // Passed-pawn / 7th-rank push extension under ARMX 1.1
+      // Passed-pawn / 7th-rank push extension under ARMX 1.1.
+      // White advances toward rank 8 (indices 5-7); Black advances toward
+      // rank 1 (indices 0-2).
       let ext = 0;
       if (armx11Mode && ply < 16 && ((m >>> 12) & 7) === 1 && !isPromo) {
         const destRank = ((m >>> 6) & 63) >> 3;
-        if ((side === -1 && destRank >= 5) || (side === 1 && destRank <= 2)) ext = 1;
+        if ((side === 1 && destRank >= 5) || (side === -1 && destRank <= 2)) ext = 1;
       }
 
       let score;
