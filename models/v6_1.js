@@ -2401,6 +2401,7 @@
       let iterBestMove = bestMove;
       let iterBestScore = -INF;
       let iterSecondScore = -INF;
+      const searchCount = depth <= 2 ? rootMoves.length : rootSearchWidth;
 
       while (true) {
         abortSearch = false;
@@ -2409,7 +2410,6 @@
         iterSecondScore = -INF;
         iterBestMove = rootMoves[0];
 
-        const searchCount = depth <= 2 ? rootMoves.length : rootSearchWidth;
         for (let i = 0; i < searchCount; i += 1) {
           const m = rootMoves[i];
           makeMove(m, 0, rootInCheck);
