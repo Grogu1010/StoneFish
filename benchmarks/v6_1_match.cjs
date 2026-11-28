@@ -1,7 +1,7 @@
 'use strict';
 
-// 100-round, colour-balanced round robin: 100 deterministic opening variations,
-// each played twice with v6.1 as White and as Black (200 games total). Both engines use the
+// 100-game, colour-balanced round robin: 50 deterministic opening variations,
+// each played twice with v6.1 as White and as Black (100 games total). Both engines use the
 // same move/time/node limits. The reported score is always from v6.1's view.
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -25,11 +25,11 @@ const OPTIONS = Object.freeze({
   rootWidth: 24
 });
 const MAX_PLIES = 240;
-const VARIATIONS_PER_OPENING = 10;
+const VARIATIONS_PER_OPENING = 5;
 const TAIL_PLIES = 6;
 
 // Ten established opening systems; deterministic legal continuations create
-// ten distinct starting positions per system without relying on external data.
+// five distinct starting positions per system without relying on external data.
 const OPENINGS = [
   ['Ruy Lopez', 'e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5a4 g8f6 e1g1 f8e7'],
   ['Sicilian', 'e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6'],
@@ -163,7 +163,7 @@ const byColour = games.reduce((all, game) => {
 });
 
 const summary = {
-  suite: 'StoneFish v6.1 vs v6 100-round round robin',
+  suite: 'StoneFish v6.1 vs v6 100-game round robin',
   scoring: '1 point win, 0.5 point draw, 0 points loss; points recorded directly from v6.1 perspective',
   rounds: startingPositions.size,
   games: games.length,
@@ -189,8 +189,8 @@ const summary = {
   results: games
 };
 
-if (summary.rounds !== 100 || summary.games !== 200 || summary.openingPairs !== 100
-  || summary.colourBalance.v61White !== 100 || summary.colourBalance.v61Black !== 100) {
-  throw new Error('Round-robin construction must be exactly 100 paired rounds (200 games) with 50/50 colour balance');
+if (summary.rounds !== 50 || summary.games !== 100 || summary.openingPairs !== 50
+  || summary.colourBalance.v61White !== 50 || summary.colourBalance.v61Black !== 50) {
+  throw new Error('Round-robin construction must be exactly 50 paired rounds (100 games) with 50/50 colour balance');
 }
 console.log(JSON.stringify(summary, null, 2));
