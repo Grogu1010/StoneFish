@@ -204,7 +204,7 @@
 
     for (let d = 1; d < 32; d += 1) {
       for (let m = 1; m < 64; m += 1) {
-        LMR_TABLE[(d << 6) | m] = (1 + (Math.log(d) * Math.log(m)) / 2.6) | 0;
+        LMR_TABLE[(d << 6) | m] = (1 + (Math.log(d) * Math.log(m)) / 1.8) | 0;
       }
     }
   })();
@@ -254,6 +254,8 @@
   // Search stacks
   const moveBuf = new Int32Array(MAX_PLY * 256);
   const scoreBuf = new Int32Array(MAX_PLY * 256);
+  // Per-ply list of quiet moves actually searched before a beta cutoff.
+  const quietTriedBuf = new Int32Array(MAX_PLY * 256);
   const staticEvalStack = new Int32Array(MAX_PLY);
   const armx11Mode = true;
   let armx11Contempt = 0;
@@ -2103,6 +2105,7 @@
     const count = generatePseudoMoves(ply, false);
     scoreMoves(ply, count, ttBest, prevMove, false);
     const base = ply << 8;
+    let quietTriedCount = 0;
 
     let legalMoves = 0;
     let bestScore = -INF;
@@ -2171,6 +2174,7 @@
 
       unmakeMove(m, ply);
       if (abortSearch) return alpha;
+      if (isQuiet) quietTriedBuf[base + quietTriedCount++] = m;
 
       if (score > bestScore) {
         bestScore = score;
@@ -2186,6 +2190,16 @@
               const sIdx = side === 1 ? 0 : 4096;
               const sqIdx = ((m & 63) << 6) | ((m >>> 6) & 63);
               const bonus = depth * depth;
+              // Reward the cutoff move and penalize quiet moves that were
+              // searched first but failed to produce a cutoff. This gives
+              // history ordering both positive and negative feedback.
+              for (let qi = 0; qi < quietTriedCount - 1; qi += 1) {
+                const tried = quietTriedBuf[base + qi];
+                const triedIdx = ((tried & 63) << 6) | ((tried >>> 6) & 63);
+                let triedHistory = historyTable[sIdx + triedIdx] - bonus;
+                if (triedHistory < -2000000) triedHistory = -2000000;
+                historyTable[sIdx + triedIdx] = triedHistory;
+              }
               let hVal = historyTable[sIdx + sqIdx] + bonus;
               if (hVal > 2000000) hVal >>= 1;
               historyTable[sIdx + sqIdx] = hVal;
