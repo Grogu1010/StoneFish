@@ -2159,7 +2159,12 @@
         let reduction = 0;
         if (depth >= 3 && legalMoves >= 3 && isQuiet && !inCheck && !givesCheck && ext === 0) {
           reduction = LMR_TABLE[((depth < 31 ? depth : 31) << 6) | (legalMoves < 63 ? legalMoves : 63)];
-          if (armx11Mode && !improving && legalMoves >= 6) reduction += 1;
+          if (armx11Mode && !improving && legalMoves >= 6) {
+            reduction += 1;
+            // Deep, late quiet moves that are not improving are especially
+            // unlikely to overturn the PV; reduce them one additional ply.
+            if (depth >= 5 && legalMoves >= 10) reduction += 1;
+          }
           if (m === killer1[ply] || m === killer2[ply]) reduction = Math.max(0, reduction - 1);
           if (reduction >= depth - 1) reduction = depth - 2;
         }
@@ -2361,7 +2366,7 @@
     // The first two iterations establish a full-width shortlist before the
     // selective root window is used. This keeps the reported depth unchanged.
     const requestedRootWidth = options && Number.isInteger(options.rootWidth)
-      ? Math.max(4, options.rootWidth) : 12;
+      ? Math.max(4, options.rootWidth) : 16;
     const rootSearchWidth = Math.min(rootMoves.length, requestedRootWidth);
     const iterRootScores = new Int32Array(rootMoves.length);
 
