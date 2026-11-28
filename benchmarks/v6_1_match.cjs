@@ -56,7 +56,10 @@ function openingPosition(line, seed) {
   for (const uci of line.split(/\s+/).filter(Boolean)) applyUci(game, uci);
 
   let state = seed >>> 0;
-  for (let ply = 0; ply < TAIL_PLIES && !game.game_over(); ply += 1) {
+  // All paired starting positions begin with White to move. An odd-length
+  // opening line therefore receives one extra seeded quiet continuation ply.
+  const tailPlies = TAIL_PLIES + (game.side === -1 ? 1 : 0);
+  for (let ply = 0; ply < tailPlies && !game.game_over(); ply += 1) {
     const allMoves = game.moves({ verbose: true });
     if (!allMoves.length) break;
     // Prefer quiet legal moves to keep the seeded continuation opening-like.
@@ -71,6 +74,7 @@ function openingPosition(line, seed) {
     });
     if (!played) throw new Error('Generated illegal continuation in ' + game.fen());
   }
+  if (game.side !== 1) throw new Error('Round-robin position must start with White to move: ' + game.fen());
   return game;
 }
 
@@ -161,6 +165,20 @@ const byColour = games.reduce((all, game) => {
   black: { wins: 0, draws: 0, losses: 0, points: 0 }
 });
 
+const byOpening = {};
+for (const game of games) {
+  const name = game.opening.split(' / variation ')[0];
+  const entry = byOpening[name] || (byOpening[name] = { games: 0, wins: 0, draws: 0, losses: 0, points: 0 });
+  entry.games += 1;
+  if (game.points === 1) entry.wins += 1;
+  else if (game.points === 0) entry.losses += 1;
+  else entry.draws += 1;
+  entry.points += game.points;
+}
+for (const entry of Object.values(byOpening)) {
+  entry.scorePercent = Number((100 * entry.points / entry.games).toFixed(1));
+}
+
 const summary = {
   suite: 'StoneFish v6.1 vs v6 100-game round robin',
   scoring: '1 point win, 0.5 point draw, 0 points loss; points recorded directly from v6.1 perspective',
@@ -176,6 +194,7 @@ const summary = {
     meetsRequirement: (100 * points / games.length) >= 60
   },
   byColour,
+  byOpening,
   completedDepthTotals: games.reduce((all, game) => {
     for (const model of ['v6', 'v61']) {
       for (const [depth, count] of Object.entries(game.completedDepths[model])) {
