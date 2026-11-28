@@ -1,7 +1,7 @@
 'use strict';
 
-// 100-game, colour-balanced round robin: 50 deterministic opening variations,
-// each played twice with v6.1 as White and as Black. Both engines use the
+// 100-round, colour-balanced round robin: 100 deterministic opening variations,
+// each played twice with v6.1 as White and as Black (200 games total). Both engines use the
 // same move/time/node limits. The reported score is always from v6.1's view.
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -25,7 +25,7 @@ const OPTIONS = Object.freeze({
   rootWidth: 16
 });
 const MAX_PLIES = 240;
-const VARIATIONS_PER_OPENING = 5;
+const VARIATIONS_PER_OPENING = 10;
 const TAIL_PLIES = 6;
 
 // Ten established opening systems; deterministic legal continuations create
@@ -163,14 +163,19 @@ const byColour = games.reduce((all, game) => {
 });
 
 const summary = {
-  suite: 'StoneFish v6.1 vs v6 100-game round robin',
+  suite: 'StoneFish v6.1 vs v6 100-round round robin',
   scoring: '1 point win, 0.5 point draw, 0 points loss; points recorded directly from v6.1 perspective',
-  rounds: games.length,
+  rounds: startingPositions.size,
   games: games.length,
   openingPairs: startingPositions.size,
   colourBalance: { v61White: games.filter(game => game.v61Side === 'white').length, v61Black: games.filter(game => game.v61Side === 'black').length },
   searchOptions: OPTIONS,
-  v61: { wins, draws, losses, points, scorePercent: Number((100 * points / games.length).toFixed(1)) },
+  requiredScorePercent: 60,
+  v61: {
+    wins, draws, losses, points,
+    scorePercent: Number((100 * points / games.length).toFixed(1)),
+    meetsRequirement: (100 * points / games.length) >= 60
+  },
   byColour,
   completedDepthTotals: games.reduce((all, game) => {
     for (const model of ['v6', 'v61']) {
@@ -184,8 +189,8 @@ const summary = {
   results: games
 };
 
-if (summary.games !== 100 || summary.openingPairs !== 50
-  || summary.colourBalance.v61White !== 50 || summary.colourBalance.v61Black !== 50) {
-  throw new Error('Round-robin construction is not exactly 100 games with 50/50 colour balance');
+if (summary.rounds !== 100 || summary.games !== 200 || summary.openingPairs !== 100
+  || summary.colourBalance.v61White !== 100 || summary.colourBalance.v61Black !== 100) {
+  throw new Error('Round-robin construction must be exactly 100 paired rounds (200 games) with 50/50 colour balance');
 }
 console.log(JSON.stringify(summary, null, 2));
