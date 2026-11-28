@@ -2357,10 +2357,10 @@
       rootScores[j + 1] = sc;
     }
 
-    // Keep all legal root moves in the search. Completed-iteration scores
-    // reorder the full list, so move ordering improves without root selectivity.
+    // v6-compatible full-width root search; only the exact best move is
+    // promoted between iterations. Null-window fail-low scores are bounds,
+    // not reliable ordering scores for all root candidates.
     const rootSearchWidth = rootMoves.length;
-    const iterRootScores = new Int32Array(rootMoves.length);
 
     let bestMove = rootMoves[0];
     let prevScore = 0;
@@ -2419,8 +2419,6 @@
           }
           unmakeMove(m, 0);
           if (abortSearch) break;
-          iterRootScores[i] = sc;
-
           if (sc > iterBestScore) {
             iterSecondScore = iterBestScore;
             iterBestScore = sc;
@@ -2456,20 +2454,11 @@
       completedDepth = depth;
       secondBestGap = iterSecondScore > -INF ? (iterBestScore - iterSecondScore) : 200;
 
-      // Reorder every searched root candidate by the completed iteration's
-      // score, rather than promoting only the winner. At depths 1-2 this is
-      // full-width; later iterations reorder the retained root shortlist.
-      for (let i = 1; i < searchCount; i += 1) {
-        const move = rootMoves[i];
-        const score = iterRootScores[i];
-        let j = i - 1;
-        while (j >= 0 && iterRootScores[j] < score) {
-          rootMoves[j + 1] = rootMoves[j];
-          iterRootScores[j + 1] = iterRootScores[j];
-          j -= 1;
-        }
-        rootMoves[j + 1] = move;
-        iterRootScores[j + 1] = score;
+      // Put the exact best move at index 0 for the next iteration.
+      const bestIndex = rootMoves.indexOf(bestMove);
+      if (bestIndex > 0) {
+        rootMoves.splice(bestIndex, 1);
+        rootMoves.unshift(bestMove);
       }
 
       if (Math.abs(prevScore) > MATE_BOUND) break;
