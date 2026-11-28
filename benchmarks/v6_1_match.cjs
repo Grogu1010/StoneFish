@@ -21,7 +21,7 @@ const OPTIONS = Object.freeze({
   maxTimeMs: 20000,
   softNodes: 5000000,
   hardNodes: 8000000,
-  rootWidth: 12
+  rootWidth: 16
 });
 const MAX_PLIES = 120;
 
