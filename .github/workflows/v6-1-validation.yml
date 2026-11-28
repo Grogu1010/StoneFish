@@ -1,5 +1,9 @@
 name: StoneFish v6.1 validation
 
+concurrency:
+  group: stonefish-v6-1-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
