@@ -57,7 +57,7 @@ function runNativeV61(game) {
   if (typeof sf55cNativeAcceleratedHost !== 'function') throw new Error('Compiled native kernel unavailable');
   const started = performance.now();
   const result = sf55cNativeAcceleratedHost(game, {
-    searchBudget: 120000, maxDepth: 7, maxExtraNodes: 120000, maxExtraDepth: 3,
+    searchBudget: 8000, maxDepth: 7, maxExtraNodes: 0, maxExtraDepth: 3,
     weights: new Float64Array(13)
   });
   globalThis.SF61_LAST_SEARCH = { depth: result.depth, nodes: result.nodes, ms: performance.now() - started, evalCacheHits: 0, evalCacheMisses: 0 };
