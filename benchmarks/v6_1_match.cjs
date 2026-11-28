@@ -22,14 +22,14 @@ const OPTIONS = Object.freeze({
   maxTimeMs: 20000,
   softNodes: 5000000,
   hardNodes: 8000000,
-  rootWidth: 16
+  rootWidth: 24
 });
 const MAX_PLIES = 240;
 const VARIATIONS_PER_OPENING = 10;
 const TAIL_PLIES = 6;
 
 // Ten established opening systems; deterministic legal continuations create
-// five distinct starting positions per system without relying on external data.
+// ten distinct starting positions per system without relying on external data.
 const OPENINGS = [
   ['Ruy Lopez', 'e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5a4 g8f6 e1g1 f8e7'],
   ['Sicilian', 'e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6'],
