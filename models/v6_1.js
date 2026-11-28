@@ -2187,7 +2187,7 @@
             const malus = bonus;
             // Penalize every quiet move that was tried before the cutoff
             // move, whether the cutoff came from a quiet move or a capture.
-            // A 1.25x malus tests stronger negative feedback than the reward.
+            // Keep the negative feedback equal to the depth-squared reward.
             const failedQuietCount = quietTriedCount - (isQuiet ? 1 : 0);
             for (let qi = 0; qi < failedQuietCount; qi += 1) {
               const tried = quietTriedBuf[base + qi];
