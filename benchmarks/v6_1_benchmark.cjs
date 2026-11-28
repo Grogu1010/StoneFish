@@ -9,7 +9,7 @@ const files = [
 vm.runInThisContext(files.map(file => fs.readFileSync(file, 'utf8')).join('\n\n'), {
   filename: 'stonefish-v6_1-benchmark-bundle.js'
 });
-const options = { maxDepth: 7, maxTimeMs: 20000, softNodes: 5000000, hardNodes: 8000000, rootWidth: 16 };
+const options = { maxDepth: 7, maxTimeMs: 20000, softNodes: 5000000, hardNodes: 8000000, rootWidth: 24 };
 function historicalMiddlegame() {
   const game = new Chess();
   for (let ply=0; ply<32; ply++) {
@@ -62,5 +62,15 @@ for(const [name,makeGame] of positions){
     v61MedianEvalCacheHits:median(b.map(x=>x.cacheHits)),v61MedianEvalCacheMisses:median(b.map(x=>x.cacheMisses)),
     sameMoveRate:b.filter((x,i)=>x.move===a[i].move).length/b.length});
 }
-console.log(JSON.stringify({suite:'StoneFish v6.1 cold-evaluation-cache matched-7-ply benchmark',options,results},null,2));
-if(results.some(r=>r.depthV6!==r.depthV61))process.exitCode=1;
+const aggregateV6MedianMs = results.reduce((sum, result) => sum + result.v6MedianMs, 0);
+const aggregateV61MedianMs = results.reduce((sum, result) => sum + result.v61MedianMs, 0);
+const aggregateSpeedRatio = aggregateV6MedianMs / Math.max(0.001, aggregateV61MedianMs);
+console.log(JSON.stringify({
+  suite: 'StoneFish v6.1 cold-evaluation-cache matched-7-ply benchmark',
+  options,
+  requiredSpeedRatio: 7,
+  aggregateSpeedRatio: Number(aggregateSpeedRatio.toFixed(3)),
+  meetsSpeedRequirement: aggregateSpeedRatio >= 7,
+  results
+}, null, 2));
+if (results.some(result => result.depthV6 !== result.depthV61)) process.exitCode = 1;
