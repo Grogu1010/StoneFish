@@ -2361,7 +2361,7 @@
     // The first two iterations establish a full-width shortlist before the
     // selective root window is used. This keeps the reported depth unchanged.
     const requestedRootWidth = options && Number.isInteger(options.rootWidth)
-      ? Math.max(4, options.rootWidth) : 16;
+      ? Math.max(4, options.rootWidth) : 12;
     const rootSearchWidth = Math.min(rootMoves.length, requestedRootWidth);
     const iterRootScores = new Int32Array(rootMoves.length);
 
