@@ -51,6 +51,18 @@ test('v6.1 reuses exact evaluation-cache entries in dense opening positions', ()
   assert.equal(stats.size, 1 << 18);
 });
 
+test('v6.1 uses exact evaluation caching in low-material endgames', () => {
+  stonefishV61ClearEvalCache();
+  const game = new Chess('8/5pk1/6p1/3R4/8/4K3/5PP1/8 w - - 0 1');
+  const first = stonefishV61EvaluateRaw(game);
+  const second = stonefishV61EvaluateRaw(game);
+  assert.equal(second, first);
+  const stats = stonefishV61EvalCacheStats();
+  assert.equal(stats.hits, 1);
+  assert.equal(stats.misses, 1);
+  assert.equal(stats.size, 1 << 18);
+});
+
 test('v6.1 indexed repetition history preserves legal move generation', () => {
   const game = new Chess();
   for (let ply=0; ply<32; ply++) {
