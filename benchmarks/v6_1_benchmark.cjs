@@ -9,7 +9,7 @@ const files = [
 vm.runInThisContext(files.map(file => fs.readFileSync(file, 'utf8')).join('\n\n'), {
   filename: 'stonefish-v6_1-benchmark-bundle.js'
 });
-const options = { maxDepth: 7, maxTimeMs: 20000, softNodes: 5000000, hardNodes: 8000000 };
+const options = { maxDepth: 7, maxTimeMs: 20000, softNodes: 5000000, hardNodes: 8000000, rootWidth: 16 };
 function historicalMiddlegame() {
   const game = new Chess();
   for (let ply=0; ply<32; ply++) {
