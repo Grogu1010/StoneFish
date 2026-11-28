@@ -16,6 +16,7 @@ on:
       - 'tests/v6_1_engine.test.js'
       - 'benchmarks/v6_1_benchmark.cjs'
       - 'benchmarks/v6_1_match.cjs'
+      - 'benchmarks/v6_1_native_probe.cjs'
       - 'package.json'
       - '.github/workflows/v6-1-validation.yml'
   pull_request:
