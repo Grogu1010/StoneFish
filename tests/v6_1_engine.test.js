@@ -82,7 +82,7 @@ test('v6.1 static evaluation is exactly equal to v6 on representative positions'
   }
 });
 
-test('v6.1 static evaluation is invariant under rank flip and colour swap', () => {
+test('v6.1 static evaluation is invariant under rank flip and colour swap, including material-advantage endgames', () => {
   const positions = [
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
