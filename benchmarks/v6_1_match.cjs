@@ -141,8 +141,8 @@ for (let openingIndex = 0; openingIndex < OPENINGS.length; openingIndex += 1) {
       throw new Error('Duplicate round-robin starting position: ' + name + ' variation ' + variation);
     }
     startingPositions.add(fen);
-    games.push(runGame(name + ' / variation ' + (variation + 1), position, 1));
-    games.push(runGame(name + ' / variation ' + (variation + 1), position, -1));
+    games.push(runGame(name + ' / variation ' + (variation + 1), openingPosition(line, seed), 1));
+    games.push(runGame(name + ' / variation ' + (variation + 1), openingPosition(line, seed), -1));
   }
 }
 
