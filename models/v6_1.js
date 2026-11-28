@@ -20,7 +20,7 @@
   const MATE_SCORE = 30000;
   const MATE_BOUND = 29000;
   const INF = 32000;
-  const TT_SIZE = 1 << 16;
+  const TT_SIZE = 1 << 18;
   const TT_MASK = TT_SIZE - 1;
 
   const KNIGHT_DF = new Int8Array([1, 2, 2, 1, -1, -2, -2, -1]);
@@ -204,7 +204,7 @@
 
     for (let d = 1; d < 32; d += 1) {
       for (let m = 1; m < 64; m += 1) {
-        LMR_TABLE[(d << 6) | m] = (1 + (Math.log(d) * Math.log(m)) / 1.8) | 0;
+        LMR_TABLE[(d << 6) | m] = (1 + (Math.log(d) * Math.log(m)) / 2.2) | 0;
       }
     }
   })();
@@ -394,7 +394,7 @@
     // Decide cache policy once per loaded root position, not on every eval call.
     const rootPieceTotal = pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
       + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13];
-    evalCacheEnabled = rootPieceTotal >= 12 && rootPieceTotal <= 32;
+    evalCacheEnabled = rootPieceTotal >= 4 && rootPieceTotal <= 32;
 
     rootHistLen = 0;
     if (game.positionCounts && game.positionCounts.size > 0) {
