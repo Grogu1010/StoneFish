@@ -20,7 +20,7 @@
   const MATE_SCORE = 30000;
   const MATE_BOUND = 29000;
   const INF = 32000;
-  const TT_SIZE = 1 << 16;
+  const TT_SIZE = 1 << 18;
   const TT_MASK = TT_SIZE - 1;
 
   const KNIGHT_DF = new Int8Array([1, 2, 2, 1, -1, -2, -2, -1]);
@@ -204,7 +204,7 @@
 
     for (let d = 1; d < 32; d += 1) {
       for (let m = 1; m < 64; m += 1) {
-        LMR_TABLE[(d << 6) | m] = (1 + (Math.log(d) * Math.log(m)) / 2.2) | 0;
+        LMR_TABLE[(d << 6) | m] = (1 + (Math.log(d) * Math.log(m)) / 1.8) | 0;
       }
     }
   })();
@@ -236,7 +236,7 @@
   const ttAge = new Uint16Array(TT_SIZE);
   // v6.1: exact static-evaluation cache for transpositions and re-searches.
   // Both halves of the Zobrist key are checked; collisions only evict entries.
-  const EVAL_CACHE_SIZE = 1 << 15;
+  const EVAL_CACHE_SIZE = 1 << 18;
   const EVAL_CACHE_MASK = EVAL_CACHE_SIZE - 1;
   const evalCacheKeyHi = new Uint32Array(EVAL_CACHE_SIZE);
   const evalCacheKeyLo = new Uint32Array(EVAL_CACHE_SIZE);
@@ -254,6 +254,9 @@
   // Search stacks
   const moveBuf = new Int32Array(MAX_PLY * 256);
   const scoreBuf = new Int32Array(MAX_PLY * 256);
+  // Per-ply list of quiet moves actually searched before a beta cutoff.
+  const quietTriedBuf = new Int32Array(MAX_PLY * 256);
+
   const staticEvalStack = new Int32Array(MAX_PLY);
   const armx11Mode = true;
   let armx11Contempt = 0;
@@ -394,7 +397,7 @@
     // Decide cache policy once per loaded root position, not on every eval call.
     const rootPieceTotal = pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
       + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13];
-    evalCacheEnabled = rootPieceTotal >= 12 && rootPieceTotal <= 30;
+    evalCacheEnabled = rootPieceTotal >= 4 && rootPieceTotal <= 32;
 
     rootHistLen = 0;
     if (game.positionCounts && game.positionCounts.size > 0) {
@@ -1733,20 +1736,16 @@
     }
     mg -= bShield;
 
-    // 7. Material-Aware Trade Discipline (avoid equal piece trades when down; simplify when up)
+    // 7. Material-Aware Trade Discipline. Use one coefficient for either
+    // colour: differing up/down multipliers create a systematic colour bias.
     const rawDiff = wRawMat - bRawMat;
-    if (rawDiff >= 120) {
-      const scale = Math.min(2.2, (rawDiff - 60) / 180);
+    if (Math.abs(rawDiff) >= 120) {
+      const scale = Math.min(2.2, (Math.abs(rawDiff) - 60) / 180);
       const tradedPhase = 24 - Math.min(24, wPhase + bPhase);
-      const bonus = Math.round(tradedPhase * scale * 2.5);
-      mg += bonus;
-      eg += bonus;
-    } else if (rawDiff <= -120) {
-      const scale = Math.min(2.2, (-rawDiff - 60) / 180);
-      const tradedPhase = 24 - Math.min(24, wPhase + bPhase);
-      const penalty = Math.round(tradedPhase * scale * 2.7);
-      mg -= penalty;
-      eg -= penalty;
+      const tradeBonus = Math.round(tradedPhase * scale * 2.6);
+      const signedBonus = Math.sign(rawDiff) * tradeBonus;
+      mg += signedBonus;
+      eg += signedBonus;
     }
 
     const clampedPhase = phase > 24 ? 24 : phase;
@@ -2107,6 +2106,7 @@
     const count = generatePseudoMoves(ply, false);
     scoreMoves(ply, count, ttBest, prevMove, false);
     const base = ply << 8;
+    let quietTriedCount = 0;
 
     let legalMoves = 0;
     let bestScore = -INF;
@@ -2175,6 +2175,7 @@
 
       unmakeMove(m, ply);
       if (abortSearch) return alpha;
+      if (isQuiet) quietTriedBuf[base + quietTriedCount++] = m;
 
       if (score > bestScore) {
         bestScore = score;
@@ -2182,14 +2183,27 @@
         if (score > alpha) {
           alpha = score;
           if (alpha >= beta) {
+            const sIdx = side === 1 ? 0 : 4096;
+            const bonus = depth * depth;
+            const malus = bonus;
+            // Penalize every quiet move that was tried before the cutoff
+            // move, whether the cutoff came from a quiet move or a capture.
+            // Keep the negative feedback equal to the depth-squared reward.
+            const failedQuietCount = quietTriedCount - (isQuiet ? 1 : 0);
+            for (let qi = 0; qi < failedQuietCount; qi += 1) {
+              const tried = quietTriedBuf[base + qi];
+              const triedIdx = ((tried & 63) << 6) | ((tried >>> 6) & 63);
+              let triedHistory = historyTable[sIdx + triedIdx] - malus;
+              if (triedHistory < -2000000) triedHistory = -2000000;
+              historyTable[sIdx + triedIdx] = triedHistory;
+            }
+
             if (isQuiet) {
               if (killer1[ply] !== m) {
                 killer2[ply] = killer1[ply];
                 killer1[ply] = m;
               }
-              const sIdx = side === 1 ? 0 : 4096;
               const sqIdx = ((m & 63) << 6) | ((m >>> 6) & 63);
-              const bonus = depth * depth;
               let hVal = historyTable[sIdx + sqIdx] + bonus;
               if (hVal > 2000000) hVal >>= 1;
               historyTable[sIdx + sqIdx] = hVal;
@@ -2357,6 +2371,11 @@
       rootScores[j + 1] = sc;
     }
 
+    // v6-compatible full-width root search; only the exact best move is
+    // promoted between iterations. Null-window fail-low scores are bounds,
+    // not reliable ordering scores for all root candidates.
+    const rootSearchWidth = rootMoves.length;
+
     let bestMove = rootMoves[0];
     let prevScore = 0;
     let prevPrevScore = 0;
@@ -2391,6 +2410,7 @@
       let iterBestMove = bestMove;
       let iterBestScore = -INF;
       let iterSecondScore = -INF;
+      const searchCount = depth <= 2 ? rootMoves.length : rootSearchWidth;
 
       while (true) {
         abortSearch = false;
@@ -2399,7 +2419,7 @@
         iterSecondScore = -INF;
         iterBestMove = rootMoves[0];
 
-        for (let i = 0; i < rootMoves.length; i += 1) {
+        for (let i = 0; i < searchCount; i += 1) {
           const m = rootMoves[i];
           makeMove(m, 0, rootInCheck);
           let sc;
@@ -2413,7 +2433,6 @@
           }
           unmakeMove(m, 0);
           if (abortSearch) break;
-
           if (sc > iterBestScore) {
             iterSecondScore = iterBestScore;
             iterBestScore = sc;
@@ -2449,10 +2468,10 @@
       completedDepth = depth;
       secondBestGap = iterSecondScore > -INF ? (iterBestScore - iterSecondScore) : 200;
 
-      // Put bestMove at index 0 for next iteration
-      const bIdx = rootMoves.indexOf(bestMove);
-      if (bIdx > 0) {
-        rootMoves.splice(bIdx, 1);
+      // Put the exact best move at index 0 for the next iteration.
+      const bestIndex = rootMoves.indexOf(bestMove);
+      if (bestIndex > 0) {
+        rootMoves.splice(bestIndex, 1);
         rootMoves.unshift(bestMove);
       }
 
@@ -2501,6 +2520,7 @@
     lastEvalTemp = completedDepth;
     globalScope.SF61_LAST_SEARCH = {
       depth: completedDepth,
+      rootWidth: rootSearchWidth,
       nodes: nodeCount,
       score: prevScore,
       ms: performance.now() - startTime,

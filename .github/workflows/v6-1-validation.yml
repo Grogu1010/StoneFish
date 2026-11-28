@@ -1,5 +1,9 @@
 name: StoneFish v6.1 validation
 
+concurrency:
+  group: stonefish-v6-1-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -11,6 +15,20 @@ on:
       - 'test-worker.js'
       - 'tests/v6_1_engine.test.js'
       - 'benchmarks/v6_1_benchmark.cjs'
+      - 'benchmarks/v6_1_match.cjs'
+      - 'package.json'
+      - '.github/workflows/v6-1-validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'models/v6.js'
+      - 'models/v6_1.js'
+      - 'app.js'
+      - 'index.html'
+      - 'test-worker.js'
+      - 'tests/v6_1_engine.test.js'
+      - 'benchmarks/v6_1_benchmark.cjs'
+      - 'benchmarks/v6_1_match.cjs'
       - 'package.json'
       - '.github/workflows/v6-1-validation.yml'
 
@@ -23,8 +41,15 @@ jobs:
         with:
           node-version: 22
       - name: Syntax checks
-        run: npm run lint
+        run: npm run lint && node -c benchmarks/v6_1_benchmark.cjs && node -c benchmarks/v6_1_match.cjs
       - name: v6 and v6.1 regression tests
         run: node --test tests/v6_engine.test.js tests/v6_1_engine.test.js
       - name: Matched-depth performance benchmark
         run: node benchmarks/v6_1_benchmark.cjs
+      - name: CPU profile of matched-depth searches
+        run: |
+          node --prof benchmarks/v6_1_benchmark.cjs
+          profile="$(ls -t isolate-*-v8.log | head -n 1)"
+          node --prof-process "$profile" | sed -n '1,120p'
+      - name: v6 versus v6.1 head-to-head match
+        run: node benchmarks/v6_1_match.cjs
