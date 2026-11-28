@@ -1733,20 +1733,16 @@
     }
     mg -= bShield;
 
-    // 7. Material-Aware Trade Discipline (avoid equal piece trades when down; simplify when up)
+    // 7. Material-Aware Trade Discipline. Use one coefficient for either
+    // colour: differing up/down multipliers create a systematic colour bias.
     const rawDiff = wRawMat - bRawMat;
-    if (rawDiff >= 120) {
-      const scale = Math.min(2.2, (rawDiff - 60) / 180);
+    if (Math.abs(rawDiff) >= 120) {
+      const scale = Math.min(2.2, (Math.abs(rawDiff) - 60) / 180);
       const tradedPhase = 24 - Math.min(24, wPhase + bPhase);
-      const bonus = Math.round(tradedPhase * scale * 2.5);
-      mg += bonus;
-      eg += bonus;
-    } else if (rawDiff <= -120) {
-      const scale = Math.min(2.2, (-rawDiff - 60) / 180);
-      const tradedPhase = 24 - Math.min(24, wPhase + bPhase);
-      const penalty = Math.round(tradedPhase * scale * 2.7);
-      mg -= penalty;
-      eg -= penalty;
+      const tradeBonus = Math.round(tradedPhase * scale * 2.6);
+      const signedBonus = Math.sign(rawDiff) * tradeBonus;
+      mg += signedBonus;
+      eg += signedBonus;
     }
 
     const clampedPhase = phase > 24 ? 24 : phase;
