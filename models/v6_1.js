@@ -204,7 +204,7 @@
 
     for (let d = 1; d < 32; d += 1) {
       for (let m = 1; m < 64; m += 1) {
-        LMR_TABLE[(d << 6) | m] = (1 + (Math.log(d) * Math.log(m)) / 2.2) | 0;
+        LMR_TABLE[(d << 6) | m] = (1 + (Math.log(d) * Math.log(m)) / 1.8) | 0;
       }
     }
   })();
