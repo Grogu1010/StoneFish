@@ -2340,9 +2340,6 @@
       if (cap || promo) s += seeCapture(m) * 4 + 2000;
       if (flags & 12) s += 300;
       makeMove(m, 0, rootInCheck);
-      // A quiet checking move is a tactical root candidate even when its
-      // static evaluation is not among the very highest.
-      if (!cap && !promo && isSquareAttacked(side === 1 ? wk : bk, -side)) s += 900;
       s += -evaluate();
       unmakeMove(m, 0);
       rootScores[i] = s;
@@ -2364,7 +2361,7 @@
     // The first two iterations establish a full-width shortlist before the
     // selective root window is used. This keeps the reported depth unchanged.
     const requestedRootWidth = options && Number.isInteger(options.rootWidth) ? options.rootWidth : 8;
-    const rootSearchWidth = Math.max(4, Math.min(rootMoves.length, requestedRootWidth));
+    const rootSearchWidth = Math.min(rootMoves.length, Math.max(4, Math.min(32, requestedRootWidth)));
     const iterRootScores = new Int32Array(rootMoves.length);
 
     let bestMove = rootMoves[0];
