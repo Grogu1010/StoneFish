@@ -236,7 +236,7 @@
   const ttAge = new Uint16Array(TT_SIZE);
   // v6.1: exact static-evaluation cache for transpositions and re-searches.
   // Both halves of the Zobrist key are checked; collisions only evict entries.
-  const EVAL_CACHE_SIZE = 1 << 15;
+  const EVAL_CACHE_SIZE = 1 << 18;
   const EVAL_CACHE_MASK = EVAL_CACHE_SIZE - 1;
   const evalCacheKeyHi = new Uint32Array(EVAL_CACHE_SIZE);
   const evalCacheKeyLo = new Uint32Array(EVAL_CACHE_SIZE);
@@ -394,7 +394,7 @@
     // Decide cache policy once per loaded root position, not on every eval call.
     const rootPieceTotal = pieceCnt[1] + pieceCnt[2] + pieceCnt[3] + pieceCnt[4] + pieceCnt[5] + pieceCnt[6]
       + pieceCnt[8] + pieceCnt[9] + pieceCnt[10] + pieceCnt[11] + pieceCnt[12] + pieceCnt[13];
-    evalCacheEnabled = rootPieceTotal >= 12 && rootPieceTotal <= 30;
+    evalCacheEnabled = rootPieceTotal >= 12 && rootPieceTotal <= 32;
 
     rootHistLen = 0;
     if (game.positionCounts && game.positionCounts.size > 0) {
@@ -2144,13 +2144,11 @@
         continue;
       }
 
-      // Passed-pawn / 7th-rank push extension under ARMX 1.1.
-      // White advances toward rank 8 (indices 5-7); Black advances toward
-      // rank 1 (indices 0-2).
+      // Passed-pawn / 7th-rank push extension under ARMX 1.1
       let ext = 0;
       if (armx11Mode && ply < 16 && ((m >>> 12) & 7) === 1 && !isPromo) {
         const destRank = ((m >>> 6) & 63) >> 3;
-        if ((side === 1 && destRank >= 5) || (side === -1 && destRank <= 2)) ext = 1;
+        if ((side === -1 && destRank >= 5) || (side === 1 && destRank <= 2)) ext = 1;
       }
 
       let score;
