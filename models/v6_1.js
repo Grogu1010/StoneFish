@@ -2357,12 +2357,9 @@
       rootScores[j + 1] = sc;
     }
 
-    // Keep the best root candidates by their previous completed iteration.
-    // The first two iterations establish a full-width shortlist before the
-    // selective root window is used. This keeps the reported depth unchanged.
-    const requestedRootWidth = options && Number.isInteger(options.rootWidth)
-      ? Math.max(4, options.rootWidth) : 24;
-    const rootSearchWidth = Math.min(rootMoves.length, requestedRootWidth);
+    // Keep all legal root moves in the search. Completed-iteration scores
+    // reorder the full list, so move ordering improves without root selectivity.
+    const rootSearchWidth = rootMoves.length;
     const iterRootScores = new Int32Array(rootMoves.length);
 
     let bestMove = rootMoves[0];
