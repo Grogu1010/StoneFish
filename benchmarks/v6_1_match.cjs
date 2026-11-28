@@ -1,7 +1,8 @@
 'use strict';
 
-// Head-to-head v6.1 strength check. Scores use standard match points:
-// win = 1, draw = 0.5, loss = 0. Search limits are identical for both engines.
+// 100-game, colour-balanced round robin: 50 deterministic opening variations,
+// each played twice with v6.1 as White and as Black. Both engines use the
+// same move/time/node limits. The reported score is always from v6.1's view.
 const fs = require('node:fs');
 const vm = require('node:vm');
 const { performance } = require('node:perf_hooks');
@@ -13,7 +14,7 @@ const files = [
   'ARMX/ARMX-preview.js', 'ARMX/ARMX.js', 'ARMX/ARMX_1_1.js'
 ];
 vm.runInThisContext(files.map(file => fs.readFileSync(file, 'utf8')).join('\n\n'), {
-  filename: 'stonefish-v6_1-match-bundle.js'
+  filename: 'stonefish-v6_1-round-robin-bundle.js'
 });
 
 const OPTIONS = Object.freeze({
@@ -23,15 +24,17 @@ const OPTIONS = Object.freeze({
   hardNodes: 8000000,
   rootWidth: 16
 });
-const MAX_PLIES = 120;
+const MAX_PLIES = 240;
+const VARIATIONS_PER_OPENING = 5;
+const TAIL_PLIES = 6;
 
-// Established opening continuations provide varied, repeatable starting
-// positions. Every line is played twice with v6.1 taking each colour.
+// Ten established opening systems; deterministic legal continuations create
+// five distinct starting positions per system without relying on external data.
 const OPENINGS = [
   ['Ruy Lopez', 'e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5a4 g8f6 e1g1 f8e7'],
   ['Sicilian', 'e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6'],
-  ['Queen’s Gambit', 'd2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 f8e7 e2e3 e8g8'],
-  ['King’s Indian', 'd2d4 g8f6 c2c4 g7g6 b1c3 f8g7 e2e4 d7d6 g1f3 e8g8'],
+  ['Queens Gambit', 'd2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 f8e7 e2e3 e8g8'],
+  ['Kings Indian', 'd2d4 g8f6 c2c4 g7g6 b1c3 f8g7 e2e4 d7d6 g1f3 e8g8'],
   ['French', 'e2e4 e7e6 d2d4 d7d5 b1c3 f8b4 e4e5 c7c5 a2a3 b4c3 b2c3'],
   ['English', 'c2c4 e7e5 b1c3 g8f6 g2g3 d7d5 c4d5 f6d5 f1g2 d5b6'],
   ['Italian', 'e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 c2c3 g8f6 d2d3 d7d6'],
@@ -48,18 +51,37 @@ function applyUci(game, uci) {
   });
   if (!move) throw new Error('Illegal opening move ' + uci + ' in ' + game.fen());
 }
-function openingPosition(line) {
+
+function openingPosition(line, seed) {
   const game = new Chess();
   for (const uci of line.split(/\s+/).filter(Boolean)) applyUci(game, uci);
+
+  let state = seed >>> 0;
+  for (let ply = 0; ply < TAIL_PLIES && !game.game_over(); ply += 1) {
+    const allMoves = game.moves({ verbose: true });
+    if (!allMoves.length) break;
+    // Prefer quiet legal moves to keep the seeded continuation opening-like.
+    const quietMoves = allMoves.filter(move => !move.captured && !move.promotion);
+    const choices = quietMoves.length ? quietMoves : allMoves;
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const selected = choices[state % choices.length];
+    const played = game.move({
+      from: selected.from,
+      to: selected.to,
+      promotion: selected.promotion || 'q'
+    });
+    if (!played) throw new Error('Generated illegal continuation in ' + game.fen());
+  }
   return game;
 }
-function runGame(name, line, v61Side) {
-  const game = openingPosition(line);
+
+function runGame(name, game, v61Side) {
   const startFen = game.fen();
   const counts = { v6: 0, v61: 0 };
   const depthCounts = { v6: {}, v61: {} };
   let result = '1/2-1/2';
   let termination = 'move limit';
+  let points = 0.5;
   const started = performance.now();
 
   for (let ply = 0; ply < MAX_PLIES && !game.game_over(); ply += 1) {
@@ -68,31 +90,30 @@ function runGame(name, line, v61Side) {
       ? getStonefishV61Move(game, OPTIONS)
       : getStonefishV6Move(game, OPTIONS);
     const info = model === 'v61' ? globalThis.SF61_LAST_SEARCH : globalThis.SF6_LAST_SEARCH;
-    if (!move) {
-      termination = 'no legal move returned';
-      break;
-    }
+    if (!move) throw new Error(model + ' returned no move at ' + game.fen());
+
     counts[model] += 1;
     const depth = info && Number.isInteger(info.depth) ? info.depth : -1;
     depthCounts[model][depth] = (depthCounts[model][depth] || 0) + 1;
 
     const played = game.move(move);
-    if (!played) {
-      throw new Error(model + ' returned an illegal move ' + JSON.stringify(move) + ' at ' + game.fen());
-    }
+    if (!played) throw new Error(model + ' returned illegal move ' + JSON.stringify(move) + ' at ' + game.fen());
+
     if (game.in_checkmate()) {
       const winner = -game.side;
-      result = winner === v61Side ? '1-0' : '0-1';
+      result = winner === 1 ? '1-0' : '0-1';
       termination = 'checkmate';
-    } else if (game.in_draw()) {
+      points = winner === v61Side ? 1 : 0;
+      break;
+    }
+    if (game.in_draw()) {
       result = '1/2-1/2';
       termination = 'draw';
+      points = 0.5;
+      break;
     }
   }
 
-  let points = 0.5;
-  if (result === '1-0') points = v61Side === 1 ? 1 : 0;
-  else if (result === '0-1') points = v61Side === -1 ? 1 : 0;
   return {
     opening: name,
     v61Side: v61Side === 1 ? 'white' : 'black',
@@ -109,20 +130,48 @@ function runGame(name, line, v61Side) {
 }
 
 const games = [];
-for (const [name, line] of OPENINGS) {
-  games.push(runGame(name, line, 1));
-  games.push(runGame(name, line, -1));
+const startingPositions = new Set();
+for (let openingIndex = 0; openingIndex < OPENINGS.length; openingIndex += 1) {
+  const [name, line] = OPENINGS[openingIndex];
+  for (let variation = 0; variation < VARIATIONS_PER_OPENING; variation += 1) {
+    const seed = (0x51f15e + openingIndex * 7919 + variation * 104729) >>> 0;
+    const position = openingPosition(line, seed);
+    const fen = position.fen();
+    if (startingPositions.has(fen)) {
+      throw new Error('Duplicate round-robin starting position: ' + name + ' variation ' + variation);
+    }
+    startingPositions.add(fen);
+    games.push(runGame(name + ' / variation ' + (variation + 1), position, 1));
+    games.push(runGame(name + ' / variation ' + (variation + 1), position, -1));
+  }
 }
+
 const points = games.reduce((sum, game) => sum + game.points, 0);
 const wins = games.filter(game => game.points === 1).length;
 const draws = games.filter(game => game.points === 0.5).length;
 const losses = games.filter(game => game.points === 0).length;
+const byColour = games.reduce((all, game) => {
+  const colour = game.v61Side;
+  if (game.points === 1) all[colour].wins += 1;
+  else if (game.points === 0) all[colour].losses += 1;
+  else all[colour].draws += 1;
+  all[colour].points += game.points;
+  return all;
+}, {
+  white: { wins: 0, draws: 0, losses: 0, points: 0 },
+  black: { wins: 0, draws: 0, losses: 0, points: 0 }
+});
+
 const summary = {
-  suite: 'StoneFish v6.1 vs v6 head-to-head',
-  scoring: '1 point win, 0.5 point draw, 0 points loss',
-  searchOptions: OPTIONS,
+  suite: 'StoneFish v6.1 vs v6 100-game round robin',
+  scoring: '1 point win, 0.5 point draw, 0 points loss; points recorded directly from v6.1 perspective',
+  rounds: games.length,
   games: games.length,
+  openingPairs: startingPositions.size,
+  colourBalance: { v61White: games.filter(game => game.v61Side === 'white').length, v61Black: games.filter(game => game.v61Side === 'black').length },
+  searchOptions: OPTIONS,
   v61: { wins, draws, losses, points, scorePercent: Number((100 * points / games.length).toFixed(1)) },
+  byColour,
   completedDepthTotals: games.reduce((all, game) => {
     for (const model of ['v6', 'v61']) {
       for (const [depth, count] of Object.entries(game.completedDepths[model])) {
@@ -134,4 +183,9 @@ const summary = {
   elapsedMs: Number(games.reduce((sum, game) => sum + game.elapsedMs, 0).toFixed(1)),
   results: games
 };
+
+if (summary.games !== 100 || summary.openingPairs !== 50
+  || summary.colourBalance.v61White !== 50 || summary.colourBalance.v61Black !== 50) {
+  throw new Error('Round-robin construction is not exactly 100 games with 50/50 colour balance');
+}
 console.log(JSON.stringify(summary, null, 2));
