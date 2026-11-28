@@ -46,5 +46,10 @@ jobs:
         run: node --test tests/v6_engine.test.js tests/v6_1_engine.test.js
       - name: Matched-depth performance benchmark
         run: node benchmarks/v6_1_benchmark.cjs
+      - name: CPU profile of matched-depth searches
+        run: |
+          node --prof benchmarks/v6_1_benchmark.cjs
+          profile="$(ls -t isolate-*-v8.log | head -n 1)"
+          node --prof-process "$profile" | sed -n '1,120p'
       - name: v6 versus v6.1 head-to-head match
         run: node benchmarks/v6_1_match.cjs
