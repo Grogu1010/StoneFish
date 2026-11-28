@@ -2184,13 +2184,15 @@
           if (alpha >= beta) {
             const sIdx = side === 1 ? 0 : 4096;
             const bonus = depth * depth;
+            const malus = bonus + (bonus >> 2);
             // Penalize every quiet move that was tried before the cutoff
             // move, whether the cutoff came from a quiet move or a capture.
+            // A 1.25x malus tests stronger negative feedback than the reward.
             const failedQuietCount = quietTriedCount - (isQuiet ? 1 : 0);
             for (let qi = 0; qi < failedQuietCount; qi += 1) {
               const tried = quietTriedBuf[base + qi];
               const triedIdx = ((tried & 63) << 6) | ((tried >>> 6) & 63);
-              let triedHistory = historyTable[sIdx + triedIdx] - bonus;
+              let triedHistory = historyTable[sIdx + triedIdx] - malus;
               if (triedHistory < -2000000) triedHistory = -2000000;
               historyTable[sIdx + triedIdx] = triedHistory;
             }
